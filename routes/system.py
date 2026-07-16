@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import tarfile
+import tomllib
 
 import flask
 import flask_login
@@ -15,6 +16,20 @@ from extensions import socketio
 bp = Blueprint('system', __name__)
 
 _VERSION_RE = re.compile(r'^v\d{4}\.\d{2}\.\d+$')
+
+
+def _update_config():
+    """Load the update-dropdown settings from update_config.toml at the repo root.
+
+    Read fresh on each call so edits take effect without restarting the server.
+    Returns (extra_branches, max_versions); max_versions == 0 means no limit.
+    """
+    try:
+        with open(os.path.join(state.app_dir, 'update_config.toml'), 'rb') as f:
+            cfg = tomllib.load(f)
+    except Exception:
+        cfg = {}
+    return (cfg.get('extra_branches') or [], int(cfg.get('max_versions') or 0))
 
 
 def _find_uv():
@@ -126,9 +141,17 @@ def _run_update(target=None):
         # doesn't block the checkout/pull below.
         _run_cmd_blocking(['git', 'checkout', '--', 'uv.lock'], cwd=state.app_dir)
 
-        if not target:
+        extra_refs, _ = _update_config()
+        if not target or target == 'master':
             cmds  = [['git', 'checkout', 'master'], ['git', 'pull'], [_UV, 'sync']]
-            label = 'Updated to latest'
+            label = 'Development (master) installed'
+        elif target in extra_refs:
+            # Branch: force the local branch to match origin so repeated deploys
+            # pick up new commits (a plain checkout of an existing branch would
+            # stay on the stale local tip). origin/<branch> was refreshed by the
+            # fetch above.
+            cmds  = [['git', 'checkout', '-B', target, f'origin/{target}'], [_UV, 'sync']]
+            label = f'Branch {target} installed'
         else:
             cmds  = [['git', 'checkout', target], [_UV, 'sync']]
             label = f'Version {target} installed'
@@ -192,9 +215,20 @@ def route_version_list():
                        cwd=state.app_dir, timeout=20)
         r = subprocess.run(['git', 'tag', '-l', '--sort=-version:refname'],
                            capture_output=True, text=True, cwd=state.app_dir, timeout=8)
+        extra_refs, max_versions = _update_config()
         tags = [t.strip() for t in r.stdout.splitlines()
                 if t.strip() and _VERSION_RE.match(t.strip())]
-        return flask.jsonify({'ok': True, 'current': current, 'versions': tags})
+        if max_versions > 0:
+            tags = tags[:max_versions]
+        branches = []
+        for ref in extra_refs:
+            chk = subprocess.run(['git', 'rev-parse', '--verify', '--quiet',
+                                  f'refs/remotes/origin/{ref}'],
+                                 capture_output=True, cwd=state.app_dir, timeout=8)
+            if chk.returncode == 0:
+                branches.append(ref)
+        return flask.jsonify({'ok': True, 'current': current,
+                              'versions': tags, 'branches': branches})
     except Exception as e:
         return flask.jsonify({'ok': False, 'error': str(e)})
 

@@ -297,8 +297,7 @@
                 <div class="panel-row">
                     <span class="panel-label">{{ t.get('version', 'Version') }}</span>
                     <select id="update-version" class="field" style="flex:1;">
-                        <option value="latest">Latest release</option>
-                        <option value="master">Master</option>
+                        <option value="">Loading…</option>
                     </select>
                 </div>
                 <div class="panel-row">
@@ -438,15 +437,22 @@
                     const cur = document.getElementById('current-version');
                     if (cur) cur.textContent = d.current || 'untagged';
                     const sel = document.getElementById('update-version');
-                    sel.innerHTML = '<option value="latest">Latest release</option>';
-                    d.versions.forEach(v => {
+                    sel.innerHTML = '';
+                    d.versions.forEach((v, i) => {
                         const opt = document.createElement('option');
                         opt.value = v;
-                        opt.textContent = v + (v === d.current ? '  ← current' : '');
+                        opt.textContent = v + (i === 0 ? ' (latest)' : '')
+                                            + (v === d.current ? '  ← current' : '');
                         sel.appendChild(opt);
                     });
                     sel.appendChild(Object.assign(document.createElement('option'),
-                        { value: 'master', textContent: 'Master' }));
+                        { textContent: '------------', disabled: true }));  // separator
+                    sel.appendChild(Object.assign(document.createElement('option'),
+                        { value: 'master', textContent: 'Development (master)' }));
+                    (d.branches || []).forEach(b => {
+                        sel.appendChild(Object.assign(document.createElement('option'),
+                            { value: b, textContent: b }));
+                    });
                     if (d.current) {
                         const match = [...sel.options].find(o => o.value === d.current);
                         if (match) match.selected = true;
@@ -458,7 +464,7 @@
         // ── Update ────────────────────────────────────────────────────────────
         function triggerUpdate() {
             const version = document.getElementById('update-version').value;
-            const label   = version === 'master' ? 'master branch' : version === 'latest' ? 'latest release' : version;
+            const label   = version === 'master' ? 'development (master)' : version;
             if (!confirm('Pull ' + label + ' from GitHub and rebuild the server?')) return;
 
             const btn    = document.getElementById('update-btn');

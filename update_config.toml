@@ -1,0 +1,12 @@
+# Controls the version/branch dropdown in BOTH dashboards (local server + cloud
+# admin).
+
+# Branch names (besides release tags) to offer in the update dropdown. 
+# Only branches that exist on origin are shown. 
+# extra_branches = ["branch_1", "branch_2", "branch_3"]     ### List of multiple branches
+# extra_branches = []                                       ### for release tags only.
+extra_branches = ["fastapi"]
+
+# Maximum number of release tags shown in the dropdown (newest first).
+# Use 0 for no limit.
+max_versions = 25

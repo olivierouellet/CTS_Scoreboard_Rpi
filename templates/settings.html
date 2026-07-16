@@ -501,7 +501,7 @@ function onPasswordInput(form) {
                 </div>
                 <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
                     <select id="version-select" class="form-control input-sm" style="flex:1;">
-                        <option value="">Latest (from GitHub)</option>
+                        <option value="">Loading…</option>
                     </select>
                     <button id="btn-run-update" class="btn btn-default btn-sm" onclick="startUpdate()">Install</button>
                     <span id="update-status" style="font-size:0.9em; color:#888;"></span>
@@ -1681,11 +1681,26 @@ function onPasswordInput(form) {
             sel.disabled = false;
             if (!d.ok) { cur.textContent = d.error || 'Error'; return; }
             cur.textContent = d.current || 'untagged';
-            sel.innerHTML = '<option value="">Latest (from GitHub)</option>';
-            d.versions.forEach(function(v) {
+            sel.innerHTML = '';
+            d.versions.forEach(function(v, i) {
                 var opt = document.createElement('option');
                 opt.value = v;
-                opt.textContent = v + (v === d.current ? '  ← current' : '');
+                opt.textContent = v + (i === 0 ? ' (latest)' : '')
+                                    + (v === d.current ? '  ← current' : '');
+                sel.appendChild(opt);
+            });
+            var sep = document.createElement('option');
+            sep.textContent = '------------';
+            sep.disabled = true;              // separator: never selectable
+            sel.appendChild(sep);
+            var mopt = document.createElement('option');
+            mopt.value = 'master';
+            mopt.textContent = 'Development (master)';
+            sel.appendChild(mopt);
+            (d.branches || []).forEach(function(b) {
+                var opt = document.createElement('option');
+                opt.value = b;
+                opt.textContent = b;
                 sel.appendChild(opt);
             });
         }).catch(function(){ sel.disabled = false; cur.textContent = 'Error'; });

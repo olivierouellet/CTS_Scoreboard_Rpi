@@ -19,6 +19,7 @@ import os
 import re
 import subprocess
 import threading
+import tomllib
 from urllib.parse import urlparse, parse_qs
 
 _VERSION_RE = re.compile(r'^v\d{4}\.\d{2}\.\d+$')
@@ -27,6 +28,20 @@ SECRET   = os.environ.get('DEPLOY_SECRET', '')
 REPO     = os.path.expanduser(os.environ.get('REPO_DIR', '~/Tremplin'))
 PORT     = int(os.environ.get('DEPLOY_PORT', '9000'))
 LOG_FILE = '/tmp/tremplin-deploy.log'
+
+
+def _update_config():
+    """Load the update-dropdown settings from update_config.toml at the repo root.
+
+    Read fresh on each request. Returns (extra_branches, max_versions);
+    max_versions == 0 means no limit.
+    """
+    try:
+        with open(os.path.join(REPO, 'update_config.toml'), 'rb') as f:
+            cfg = tomllib.load(f)
+    except Exception:
+        cfg = {}
+    return (cfg.get('extra_branches') or [], int(cfg.get('max_versions') or 0))
 
 
 def _run_deploy(cmd):
@@ -67,9 +82,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         self._reply(200, b'deploy started')
 
+        extra_refs, _ = _update_config()
         if version == 'master':
             cmd = f'cd {REPO} && git fetch origin && git reset --hard origin/master'
+        elif version in extra_refs:
+            # Branch deploy: force the working tree to origin/<branch>. Safe to
+            # interpolate because `version` is confined to the extra_branches allowlist.
+            cmd = f'cd {REPO} && git fetch origin && git reset --hard origin/{version}'
+        elif _VERSION_RE.match(version):
+            # A specific release tag. `version` is validated against _VERSION_RE,
+            # so it is safe to interpolate into the shell command.
+            cmd = f'cd {REPO} && git fetch --tags && git checkout -B release {version}'
         else:
+            # 'latest' (or anything unrecognised) → newest release tag.
             cmd = (
                 f'cd {REPO} && git fetch --tags && '
                 f'LATEST=$(git tag -l --sort=-version:refname | grep -E \'^v[0-9]{{4}}\\.[0-9]{{2}}\\.[0-9]+$\' | head -1) && '
@@ -103,9 +128,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             tags_r = subprocess.run(
                 ['git', '-C', REPO, 'tag', '-l', '--sort=-version:refname'],
                 capture_output=True, text=True, timeout=8)
+            extra_refs, max_versions = _update_config()
             tags = [t.strip() for t in tags_r.stdout.splitlines()
                     if t.strip() and _VERSION_RE.match(t.strip())]
-            body = json.dumps({'ok': True, 'current': current, 'versions': tags}).encode()
+            if max_versions > 0:
+                tags = tags[:max_versions]
+            branches = []
+            for ref in extra_refs:
+                chk = subprocess.run(
+                    ['git', '-C', REPO, 'rev-parse', '--verify', '--quiet',
+                     f'refs/remotes/origin/{ref}'],
+                    capture_output=True, timeout=8)
+                if chk.returncode == 0:
+                    branches.append(ref)
+            body = json.dumps({'ok': True, 'current': current,
+                               'versions': tags, 'branches': branches}).encode()
             self._reply(200, body, 'application/json')
         except Exception as e:
             body = json.dumps({'ok': False, 'error': str(e)}).encode()
