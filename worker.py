@@ -10,7 +10,7 @@ import bus
 import relay
 import state
 from meet_data import (
-    format_delta_html, get_event_name_display, get_lane_alt, get_lane_parts,
+    delta_fields, get_event_name_display, get_lane_alt, get_lane_parts,
     get_lane_seed_time, _get_next_heats, _build_results_snapshot, send_event_info,
 )
 
@@ -84,7 +84,10 @@ def _add_lane_deltas(updates):
             continue
         if i not in state._decoder.lane_seed_times:
             continue
-        updates[f'lane_delta{i}'] = format_delta_html(lane_time, state._decoder.lane_seed_times[i])
+        html, secs, better = delta_fields(lane_time, state._decoder.lane_seed_times[i])
+        updates[f'lane_delta{i}']         = html
+        updates[f'lane_delta_seconds{i}'] = secs
+        updates[f'lane_delta_better{i}']  = better
 
 
 def _packet_summary(updates):

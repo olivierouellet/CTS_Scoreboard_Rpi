@@ -6,20 +6,43 @@ import state
 from console_decoders.utils import parse_time_hundredths
 
 
-def format_delta_html(finish_str, seed_str):
+def _delta_hundredths(finish_str, seed_str):
+    """Signed (finish − seed) in hundredths of a second, or None if unparseable."""
     finish = parse_time_hundredths(finish_str)
     seed   = parse_time_hundredths(seed_str)
     if finish is None or seed is None:
-        return ''
-    delta = finish - seed
-    abs_d = abs(delta)
-    h     = abs_d % 100
-    s     = (abs_d // 100) % 60
+        return None
+    return finish - seed
+
+
+def _delta_html(delta):
+    abs_d  = abs(delta)
+    h      = abs_d % 100
+    s      = (abs_d // 100) % 60
     m_part = abs_d // 6000
-    sign  = '-' if delta < 0 else '+'
-    text  = (f'{sign}{m_part}:{s:02d}.{h:02d}') if m_part else (f'{sign}{s}.{h:02d}')
-    cls   = 'delta-better' if delta < 0 else 'delta-worse'
+    sign   = '-' if delta < 0 else '+'
+    text   = (f'{sign}{m_part}:{s:02d}.{h:02d}') if m_part else (f'{sign}{s}.{h:02d}')
+    cls    = 'delta-better' if delta < 0 else 'delta-worse'
     return f'<span class="{cls}">{text}</span>'
+
+
+def format_delta_html(finish_str, seed_str):
+    delta = _delta_hundredths(finish_str, seed_str)
+    return _delta_html(delta) if delta is not None else ''
+
+
+def delta_fields(finish_str, seed_str):
+    """Return (html, seconds, better) for a finish vs its seed time.
+
+    `seconds` is the signed difference as a float (negative = faster than seed) and
+    `better` is a bool — structured values for native clients that can't parse the
+    HTML `html` the browser scoreboard renders. Returns ('', None, None) if either
+    time is missing/unparseable.
+    """
+    delta = _delta_hundredths(finish_str, seed_str)
+    if delta is None:
+        return '', None, None
+    return _delta_html(delta), round(delta / 100.0, 2), delta < 0
 
 
 def get_lane_seed_time(event_num, heat_num, lane):
@@ -103,18 +126,21 @@ def _build_results_snapshot():
         place_int = int(place_str) if place_str.strip().isdigit() else 99
         name, club = get_lane_parts(ev, ht, ch) if ev else ('', '')
         alt   = get_lane_alt(ev, ht, ch) if ev else ''
-        delta = ''
+        delta, delta_seconds, delta_better = '', None, None
         if time_str and ch in state._decoder.lane_seed_times:
-            delta = format_delta_html(time_str, state._decoder.lane_seed_times[ch])
+            delta, delta_seconds, delta_better = delta_fields(
+                time_str, state._decoder.lane_seed_times[ch])
         lanes.append({
-            'channel':   ch,
-            'place':     place_str,
-            'place_int': place_int,
-            'time':      time_str,
-            'name':      name,
-            'club':      club,
-            'alt':       alt,
-            'delta':     delta,
+            'channel':      ch,
+            'place':        place_str,
+            'place_int':    place_int,
+            'time':         time_str,
+            'name':         name,
+            'club':         club,
+            'alt':          alt,
+            'delta':        delta,
+            'delta_seconds': delta_seconds,
+            'delta_better':  delta_better,
         })
     sort = state.settings.get('results_sort', 'lane')
     if sort == 'place':
@@ -174,9 +200,11 @@ def send_event_info():
     }
     for i in range(1, 11):
         name, club = get_lane_parts(ev, ht, i)
-        u[f'lane_name{i}']     = name
-        u[f'lane_club{i}']     = club
-        u[f'lane_delta{i}']    = ''
-        u[f'lane_name_alt{i}'] = get_lane_alt(ev, ht, i)
+        u[f'lane_name{i}']          = name
+        u[f'lane_club{i}']          = club
+        u[f'lane_delta{i}']         = ''
+        u[f'lane_delta_seconds{i}'] = None
+        u[f'lane_delta_better{i}']  = None
+        u[f'lane_name_alt{i}']      = get_lane_alt(ev, ht, i)
     bus.emit('/scoreboard', 'update_scoreboard', u)
     relay.relay_emit('update_scoreboard', u)

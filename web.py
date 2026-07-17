@@ -67,6 +67,18 @@ def render(request: Request, name: str, **ctx):
     return templates.TemplateResponse(request, name, {**_globals(), **ctx})
 
 
+def display_config():
+    """Machine-readable display config for native clients (see docs/api.md §6).
+
+    The same values ``_globals()`` injects into templates, plus the meet title —
+    lane count, visible columns, theme colours/fonts, labels — so a native client
+    (the Qt TV display) can theme itself without scraping a rendered page.
+    """
+    cfg = _globals()
+    cfg['meet_title'] = state.settings.get('meet_title', '')
+    return cfg
+
+
 def redirect(url: str, status_code: int = 303):
     """See-Other redirect (GET on the target), matching Flask's post-action nav."""
     return RedirectResponse(url, status_code=status_code)

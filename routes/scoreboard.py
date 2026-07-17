@@ -3,9 +3,15 @@ import os
 from fastapi import APIRouter, Request
 
 import state
-from web import redirect, render
+from web import display_config, redirect, render
 
 router = APIRouter()
+
+
+@router.get('/config')
+async def route_config():
+    """Display config as JSON — for native clients (Qt TV) that render natively."""
+    return display_config()
 
 
 @router.get('/')

@@ -599,6 +599,26 @@ async def route_schedule(request: Request):
     )
 
 
+@app.get('/meet/{meet_id}/config')
+async def route_meet_config(meet_id: str):
+    """A meet's display config as JSON — for native attendee clients (iOS/Android)
+    that render the board natively instead of loading the HTML page."""
+    with _lock:
+        meet = _get_meet(meet_id)
+        live = meet_id in _meets
+    if not meet:
+        raise HTTPException(404)
+    return {
+        'name':             meet.get('name', ''),
+        'location':         meet.get('location', ''),
+        'sport':            meet.get('sport', ''),
+        'app_window_title': meet.get('app_window_title', ''),
+        'meet_date':        meet.get('meet_date', ''),
+        'live':             live,
+        'settings':         meet.get('settings', {}),
+    }
+
+
 @app.get('/search_suggestions')
 async def route_search_suggestions(request: Request):
     import unicodedata
