@@ -26,11 +26,6 @@ def _delta_html(delta):
     return f'<span class="{cls}">{text}</span>'
 
 
-def format_delta_html(finish_str, seed_str):
-    delta = _delta_hundredths(finish_str, seed_str)
-    return _delta_html(delta) if delta is not None else ''
-
-
 def delta_fields(finish_str, seed_str):
     """Return (html, seconds, better) for a finish vs its seed time.
 
