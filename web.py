@@ -8,11 +8,20 @@ close to their former selves.
 import os
 import shutil
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 import state
+
+
+class NotAuthenticated(Exception):
+    """Raised by :func:`require_login` when no session user is set.
+
+    The app registers an exception handler that turns this into a redirect to
+    /login, keeping the auth check as a clean dependency (no redirect plumbing
+    smuggled through an HTTPException).
+    """
 
 templates = Jinja2Templates(directory=os.path.join(state.app_dir, 'templates'))
 
@@ -87,12 +96,13 @@ def redirect(url: str, status_code: int = 303):
 def require_login(request: Request):
     """FastAPI dependency: allow the request only when a session user is set.
 
-    Unauthenticated requests get a 302 to /login (browser navigations follow it;
-    XHR endpoints are only ever hit from the already-authenticated settings page).
+    Unauthenticated requests raise :class:`NotAuthenticated`, which the app's
+    exception handler turns into a redirect to /login (browser navigations follow
+    it; XHR endpoints are only ever hit from the already-authenticated settings
+    page).
     """
     if not request.session.get('user'):
-        raise HTTPException(status_code=302, detail='login required',
-                            headers={'Location': '/login'})
+        raise NotAuthenticated()
 
 
 def save_upload(upload, dest: str):

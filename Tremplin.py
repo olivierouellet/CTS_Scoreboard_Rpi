@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import bus
 import state
 from meet_data import _get_next_heats, send_event_info
-from web import render, templates
+from web import NotAuthenticated, render, templates
 from worker import main_thread_worker
 
 from routes.scoreboard import router as scoreboard_router
@@ -59,6 +59,11 @@ app.include_router(debug_router)
 app.include_router(system_router)
 app.include_router(network_router)
 app.include_router(appearance_router)
+
+
+@app.exception_handler(NotAuthenticated)
+async def _redirect_to_login(request: Request, exc: NotAuthenticated):
+    return RedirectResponse('/login', status_code=303)
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
