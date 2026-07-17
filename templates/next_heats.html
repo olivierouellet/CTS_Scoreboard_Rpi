@@ -171,11 +171,11 @@
     <div id="waiting">{{ t.no_meet or 'No meet file loaded' }}</div>
     <div id="columns" style="display:none;"></div>
 
-    <script src="/static/js/socket.io.min.js"></script>
+    <script src="/static/js/ws.js"></script>
     <script>
     var LABEL_EVENT = {{ (labels.event | default('Event')) | tojson }};
     var LABEL_HEAT  = {{ (labels.heat  | default('Heat'))  | tojson }};
-    var sock = io('/results');
+    var sock = tremplinSocket('/ws/results');
     sock.on('reload', function() { location.reload(); });
 
     sock.on('next_heats', function(d) {

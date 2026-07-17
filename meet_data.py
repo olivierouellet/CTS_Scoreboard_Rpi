@@ -1,8 +1,8 @@
 import re
 
+import bus
 import relay
 import state
-from extensions import socketio
 from console_decoders.utils import parse_time_hundredths
 
 
@@ -178,5 +178,5 @@ def send_event_info():
         u[f'lane_club{i}']     = club
         u[f'lane_delta{i}']    = ''
         u[f'lane_name_alt{i}'] = get_lane_alt(ev, ht, i)
-    socketio.emit('update_scoreboard', u, namespace='/scoreboard')
+    bus.emit('/scoreboard', 'update_scoreboard', u)
     relay.relay_emit('update_scoreboard', u)

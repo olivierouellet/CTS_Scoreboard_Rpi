@@ -697,11 +697,11 @@ document.addEventListener('visibilitychange', function() {
 renderSchedule();
 </script>
 
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="/static/js/ws.js"></script>
 <script>
-var sockResults    = io('/results');
-var sockScoreboard = io('/scoreboard');
-var sockSchedule   = io('/schedule');
+var sockResults    = tremplinSocket('/ws/results');
+var sockScoreboard = tremplinSocket('/ws/scoreboard');
+var sockSchedule   = tremplinSocket('/ws/schedule');
 
 sockResults.on('connect', function() {
     sockResults.emit('join_meet', { meet_id: MEET_ID, vid: tremplinVid() });

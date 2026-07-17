@@ -1,13 +1,13 @@
 import ipaddress
 import subprocess
 
-import flask
-import flask_login
-from flask import Blueprint
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 
 import state
+from web import require_login
 
-bp = Blueprint('network', __name__)
+router = APIRouter()
 
 
 def _nmcli(*args, timeout=8):
@@ -15,9 +15,8 @@ def _nmcli(*args, timeout=8):
                           capture_output=True, text=True, timeout=timeout)
 
 
-@bp.route('/wifi_status')
-@flask_login.login_required
-def route_wifi_status():
+@router.get('/wifi_status', dependencies=[Depends(require_login)])
+async def route_wifi_status():
     try:
         r       = _nmcli('radio', 'wifi')
         enabled = r.returncode == 0 and 'enabled' in r.stdout.lower()
@@ -51,27 +50,26 @@ def route_wifi_status():
                 ssid = line.split(':', 1)[1]
                 break
 
-        return flask.jsonify({
+        return {
             'enabled': enabled,
             'ssid':    ssid,
             'wifi_ip': get_ip(wifi_dev) if enabled else '',
             'eth_ip':  get_ip(eth_dev),
-        })
+        }
     except FileNotFoundError:
-        return flask.jsonify({'error': 'nmcli not found'}), 503
+        return JSONResponse({'error': 'nmcli not found'}, status_code=503)
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@bp.route('/wifi_scan')
-@flask_login.login_required
-def route_wifi_scan():
+@router.get('/wifi_scan', dependencies=[Depends(require_login)])
+async def route_wifi_scan():
     try:
         r     = _nmcli('--color', 'no', '-f', 'ACTIVE,SSID,SIGNAL,SECURITY',
                        'dev', 'wifi', 'list', timeout=20)
         lines = r.stdout.splitlines()
         if len(lines) < 2:
-            return flask.jsonify({'networks': []})
+            return {'networks': []}
         hdr = lines[0]
         col = {name: hdr.index(name) for name in ('ACTIVE', 'SSID', 'SIGNAL', 'SECURITY')}
         networks, seen = [], set()
@@ -92,53 +90,49 @@ def route_wifi_scan():
                 'active':   '*' in active,
             })
         networks.sort(key=lambda n: n['signal'], reverse=True)
-        return flask.jsonify({'networks': networks})
+        return {'networks': networks}
     except FileNotFoundError:
-        return flask.jsonify({'error': 'nmcli not found'}), 503
+        return JSONResponse({'error': 'nmcli not found'}, status_code=503)
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@bp.route('/wifi_toggle', methods=['POST'])
-@flask_login.login_required
-def route_wifi_toggle():
+@router.post('/wifi_toggle', dependencies=[Depends(require_login)])
+async def route_wifi_toggle():
     try:
         r            = _nmcli('radio', 'wifi')
         currently_on = 'enabled' in r.stdout.lower()
         st           = 'off' if currently_on else 'on'
         subprocess.run(['sudo', 'nmcli', 'radio', 'wifi', st],
                        capture_output=True, timeout=8)
-        return flask.jsonify({'enabled': not currently_on})
+        return {'enabled': not currently_on}
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@bp.route('/cloud_status')
-@flask_login.login_required
-def route_cloud_status():
+@router.get('/cloud_status', dependencies=[Depends(require_login)])
+async def route_cloud_status():
     import relay
-    return flask.jsonify(relay.status())
+    return relay.status()
 
 
-@bp.route('/cloud_toggle', methods=['POST'])
-@flask_login.login_required
-def route_cloud_toggle():
+@router.post('/cloud_toggle', dependencies=[Depends(require_login)])
+async def route_cloud_toggle():
     import relay
     if relay.status()['running']:
         relay.stop()
     else:
         relay.start()
-    return flask.jsonify(relay.status())
+    return relay.status()
 
 
-@bp.route('/wifi_connect', methods=['POST'])
-@flask_login.login_required
-def route_wifi_connect():
-    data     = flask.request.get_json(force=True)
+@router.post('/wifi_connect', dependencies=[Depends(require_login)])
+async def route_wifi_connect(request: Request):
+    data     = await request.json()
     ssid     = data.get('ssid', '')
     password = data.get('password', '')
     if not ssid:
-        return flask.jsonify({'error': 'No SSID provided'}), 400
+        return JSONResponse({'error': 'No SSID provided'}, status_code=400)
     try:
         # Remove any stale connection profile for this SSID first. nmcli
         # otherwise reuses an existing profile (e.g. from a previous attempt
@@ -152,33 +146,31 @@ def route_wifi_connect():
             cmd += ['password', password]
         r = _nmcli(*cmd, timeout=30)
         if r.returncode == 0:
-            return flask.jsonify({'ok': True})
-        return flask.jsonify({'error': (r.stderr or r.stdout).strip()}), 400
+            return {'ok': True}
+        return JSONResponse({'error': (r.stderr or r.stdout).strip()}, status_code=400)
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@bp.route('/eth_dhcp_set', methods=['POST'])
-@flask_login.login_required
-def route_eth_dhcp_set():
+@router.post('/eth_dhcp_set', dependencies=[Depends(require_login)])
+async def route_eth_dhcp_set():
     try:
         r = subprocess.run(
             ['sudo', 'nmcli', 'con', 'mod', 'tremplin-eth',
              'ipv4.method', 'auto', 'ipv4.addresses', '', 'ipv4.gateway', ''],
             capture_output=True, text=True, timeout=8)
         if r.returncode != 0:
-            return flask.jsonify({'ok': False, 'error': r.stderr.strip() or 'nmcli error'})
+            return {'ok': False, 'error': r.stderr.strip() or 'nmcli error'}
         subprocess.run(['sudo', 'nmcli', 'con', 'up', 'tremplin-eth'],
                        capture_output=True, timeout=8)
-        return flask.jsonify({'ok': True})
+        return {'ok': True}
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)})
+        return {'ok': False, 'error': str(e)}
 
 
-@bp.route('/eth_ip_set', methods=['POST'])
-@flask_login.login_required
-def route_eth_ip_set():
-    data       = flask.request.get_json()
+@router.post('/eth_ip_set', dependencies=[Depends(require_login)])
+async def route_eth_ip_set(request: Request):
+    data       = await request.json()
     ip_str     = data.get('ip', '').strip()
     prefix_str = data.get('prefix', '24').strip()
     try:
@@ -187,23 +179,22 @@ def route_eth_ip_set():
         if not (1 <= prefix <= 32):
             raise ValueError
     except Exception:
-        return flask.jsonify({'ok': False, 'error': 'Invalid IP address or prefix length'})
+        return {'ok': False, 'error': 'Invalid IP address or prefix length'}
     cidr = f'{ip_str}/{prefix}'
     try:
         r = subprocess.run(
             ['sudo', 'nmcli', 'con', 'mod', 'tremplin-eth', 'ipv4.addresses', cidr],
             capture_output=True, text=True, timeout=8)
         if r.returncode != 0:
-            return flask.jsonify({'ok': False, 'error': r.stderr.strip() or 'nmcli error'})
+            return {'ok': False, 'error': r.stderr.strip() or 'nmcli error'}
         subprocess.run(['sudo', 'nmcli', 'con', 'up', 'tremplin-eth'],
                        capture_output=True, timeout=8)
-        return flask.jsonify({'ok': True})
+        return {'ok': True}
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)})
+        return {'ok': False, 'error': str(e)}
 
 
-@bp.route('/clients')
-@flask_login.login_required
-def route_clients():
+@router.get('/clients', dependencies=[Depends(require_login)])
+async def route_clients():
     # Browser tabs connected to the scoreboard WebSocket, shown in the Network tab
-    return flask.jsonify({'clients': list(state._scoreboard_clients.values())})
+    return {'clients': list(state._scoreboard_clients.values())}

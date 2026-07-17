@@ -199,7 +199,7 @@ td.td-splits { text-align: center; white-space: nowrap; }
 </tbody>
 </table>
 
-<script src="/static/js/socket.io.min.js"></script>
+<script src="/static/js/ws.js"></script>
 <script>
 var NUM_LANES  = {{ num_lanes }};
 var clock      = '—';
@@ -214,7 +214,7 @@ setInterval(tick_clock, 1000);
 var running    = {};
 var times      = {};
 
-var sock = io('/scoreboard');
+var sock = tremplinSocket('/ws/scoreboard');
 
 sock.on('update_scoreboard', function(d) {
     if ('running_time' in d) {

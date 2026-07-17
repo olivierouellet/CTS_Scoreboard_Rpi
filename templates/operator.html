@@ -211,7 +211,7 @@ td.td-place  { text-align: right; }
 </tbody>
 </table>
 
-<script src="/static/js/socket.io.min.js"></script>
+<script src="/static/js/ws.js"></script>
 <script>
 var NUM_LANES      = {{ num_lanes }};
 var SPLIT_STEP     = {{ split_step }};
@@ -261,7 +261,7 @@ function updateWallClock() {
 updateWallClock();
 setInterval(updateWallClock, 1000);
 
-var sock = io('/scoreboard');
+var sock = tremplinSocket('/ws/scoreboard');
 
 sock.on('update_scoreboard', function(d) {
     if ('running_time' in d) {

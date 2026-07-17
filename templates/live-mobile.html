@@ -409,11 +409,11 @@ function mode_to_results() {
 
 <div class="background"></div>
 
-<script src="/static/js/socket.io.min.js"></script>
+<script src="/static/js/ws.js"></script>
 <script>
     var s = {};
 
-    var socket = io.connect('http://' + document.domain + ':' + location.port + '/scoreboard');
+    var socket = tremplinSocket('/ws/scoreboard');
     socket.on('connect', function() { reset_state(); });
     socket.on('reload', function() { location.reload(); });
     socket.on('display_overlay', function(d) { show_overlay(d.active); });

@@ -2,40 +2,39 @@ import glob
 import json
 import os
 
-import flask
-import flask_login
-from flask import Blueprint
+from fastapi import APIRouter, Depends, Request
 
 import state
 from meet_data import _build_meet_data, send_event_info
+from web import redirect, render, require_login
 
-bp = Blueprint('meet', __name__)
+router = APIRouter()
 
 
-@bp.route('/meet')
-def route_meet():
+@router.get('/meet')
+async def route_meet(request: Request):
     data = _build_meet_data()
-    return flask.render_template('meet.html',
-                                 strings=state.load_preview_strings(),
-                                 kiosk='kiosk' in flask.request.args,
-                                 **data)
+    return render(request, 'meet.html',
+                  strings=state.load_preview_strings(),
+                  kiosk='kiosk' in request.query_params,
+                  **data)
 
 
-@bp.route('/full_schedule')
-def route_full_schedule():
+@router.get('/full_schedule')
+async def route_full_schedule(request: Request):
     data = _build_meet_data()
-    return flask.render_template('full_schedule.html',
-                                 t=state._mobile_strings(),
-                                 labels=state.load_locale(),
-                                 theme_colors={**state.DEFAULT_THEME_COLORS,
-                                               **state.settings.get('theme_colors', {})},
-                                 theme_fonts={**state.DEFAULT_THEME_FONTS,
-                                              **state.settings.get('theme_fonts', {})},
-                                 **data)
+    return render(request, 'full_schedule.html',
+                  t=state._mobile_strings(),
+                  labels=state.load_locale(),
+                  theme_colors={**state.DEFAULT_THEME_COLORS,
+                                **state.settings.get('theme_colors', {})},
+                  theme_fonts={**state.DEFAULT_THEME_FONTS,
+                               **state.settings.get('theme_fonts', {})},
+                  **data)
 
 
-@bp.route('/schedule')
-def route_schedule():
+@router.get('/schedule')
+async def route_schedule(request: Request):
     data           = _build_meet_data()
     events_grouped = data.get('events_grouped', [])
     start_list     = data.get('start_list', {})
@@ -69,27 +68,27 @@ def route_schedule():
     meet_name = (state.lenex_meet_info.get('name') or
                  state.settings.get('meet_title') or '')
 
-    return flask.render_template('schedule.html',
-                                 heats_json=json.dumps(heats_out),
-                                 has_meet=bool(events_grouped),
-                                 meet_name=meet_name,
-                                 t=state._mobile_strings(),
-                                 labels=state.load_locale(),
-                                 theme_colors={**state.DEFAULT_THEME_COLORS,
-                                               **state.settings.get('theme_colors', {})},
-                                 theme_fonts={**state.DEFAULT_THEME_FONTS,
-                                              **state.settings.get('theme_fonts', {})})
+    return render(request, 'schedule.html',
+                  heats_json=json.dumps(heats_out),
+                  has_meet=bool(events_grouped),
+                  meet_name=meet_name,
+                  t=state._mobile_strings(),
+                  labels=state.load_locale(),
+                  theme_colors={**state.DEFAULT_THEME_COLORS,
+                                **state.settings.get('theme_colors', {})},
+                  theme_fonts={**state.DEFAULT_THEME_FONTS,
+                               **state.settings.get('theme_fonts', {})})
 
 
-@bp.route('/search_suggestions')
-def route_search_suggestions():
+@router.get('/search_suggestions')
+async def route_search_suggestions(request: Request):
     import unicodedata
     def fold(s):
         return unicodedata.normalize('NFD', s.lower()).encode('ascii', 'ignore').decode()
 
-    q = fold(flask.request.args.get('q', '').strip())
+    q = fold(request.query_params.get('q', '').strip())
     if not q:
-        return flask.jsonify([])
+        return []
 
     swimmers = {}
     clubs    = set()
@@ -115,39 +114,37 @@ def route_search_suggestions():
         if q in fold(club):
             results.append({'type': 'club', 'name': club})
 
-    return flask.jsonify(results[:20])
+    return results[:20]
 
 
-@bp.route('/hytek_preview')
-def route_hytek_preview():
-    return flask.redirect('/meet')
+@router.get('/hytek_preview')
+async def route_hytek_preview():
+    return redirect('/meet')
 
 
-@bp.route('/lenex_preview')
-def route_lenex_preview():
-    return flask.redirect('/meet' + ('?kiosk' if 'kiosk' in flask.request.args else ''))
+@router.get('/lenex_preview')
+async def route_lenex_preview(request: Request):
+    return redirect('/meet' + ('?kiosk' if 'kiosk' in request.query_params else ''))
 
 
-@bp.route('/meet_status')
-@flask_login.login_required
-def route_meet_status():
+@router.get('/meet_status', dependencies=[Depends(require_login)])
+async def route_meet_status():
     file_list = sorted(
         os.path.basename(f)
         for f in glob.glob(os.path.join(state.MEET_FOLDER, '*.csv')) +
                  glob.glob(os.path.join(state.MEET_FOLDER, '*.lxf'))
     )
-    return flask.jsonify({
+    return {
         'file_list':   file_list,
         'active':      state._active_meet_file,
         'preview_url': '/meet',
         'playing':     state._test_session is not None,
-    })
+    }
 
 
-@bp.route('/meet_delete')
-@flask_login.login_required
-def route_meet_delete():
-    filename = os.path.basename(flask.request.args.get('file', '').strip())
+@router.get('/meet_delete', dependencies=[Depends(require_login)])
+async def route_meet_delete(request: Request):
+    filename = os.path.basename(request.query_params.get('file', '').strip())
     if filename:
         filepath = os.path.join(state.MEET_FOLDER, filename)
         if os.path.isfile(filepath):
@@ -167,12 +164,11 @@ def route_meet_delete():
                 send_event_info()
                 import relay as _relay
                 _relay.update_metadata()
-    return flask.redirect('/settings#tab-meet')
+    return redirect('/settings#tab-meet')
 
 
-@bp.route('/meet_clear')
-@flask_login.login_required
-def route_meet_clear():
+@router.get('/meet_clear', dependencies=[Depends(require_login)])
+async def route_meet_clear():
     for f in glob.glob(os.path.join(state.MEET_FOLDER, '*.csv')) + \
              glob.glob(os.path.join(state.MEET_FOLDER, '*.lxf')):
         os.remove(f)
@@ -190,4 +186,4 @@ def route_meet_clear():
     send_event_info()
     import relay as _relay
     _relay.update_metadata()
-    return flask.redirect('/settings#tab-meet')
+    return redirect('/settings#tab-meet')

@@ -228,15 +228,8 @@ EOF
         info "settings.json already exists — skipping."
     fi
 
-    section "socket.io client"
-    SOCKETIO_VER="4.7.5"
-    SOCKETIO_JS="$INSTALL_DIR/static/js/socket.io.min.js"
-    if [[ ! -f "$SOCKETIO_JS" ]]; then
-        curl -fsSL "https://cdn.socket.io/${SOCKETIO_VER}/socket.io.min.js" -o "$SOCKETIO_JS"
-        info "socket.io ${SOCKETIO_VER} downloaded."
-    else
-        info "socket.io already present."
-    fi
+    # The realtime client (static/js/ws.js) ships with the repo — no download
+    # needed since the move to plain WebSockets.
 
     section "xterm.js (browser terminal)"
     XTERM_VER="5.3.0"
@@ -393,16 +386,16 @@ WALLEOF
     fi
 
     section "systemd service"
-    PYTHON_BIN="$INSTALL_DIR/.venv/bin/python"
+    UVICORN_BIN="$INSTALL_DIR/.venv/bin/uvicorn"
     sudo tee /etc/systemd/system/tremplin.service > /dev/null <<EOF
 [Unit]
-Description=Tremplin Flask server
+Description=Tremplin FastAPI server
 After=network.target
 
 [Service]
 User=$USER
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$PYTHON_BIN Tremplin.py --port $SERIAL_PORT
+ExecStart=$UVICORN_BIN Tremplin:app --host 0.0.0.0 --port 5000
 Restart=always
 RestartSec=5
 

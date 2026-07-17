@@ -1,5 +1,12 @@
-"""Outbound relay client — forwards scoreboard events to a cloud server."""
+"""Outbound relay client — forwards scoreboard events to a cloud server.
+
+Uses a plain WebSocket (the sync ``websocket-client`` library) instead of
+Socket.IO. It runs a reconnect loop in its own daemon thread; scoreboard events
+from the worker thread are forwarded via :func:`relay_emit`. Every message is a
+JSON frame ``{"event", "data"}`` — the same contract the cloud relay speaks.
+"""
 import base64
+import json
 import os
 import threading
 
@@ -7,9 +14,26 @@ import state
 
 _client    = None
 _connected = False
+_meet_id   = None   # cloud meet id assigned on 'registered', for diagnostics
 _lock      = threading.Lock()
 _stop      = threading.Event()
 _thread    = None
+
+
+def _ws_url(url):
+    """Turn a cloud_relay_url (http(s)://host or ws(s)://host) into the /ws/relay endpoint."""
+    url = url.strip().rstrip('/')
+    if url.startswith('https://'):
+        url = 'wss://' + url[len('https://'):]
+    elif url.startswith('http://'):
+        url = 'ws://' + url[len('http://'):]
+    elif not url.startswith(('ws://', 'wss://')):
+        url = 'wss://' + url
+    return url + '/ws/relay'
+
+
+def _send_raw(ws, event, data):
+    ws.send(json.dumps({'event': event, 'data': data}))
 
 
 # ── Meet metadata ──────────────────────────────────────────────────────────────
@@ -101,7 +125,7 @@ def relay_emit(event, data):
         c, ok = _client, _connected
     if c and ok:
         try:
-            c.emit(event, data, namespace='/relay')
+            _send_raw(c, event, data)
         except Exception:
             pass
 
@@ -113,7 +137,7 @@ def update_metadata():
     if c and ok:
         key = state.settings.get('cloud_relay_key', '').strip()
         try:
-            c.emit('register', {**_get_metadata(), 'key': key}, namespace='/relay')
+            _send_raw(c, 'register', {**_get_metadata(), 'key': key})
         except Exception:
             pass
 
@@ -137,7 +161,7 @@ def send_schedule(client=None):
             'start_list': _serialise_start_list(md['start_list']),
         }
         if client is not None:
-            client.emit('schedule_snapshot', data, namespace='/relay')
+            _send_raw(client, 'schedule_snapshot', data)
         else:
             relay_emit('schedule_snapshot', data)
     except Exception:
@@ -164,60 +188,60 @@ def _serialise_start_list(sl):
 
 def _run():
     global _client, _connected
-    import socketio as _sio
+    from websocket import create_connection
 
     while not _stop.is_set():
-        url = state.settings.get('cloud_relay_url', '').strip().rstrip('/')
+        url = state.settings.get('cloud_relay_url', '').strip()
         key = state.settings.get('cloud_relay_key', '').strip()
         if not url or not key:
             _stop.wait(10)
             continue
 
-        c = _sio.Client(reconnection=False, logger=False, engineio_logger=False)
+        ws = None
+        try:
+            ws = create_connection(_ws_url(url), timeout=15)
+            ws.settimeout(None)             # block on recv once connected
+            ws.enable_multithreading = True  # guard concurrent send() from worker threads
 
-        @c.event(namespace='/relay')
-        def connect():
-            global _connected
-            meta = {**_get_metadata(), 'key': key}
-            c.emit('register', meta, namespace='/relay')
+            _send_raw(ws, 'register', {**_get_metadata(), 'key': key})
             with _lock:
+                _client    = ws
                 _connected = True
-            send_schedule(client=c)
+            send_schedule(client=ws)
             if state._last_results_snapshot:
-                try:
-                    c.emit('results_snapshot', state._last_results_snapshot, namespace='/relay')
-                except Exception:
-                    pass
+                _send_raw(ws, 'results_snapshot', state._last_results_snapshot)
             print('[relay] connected to cloud', flush=True)
 
-        @c.event(namespace='/relay')
-        def disconnect():
-            global _connected
-            with _lock:
-                _connected = False
-            print('[relay] disconnected from cloud', flush=True)
-
-        @c.on('rejected', namespace='/relay')
-        def rejected(data):
-            print(f'[relay] rejected: {data.get("reason")}', flush=True)
-            c.disconnect()
-
-        try:
-            c.connect(url, namespaces=['/relay'], transports=['websocket'])
-            with _lock:
-                _client = c
-            c.wait()
+            # Receive loop: the relay is mostly outbound, but recv() keeps the
+            # thread alive, detects a server-side close, and handles 'rejected'.
+            while not _stop.is_set():
+                raw = ws.recv()
+                if not raw:
+                    break
+                try:
+                    obj = json.loads(raw)
+                except Exception:
+                    continue
+                ev = obj.get('event')
+                if ev == 'registered':
+                    global _meet_id
+                    _meet_id = (obj.get('data') or {}).get('meet_id')
+                elif ev == 'rejected':
+                    print(f'[relay] rejected: {obj.get("data", {}).get("reason")}', flush=True)
+                    break
         except Exception as e:
             print(f'[relay] error: {e}', flush=True)
         finally:
             with _lock:
                 _connected = False
-                if _client is c:
+                if _client is ws:
                     _client = None
             try:
-                c.disconnect()
+                if ws:
+                    ws.close()
             except Exception:
                 pass
+            print('[relay] disconnected from cloud', flush=True)
 
         if not _stop.is_set():
             _stop.wait(5)
@@ -247,6 +271,6 @@ def stop():
         c = _client
     if c:
         try:
-            c.disconnect()
+            c.close()   # unblocks the recv loop so the thread exits promptly
         except Exception:
             pass

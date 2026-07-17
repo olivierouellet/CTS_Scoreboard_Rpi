@@ -207,7 +207,7 @@
 
     </div>
 
-    <script src="/static/js/socket.io.min.js"></script>
+    <script src="/static/js/ws.js"></script>
     <script>
     var SHOW_PODIUM = {{ show_podium | tojson }};
     var NUM_LANES   = {{ num_lanes }};
@@ -220,7 +220,7 @@
     tick_clock();
     setInterval(tick_clock, 30000);
 
-    var sock = io('/results');
+    var sock = tremplinSocket('/ws/results');
     sock.on('reload', function() { location.reload(); });
     sock.on('results_snapshot', function(d) { renderResults(d); });
 

@@ -2,25 +2,27 @@ import glob
 import json
 import os
 
-import flask
-import flask_login
-from flask import Blueprint
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
 
+import bus
 import relay
 import state
-from extensions import socketio
+from web import redirect, require_login
 
-bp = Blueprint('appearance', __name__)
-
-
-@bp.route('/images/<path:filename>')
-def serve_image(filename):
-    return flask.send_from_directory(state.IMAGES_DIR, filename)
+router = APIRouter()
 
 
-@bp.route('/splash_delete')
-@flask_login.login_required
-def route_splash_delete():
+@router.get('/images/{filename:path}')
+async def serve_image(filename: str):
+    path = os.path.normpath(os.path.join(state.IMAGES_DIR, filename))
+    if not path.startswith(os.path.normpath(state.IMAGES_DIR)) or not os.path.isfile(path):
+        raise HTTPException(404)
+    return FileResponse(path)
+
+
+@router.get('/splash_delete', dependencies=[Depends(require_login)])
+async def route_splash_delete():
     filename = state.settings.get('splash_url', '')
     if filename:
         path = os.path.join(state.IMAGES_DIR, filename)
@@ -29,12 +31,11 @@ def route_splash_delete():
         state.settings['splash_url'] = ''
         with open(state.settings_file, 'wt') as f:
             json.dump(state.settings, f, sort_keys=True, indent=4)
-    return flask.redirect('/settings#tab-display')
+    return redirect('/settings#tab-display')
 
 
-@bp.route('/splash_delete_all')
-@flask_login.login_required
-def route_splash_delete_all():
+@router.get('/splash_delete_all', dependencies=[Depends(require_login)])
+async def route_splash_delete_all():
     for f in os.listdir(state.IMAGES_DIR):
         fp = os.path.join(state.IMAGES_DIR, f)
         if os.path.isfile(fp):
@@ -42,13 +43,12 @@ def route_splash_delete_all():
     state.settings['splash_url'] = ''
     with open(state.settings_file, 'wt') as f:
         json.dump(state.settings, f, sort_keys=True, indent=4)
-    return flask.redirect('/settings#tab-display')
+    return redirect('/settings#tab-display')
 
 
-@bp.route('/icon_delete')
-@flask_login.login_required
-def route_icon_delete():
-    filename = os.path.basename(flask.request.args.get('file', '').strip())
+@router.get('/icon_delete', dependencies=[Depends(require_login)])
+async def route_icon_delete(request: Request):
+    filename = os.path.basename(request.query_params.get('file', '').strip())
     if filename and filename not in ('home_icon.png', 'home_icon_512.png'):
         path = os.path.join(state.ICONS_DIR, filename)
         if os.path.isfile(path):
@@ -62,12 +62,11 @@ def route_icon_delete():
             with open(state.settings_file, 'wt') as f:
                 json.dump(state.settings, f, sort_keys=True, indent=4)
             relay.update_metadata()
-    return flask.redirect('/settings#tab-meet')
+    return redirect('/settings#tab-meet')
 
 
-@bp.route('/icon_delete_all')
-@flask_login.login_required
-def route_icon_delete_all():
+@router.get('/icon_delete_all', dependencies=[Depends(require_login)])
+async def route_icon_delete_all():
     if os.path.isdir(state.ICONS_DIR):
         for f in os.listdir(state.ICONS_DIR):
             fp = os.path.join(state.ICONS_DIR, f)
@@ -78,12 +77,11 @@ def route_icon_delete_all():
     with open(state.settings_file, 'wt') as f:
         json.dump(state.settings, f, sort_keys=True, indent=4)
     relay.update_metadata()
-    return flask.redirect('/settings#tab-meet')
+    return redirect('/settings#tab-meet')
 
 
-@bp.route('/locale_delete')
-@flask_login.login_required
-def route_locale_delete():
+@router.get('/locale_delete', dependencies=[Depends(require_login)])
+async def route_locale_delete():
     code = state.settings.get('locale', '')
     path = os.path.join(state.CUSTOM_LOCALE_FOLDER, code + '.toml')
     if os.path.isfile(path):
@@ -91,12 +89,11 @@ def route_locale_delete():
     state.settings['locale'] = 'fr'
     with open(state.settings_file, 'wt') as f:
         json.dump(state.settings, f, sort_keys=True, indent=4)
-    return flask.redirect('/settings')
+    return redirect('/settings')
 
 
-@bp.route('/locale_delete_all')
-@flask_login.login_required
-def route_locale_delete_all():
+@router.get('/locale_delete_all', dependencies=[Depends(require_login)])
+async def route_locale_delete_all():
     for f in os.listdir(state.CUSTOM_LOCALE_FOLDER):
         fp = os.path.join(state.CUSTOM_LOCALE_FOLDER, f)
         if os.path.isfile(fp):
@@ -107,12 +104,11 @@ def route_locale_delete_all():
         state.settings['locale'] = 'fr'
     with open(state.settings_file, 'wt') as f:
         json.dump(state.settings, f, sort_keys=True, indent=4)
-    return flask.redirect('/settings')
+    return redirect('/settings')
 
 
-@bp.route('/theme_delete')
-@flask_login.login_required
-def route_theme_delete():
+@router.get('/theme_delete', dependencies=[Depends(require_login)])
+async def route_theme_delete():
     code = state.settings.get('active_theme', '')
     path = os.path.join(state.CUSTOM_THEME_FOLDER, code + '.toml')
     if os.path.exists(path):
@@ -123,15 +119,14 @@ def route_theme_delete():
     state.settings['theme_fonts']  = fonts
     with open(state.settings_file, 'wt') as f:
         json.dump(state.settings, f, sort_keys=True, indent=4)
-    socketio.emit('reload', namespace='/scoreboard')
-    socketio.emit('reload', namespace='/results')
+    bus.emit('/scoreboard', 'reload')
+    bus.emit('/results', 'reload')
     relay.relay_emit('reload', {})
-    return flask.redirect('/settings')
+    return redirect('/settings')
 
 
-@bp.route('/theme_delete_all')
-@flask_login.login_required
-def route_theme_delete_all():
+@router.get('/theme_delete_all', dependencies=[Depends(require_login)])
+async def route_theme_delete_all():
     for f in glob.glob(os.path.join(state.CUSTOM_THEME_FOLDER, '*.toml')):
         os.remove(f)
     state.settings['active_theme'] = 'default'
@@ -140,16 +135,15 @@ def route_theme_delete_all():
     state.settings['theme_fonts']  = fonts
     with open(state.settings_file, 'wt') as f:
         json.dump(state.settings, f, sort_keys=True, indent=4)
-    socketio.emit('reload', namespace='/scoreboard')
-    socketio.emit('reload', namespace='/results')
+    bus.emit('/scoreboard', 'reload')
+    bus.emit('/results', 'reload')
     relay.relay_emit('reload', {})
-    return flask.redirect('/settings')
+    return redirect('/settings')
 
 
-@bp.route('/picker_image_delete')
-@flask_login.login_required
-def route_picker_image_delete():
-    filename = os.path.basename(flask.request.args.get('file', '').strip())
+@router.get('/picker_image_delete', dependencies=[Depends(require_login)])
+async def route_picker_image_delete(request: Request):
+    filename = os.path.basename(request.query_params.get('file', '').strip())
     if filename:
         path = os.path.join(state.PICKER_DIR, filename)
         if os.path.isfile(path):
@@ -160,12 +154,11 @@ def route_picker_image_delete():
             with open(state.settings_file, 'wt') as f:
                 json.dump(state.settings, f, sort_keys=True, indent=4)
             relay.update_metadata()
-    return flask.redirect('/settings#tab-meet')
+    return redirect('/settings#tab-meet')
 
 
-@bp.route('/picker_image_delete_all')
-@flask_login.login_required
-def route_picker_image_delete_all():
+@router.get('/picker_image_delete_all', dependencies=[Depends(require_login)])
+async def route_picker_image_delete_all():
     if os.path.isdir(state.PICKER_DIR):
         for f in os.listdir(state.PICKER_DIR):
             fp = os.path.join(state.PICKER_DIR, f)
@@ -176,4 +169,4 @@ def route_picker_image_delete_all():
     with open(state.settings_file, 'wt') as f:
         json.dump(state.settings, f, sort_keys=True, indent=4)
     relay.update_metadata()
-    return flask.redirect('/settings#tab-meet')
+    return redirect('/settings#tab-meet')

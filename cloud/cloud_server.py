@@ -1,7 +1,12 @@
 """Tremplin cloud relay server.
 
 Receives scoreboard events from Pi relays and forwards them to attendees.
-One instance handles all active meets; each meet is a SocketIO room.
+One instance handles all active meets; each meet is a broadcast channel.
+
+FastAPI + plain WebSockets. Each former SocketIO namespace is a WebSocket path
+(``/ws/relay`` ``/ws/scoreboard`` ``/ws/results`` ``/ws/schedule``) and each
+per-meet room is a channel keyed ``<namespace>:<meet_id>``. Messages are JSON
+frames ``{"event", "data"}``.
 """
 import base64
 import datetime
@@ -15,16 +20,21 @@ import sqlite3
 import threading
 import tomllib
 import urllib.request
+from contextlib import asynccontextmanager
 
-import flask
-import flask_socketio
+from fastapi import (Depends, FastAPI, HTTPException, Request, WebSocket,
+                     WebSocketDisconnect)
+from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 DATA_DIR    = os.environ.get('DATA_DIR', '/data')
 KEYS_FILE   = os.path.join(DATA_DIR, 'keys.json')
 CREDS_FILE  = os.path.join(DATA_DIR, 'credentials.json')
 MEETS_FILE  = os.path.join(DATA_DIR, 'meets.json')
 ANALYTICS_FILE = os.path.join(DATA_DIR, 'analytics.db')
-LOCALES_DIR = os.path.join(os.path.dirname(__file__), 'locales')
+_HERE       = os.path.dirname(__file__)
+LOCALES_DIR = os.path.join(_HERE, 'locales')
 
 _locale_cache = {}
 
@@ -46,31 +56,31 @@ def _strings(lang, section):
             _locale_cache[lang] = tomllib.load(f)
     return _locale_cache[lang].get(section, {})
 
-def _browser_lang():
+def _browser_lang(request):
     """First Accept-Language entry matching an available locale, or None."""
     available = {code for code, _ in _available_locales()}
-    accept = flask.request.headers.get('Accept-Language', '')
+    accept = request.headers.get('Accept-Language', '')
     for part in accept.replace('-', '_').split(','):
         code = part.split(';')[0].strip().split('_')[0].lower()
         if code in available:
             return code
     return None
 
-def _server_lang():
+def _server_lang(request):
     # Admin's pinned locale wins; otherwise follow the browser.
     available = {code for code, _ in _available_locales()}
     stored = _load_creds().get('locale', '')
     if stored and stored in available:
         return stored
-    return _browser_lang() or 'en'
+    return _browser_lang(request) or 'en'
 
-def _picker_lang():
+def _picker_lang(request):
     # Public picker: each visitor's browser language wins; the admin/default
     # locale is only a fallback when the browser language isn't available.
-    return _browser_lang() or _server_lang()
+    return _browser_lang(request) or _server_lang(request)
 
-def _load_cloud_strings():
-    return _strings(_server_lang(), 'cloud')
+def _load_cloud_strings(request):
+    return _strings(_server_lang(request), 'cloud')
 
 def _meet_lang(meet):
     return meet.get('settings', {}).get('locale') or 'en'
@@ -81,9 +91,63 @@ def _locale_name(code):
             return name
     return code
 
-app = flask.Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
-socketio = flask_socketio.SocketIO(app, async_mode='gevent', cors_allowed_origins='*')
+
+@asynccontextmanager
+async def lifespan(app):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    _analytics_prune()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+app.mount('/static', StaticFiles(directory=os.path.join(_HERE, 'static'), check_dir=False),
+          name='static')
+templates = Jinja2Templates(directory=os.path.join(_HERE, 'templates'))
+
+
+def render(request, name, **ctx):
+    return templates.TemplateResponse(request, name, ctx)
+
+
+# ── Realtime (plain WebSocket) ─────────────────────────────────────────────────
+
+class ConnectionManager:
+    """Attendee WebSockets grouped into per-meet channels."""
+
+    def __init__(self):
+        self.channels: dict[str, set] = {}
+
+    def join(self, ws, channel):
+        self.channels.setdefault(channel, set()).add(ws)
+
+    def leave_all(self, ws):
+        for conns in self.channels.values():
+            conns.discard(ws)
+
+    async def send(self, ws, event, data=None):
+        try:
+            await ws.send_json({'event': event, 'data': data})
+        except Exception:
+            pass
+
+    async def broadcast(self, channel, event, data=None):
+        frame = {'event': event, 'data': data}
+        dead = []
+        for ws in list(self.channels.get(channel, ())):
+            try:
+                await ws.send_json(frame)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.leave_all(ws)
+
+
+manager = ConnectionManager()
+
+
+def _ch(ns, meet_id):
+    return f'{ns}:{meet_id}'
+
 
 # ── Per-meet state ─────────────────────────────────────────────────────────────
 # _meets: meet_id -> {
@@ -97,7 +161,7 @@ socketio = flask_socketio.SocketIO(app, async_mode='gevent', cors_allowed_origin
 #   organizer, relay_key, name, location, sport, app_window_title, meet_date,
 #   settings, schedule_data, last_seen (iso), expires_at (iso or None while live).
 _meets      = {}
-_relay_sids = {}   # relay_sid -> meet_id
+_relay_sids = {}   # relay connection id -> meet_id
 _lock       = threading.Lock()
 
 # Fields copied from a live meet into its retained snapshot.
@@ -294,22 +358,25 @@ def _admin_meet_list():
     return out
 
 
-def _check_admin():
-    auth = flask.request.authorization
-    if not auth:
+def _check_admin(request):
+    hdr = request.headers.get('Authorization', '')
+    if not hdr.startswith('Basic '):
+        return False
+    try:
+        user, _, pw = base64.b64decode(hdr[6:]).decode().partition(':')
+    except Exception:
         return False
     creds = _load_creds()
-    if auth.username != creds['user']:
+    if user != creds['user']:
         return False
-    pw_hash, _ = _hash_password(auth.password, creds['salt'])
+    pw_hash, _ = _hash_password(pw, creds['salt'])
     return hmac.compare_digest(pw_hash, creds['password_hash'])
 
 
-def _require_admin():
-    if not _check_admin():
-        return flask.Response('Authentication required', 401,
-                              {'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
-    return None
+def require_admin(request: Request):
+    if not _check_admin(request):
+        raise HTTPException(status_code=401, detail='Authentication required',
+                            headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
 
 
 # ── Attendee analytics (opt-in) ────────────────────────────────────────────────
@@ -386,8 +453,8 @@ def _analytics_prune():
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
-@app.route('/')
-def route_index():
+@app.get('/')
+async def route_index(request: Request):
     _sweep_expired()
     with _lock:
         meets = [{'id': mid, 'name': m['name'], 'location': m['location'],
@@ -399,7 +466,7 @@ def route_index():
     creds     = _load_creds()
     raw_title = creds.get('picker_title')
     raw_wt    = creds.get('picker_window_title')
-    return flask.render_template('picker.html', meets=meets, t=_strings(_picker_lang(), 'cloud'),
+    return render(request, 'picker.html', meets=meets, t=_strings(_picker_lang(request), 'cloud'),
         picker_title=('Tremplin' if raw_title is None else raw_title),
         picker_window_title=('Tremplin' if raw_wt is None else raw_wt),
         picker_logo=bool(creds.get('picker_logo_b64', '')),
@@ -407,31 +474,31 @@ def route_index():
         analytics_enabled=_analytics_enabled())
 
 
-@app.route('/mobile')
-def route_mobile():
-    meet_id = flask.request.args.get('meet', '')
+@app.get('/mobile')
+async def route_mobile(request: Request):
+    meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        return flask.redirect(flask.url_for('route_index'))
-    return flask.render_template('mobile.html',
-                                 meet_id=meet_id,
-                                 name=meet['name'],
-                                 location=meet['location'],
-                                 sport=meet['sport'],
-                                 app_window_title=meet.get('app_window_title', ''),
-                                 t=_strings(_meet_lang(meet), 'mobile'))
+        return RedirectResponse('/', status_code=303)
+    return render(request, 'mobile.html',
+                  meet_id=meet_id,
+                  name=meet['name'],
+                  location=meet['location'],
+                  sport=meet['sport'],
+                  app_window_title=meet.get('app_window_title', ''),
+                  t=_strings(_meet_lang(meet), 'mobile'))
 
 
-@app.route('/mobile/live')
-def route_live():
-    meet_id = flask.request.args.get('meet', '')
+@app.get('/mobile/live')
+async def route_live(request: Request):
+    meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        return flask.render_template('offline.html')
+        return render(request, 'offline.html')
     s = meet.get('settings', {})
-    return flask.render_template('live.html',
+    return render(request, 'live.html',
         meet_id=meet_id,
         meet_title=meet['name'],
         num_lanes=s.get('num_lanes', 8),
@@ -451,15 +518,15 @@ def route_live():
     )
 
 
-@app.route('/mobile/results')
-def route_results():
-    meet_id = flask.request.args.get('meet', '')
+@app.get('/mobile/results')
+async def route_results(request: Request):
+    meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        return flask.render_template('offline.html')
+        return render(request, 'offline.html')
     s = meet.get('settings', {})
-    return flask.render_template('results.html',
+    return render(request, 'results.html',
         meet_id=meet_id,
         num_lanes=s.get('num_lanes', 8),
         show_lane_header=s.get('show_lane_header', True),
@@ -510,17 +577,17 @@ def _build_heats_json(sched):
     return heats
 
 
-@app.route('/mobile/schedule')
-def route_schedule():
-    meet_id = flask.request.args.get('meet', '')
+@app.get('/mobile/schedule')
+async def route_schedule(request: Request):
+    meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        return flask.render_template('offline.html')
+        return render(request, 'offline.html')
     s     = meet.get('settings', {})
     sched = meet.get('schedule_data', {})
     heats = _build_heats_json(sched)
-    return flask.render_template('schedule.html',
+    return render(request, 'schedule.html',
         meet_id=meet_id,
         heats_json=json.dumps(heats),
         has_meet=bool(heats),
@@ -532,20 +599,20 @@ def route_schedule():
     )
 
 
-@app.route('/search_suggestions')
-def route_search_suggestions():
+@app.get('/search_suggestions')
+async def route_search_suggestions(request: Request):
     import unicodedata
     def fold(s):
         return unicodedata.normalize('NFD', s.lower()).encode('ascii', 'ignore').decode()
 
-    meet_id = flask.request.args.get('meet_id', '')
-    q       = fold(flask.request.args.get('q', '').strip())
+    meet_id = request.query_params.get('meet_id', '')
+    q       = fold(request.query_params.get('q', '').strip())
     if not q:
-        return flask.jsonify([])
+        return []
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        return flask.jsonify([])
+        return []
     start_list = meet.get('schedule_data', {}).get('start_list', {})
     swimmers, clubs = {}, set()
     for ev, heats in start_list.items():
@@ -565,28 +632,27 @@ def route_search_suggestions():
     for club in sorted(clubs):
         if q in fold(club):
             results.append({'type': 'club', 'name': club})
-    return flask.jsonify(results[:20])
+    return results[:20]
 
 
-@app.route('/logout')
-def route_logout():
-    return flask.Response(
-        'Logged out — <a href="/admin">sign in again</a>', 401,
-        {'WWW-Authenticate': 'Basic realm="Tremplin Admin"'}
-    )
+@app.get('/logout')
+async def route_logout():
+    return Response(
+        'Logged out — <a href="/admin">sign in again</a>', status_code=401,
+        headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
 
 
-@app.route('/ping')
-def route_ping():
-    return 'ok'
+@app.get('/ping')
+async def route_ping():
+    return Response('ok', media_type='text/plain')
 
 
-@app.route('/manifest/<meet_id>')
-def route_manifest(meet_id):
+@app.get('/manifest/{meet_id}')
+async def route_manifest(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        flask.abort(404)
+        raise HTTPException(404)
     has_icon = bool(meet.get('settings', {}).get('home_icon_b64'))
     icons = ([
         {'src': f'/icon/{meet_id}', 'sizes': '192x192', 'type': 'image/png'},
@@ -604,72 +670,71 @@ def route_manifest(meet_id):
         'theme_color':      '#000000',
         'icons':            icons,
     }
-    return flask.Response(json.dumps(manifest), mimetype='application/manifest+json')
+    return Response(json.dumps(manifest), media_type='application/manifest+json')
 
 
-@app.route('/icon/<meet_id>')
-def route_icon(meet_id):
+@app.get('/icon/{meet_id}')
+async def route_icon(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        flask.abort(404)
+        raise HTTPException(404)
     icon_b64 = meet.get('settings', {}).get('home_icon_b64', '')
     if not icon_b64:
-        flask.abort(404)
+        raise HTTPException(404)
     data = base64.b64decode(icon_b64)
-    return flask.Response(data, mimetype='image/png',
-                          headers={'Cache-Control': 'public, max-age=3600'})
+    return Response(data, media_type='image/png',
+                    headers={'Cache-Control': 'public, max-age=3600'})
 
 
-@app.route('/picker_image/<meet_id>')
-def route_meet_picker_image(meet_id):
+@app.get('/picker_image/{meet_id}')
+async def route_meet_picker_image(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        flask.abort(404)
+        raise HTTPException(404)
     img_b64 = meet.get('settings', {}).get('picker_image_b64', '')
     if not img_b64:
-        flask.abort(404)
+        raise HTTPException(404)
     data = base64.b64decode(img_b64)
-    return flask.Response(data, mimetype='image/png',
-                          headers={'Cache-Control': 'public, max-age=60'})
+    return Response(data, media_type='image/png',
+                    headers={'Cache-Control': 'public, max-age=60'})
 
 
-@app.route('/picker_logo')
-def route_picker_logo():
+@app.get('/picker_logo')
+async def route_picker_logo():
     creds    = _load_creds()
     logo_b64 = creds.get('picker_logo_b64', '')
     if not logo_b64:
-        flask.abort(404)
+        raise HTTPException(404)
     data = base64.b64decode(logo_b64)
     mime = creds.get('picker_logo_mime', 'image/png')
-    return flask.Response(data, mimetype=mime,
-                          headers={'Cache-Control': 'public, max-age=300'})
+    return Response(data, media_type=mime,
+                    headers={'Cache-Control': 'public, max-age=300'})
 
 
-@app.route('/picker_icon')
-def route_picker_icon():
+@app.get('/picker_icon')
+async def route_picker_icon():
     icon_b64 = _load_creds().get('picker_icon_b64', '')
     if not icon_b64:
-        default = os.path.join(os.path.dirname(__file__), 'static', 'img', 'default_mobile_icon.png')
+        default = os.path.join(_HERE, 'static', 'img', 'default_mobile_icon.png')
         if not os.path.exists(default):
-            flask.abort(404)
-        return flask.send_file(default, mimetype='image/png')
+            raise HTTPException(404)
+        return FileResponse(default, media_type='image/png')
     data = base64.b64decode(icon_b64)
-    return flask.Response(data, mimetype='image/png',
-                          headers={'Cache-Control': 'public, max-age=300'})
+    return Response(data, media_type='image/png',
+                    headers={'Cache-Control': 'public, max-age=300'})
 
 
-@app.route('/favicon.ico')
-def route_favicon():
+@app.get('/favicon.ico')
+async def route_favicon():
     # Browsers auto-request this; serve a lean, scalable brand mark for the tab.
-    return flask.send_file(
-        os.path.join(os.path.dirname(__file__), 'static', 'img', 'favicon.svg'),
-        mimetype='image/svg+xml')
+    return FileResponse(os.path.join(_HERE, 'static', 'img', 'favicon.svg'),
+                        media_type='image/svg+xml')
 
 
-@app.route('/picker_manifest')
-def route_picker_manifest():
+@app.get('/picker_manifest')
+async def route_picker_manifest():
     creds = _load_creds()
     raw_wt = creds.get('picker_window_title')
     app_title = ('Tremplin' if raw_wt is None else raw_wt) or 'Tremplin'
@@ -685,44 +750,39 @@ def route_picker_manifest():
             {'src': '/picker_icon', 'sizes': '512x512', 'type': 'image/png'},
         ],
     }
-    return flask.Response(json.dumps(manifest), mimetype='application/manifest+json')
+    return Response(json.dumps(manifest), media_type='application/manifest+json')
 
 
-@app.route('/admin/picker_appearance', methods=['POST'])
-def route_picker_appearance():
-    denied = _require_admin()
-    if denied:
-        return flask.jsonify({'error': 'auth'}), 401
+@app.post('/admin/picker_appearance', dependencies=[Depends(require_admin)])
+async def route_picker_appearance(request: Request):
+    form  = await request.form()
     creds = _load_creds()
-    if 'picker_title' in flask.request.form:
-        creds['picker_title']        = flask.request.form.get('picker_title', '').strip()
-        creds['picker_window_title'] = flask.request.form.get('picker_window_title', '').strip()
-        creds['picker_logo_above']   = flask.request.form.get('picker_logo_above') == '1'
-    if flask.request.form.get('picker_logo_clear') == '1':
+    if 'picker_title' in form:
+        creds['picker_title']        = form.get('picker_title', '').strip()
+        creds['picker_window_title'] = form.get('picker_window_title', '').strip()
+        creds['picker_logo_above']   = form.get('picker_logo_above') == '1'
+    if form.get('picker_logo_clear') == '1':
         creds['picker_logo_b64'] = ''
         creds.pop('picker_logo_mime', None)
     else:
-        logo = flask.request.files.get('picker_logo')
+        logo = form.get('picker_logo')
         if logo and logo.filename:
-            data = logo.read()
+            data = await logo.read()
             mime = logo.content_type or 'image/png'
             creds['picker_logo_b64']  = base64.b64encode(data).decode()
             creds['picker_logo_mime'] = mime
-    if flask.request.form.get('picker_icon_clear') == '1':
+    if form.get('picker_icon_clear') == '1':
         creds['picker_icon_b64'] = ''
     else:
-        icon = flask.request.files.get('picker_icon')
+        icon = form.get('picker_icon')
         if icon and icon.filename:
-            creds['picker_icon_b64'] = base64.b64encode(icon.read()).decode()
+            creds['picker_icon_b64'] = base64.b64encode(await icon.read()).decode()
     _save_creds(creds)
-    return flask.jsonify({'ok': True})
+    return {'ok': True}
 
 
-@app.route('/admin/backup/keys')
-def route_backup_keys():
-    denied = _require_admin()
-    if denied:
-        return denied
+@app.get('/admin/backup/keys', dependencies=[Depends(require_admin)])
+async def route_backup_keys():
     try:
         with open(KEYS_FILE) as f:
             keys = json.load(f)
@@ -741,23 +801,20 @@ def route_backup_keys():
             'picker_icon_b64':     creds.get('picker_icon_b64', ''),
         },
     }
-    return flask.Response(
+    return Response(
         json.dumps(backup, indent=2),
-        mimetype='application/json',
-        headers={'Content-Disposition': 'attachment; filename="tremplin-backup.json"'}
-    )
+        media_type='application/json',
+        headers={'Content-Disposition': 'attachment; filename="tremplin-backup.json"'})
 
 
-@app.route('/admin/restore/keys', methods=['POST'])
-def route_restore_keys():
-    denied = _require_admin()
-    if denied:
-        return denied
-    uploaded = flask.request.files.get('keys_file')
+@app.post('/admin/restore/keys', dependencies=[Depends(require_admin)])
+async def route_restore_keys(request: Request):
+    uploaded = (await request.form()).get('keys_file')
     if not uploaded:
-        return flask.jsonify({'error': 'No file provided'}), 400
+        return Response(json.dumps({'error': 'No file provided'}),
+                        status_code=400, media_type='application/json')
     try:
-        data = json.loads(uploaded.read())
+        data = json.loads(await uploaded.read())
         if not isinstance(data, dict):
             raise ValueError('expected a JSON object')
         if 'keys' in data:
@@ -775,38 +832,34 @@ def route_restore_keys():
                 if field in appearance:
                     creds[field] = appearance[field]
             _save_creds(creds)
-        return flask.jsonify({'ok': True, 'count': len(keys)})
+        return {'ok': True, 'count': len(keys)}
     except (json.JSONDecodeError, ValueError) as e:
-        return flask.jsonify({'error': f'Invalid file: {e}'}), 400
+        return Response(json.dumps({'error': f'Invalid file: {e}'}),
+                        status_code=400, media_type='application/json')
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return Response(json.dumps({'error': str(e)}),
+                        status_code=500, media_type='application/json')
 
 
-@app.route('/admin/backup/meets')
-def route_backup_meets():
-    denied = _require_admin()
-    if denied:
-        return denied
+@app.get('/admin/backup/meets', dependencies=[Depends(require_admin)])
+async def route_backup_meets():
     with _lock:
         meets = dict(_retained)
     backup = {'version': 1, 'meets': meets}
-    return flask.Response(
+    return Response(
         json.dumps(backup, indent=2),
-        mimetype='application/json',
-        headers={'Content-Disposition': 'attachment; filename="tremplin-meets.json"'}
-    )
+        media_type='application/json',
+        headers={'Content-Disposition': 'attachment; filename="tremplin-meets.json"'})
 
 
-@app.route('/admin/restore/meets', methods=['POST'])
-def route_restore_meets():
-    denied = _require_admin()
-    if denied:
-        return denied
-    uploaded = flask.request.files.get('meets_file')
+@app.post('/admin/restore/meets', dependencies=[Depends(require_admin)])
+async def route_restore_meets(request: Request):
+    uploaded = (await request.form()).get('meets_file')
     if not uploaded:
-        return flask.jsonify({'error': 'No file provided'}), 400
+        return Response(json.dumps({'error': 'No file provided'}),
+                        status_code=400, media_type='application/json')
     try:
-        data = json.loads(uploaded.read())
+        data = json.loads(await uploaded.read())
         if not isinstance(data, dict):
             raise ValueError('expected a JSON object')
         meets = data['meets'] if 'meets' in data else data
@@ -818,25 +871,24 @@ def route_restore_meets():
             _retained.clear()
             _retained.update(meets)
             _save_retained()
-        return flask.jsonify({'ok': True, 'count': len(meets)})
+        return {'ok': True, 'count': len(meets)}
     except (json.JSONDecodeError, ValueError) as e:
-        return flask.jsonify({'error': f'Invalid file: {e}'}), 400
+        return Response(json.dumps({'error': f'Invalid file: {e}'}),
+                        status_code=400, media_type='application/json')
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return Response(json.dumps({'error': str(e)}),
+                        status_code=500, media_type='application/json')
 
 
-@app.route('/admin/update', methods=['POST'])
-def route_update():
-    denied = _require_admin()
-    if denied:
-        return denied
-
+@app.post('/admin/update', dependencies=[Depends(require_admin)])
+async def route_update(request: Request):
     url    = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not url or not secret:
-        return flask.jsonify({'error': 'Deploy webhook not configured'}), 503
+        return Response(json.dumps({'error': 'Deploy webhook not configured'}),
+                        status_code=503, media_type='application/json')
 
-    version = flask.request.form.get('version', 'latest')
+    version = (await request.form()).get('version', 'latest')
     try:
         body = json.dumps({'version': version}).encode()
         req = urllib.request.Request(url, data=body, method='POST')
@@ -844,106 +896,94 @@ def route_update():
         req.add_header('Content-Type', 'application/json')
         with urllib.request.urlopen(req, timeout=5) as resp:
             if resp.status == 200:
-                return flask.jsonify({'status': 'started'})
-            return flask.jsonify({'error': f'webhook {resp.status}'}), 502
+                return {'status': 'started'}
+            return Response(json.dumps({'error': f'webhook {resp.status}'}),
+                            status_code=502, media_type='application/json')
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 502
+        return Response(json.dumps({'error': str(e)}),
+                        status_code=502, media_type='application/json')
 
 
-@app.route('/admin/update_log')
-def route_update_log():
-    denied = _require_admin()
-    if denied:
-        return denied
-
+@app.get('/admin/update_log', dependencies=[Depends(require_admin)])
+async def route_update_log():
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
-        return flask.jsonify({'lines': [], 'done': None})
+        return {'lines': [], 'done': None}
 
     log_url = webhook_url.rsplit('/', 1)[0] + '/log'
     try:
         req = urllib.request.Request(log_url, method='GET')
         req.add_header('X-Deploy-Token', secret)
         with urllib.request.urlopen(req, timeout=5) as resp:
-            return flask.Response(resp.read(), content_type='application/json')
+            return Response(resp.read(), media_type='application/json')
     except Exception:
-        return flask.jsonify({'lines': [], 'done': None})
+        return {'lines': [], 'done': None}
 
 
-@app.route('/admin/logs')
-def route_logs():
-    denied = _require_admin()
-    if denied:
-        return denied
-
+@app.get('/admin/logs', dependencies=[Depends(require_admin)])
+async def route_logs(request: Request):
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
-        return flask.jsonify({'ok': False, 'error': 'not configured'}), 503
+        return Response(json.dumps({'ok': False, 'error': 'not configured'}),
+                        status_code=503, media_type='application/json')
 
-    source = flask.request.args.get('source', 'app')
-    tail   = flask.request.args.get('tail', '300')
+    source = request.query_params.get('source', 'app')
+    tail   = request.query_params.get('tail', '300')
     logs_url = webhook_url.rsplit('/', 1)[0] + f'/logs?source={source}&tail={tail}'
     try:
         req = urllib.request.Request(logs_url, method='GET')
         req.add_header('X-Deploy-Token', secret)
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return flask.Response(resp.read(), content_type='application/json')
+            return Response(resp.read(), media_type='application/json')
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)}), 502
+        return Response(json.dumps({'ok': False, 'error': str(e)}),
+                        status_code=502, media_type='application/json')
 
 
-@app.route('/admin/versions')
-def route_versions():
-    denied = _require_admin()
-    if denied:
-        return denied
-
+@app.get('/admin/versions', dependencies=[Depends(require_admin)])
+async def route_versions():
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
-        return flask.jsonify({'ok': False, 'error': 'not configured'}), 503
+        return Response(json.dumps({'ok': False, 'error': 'not configured'}),
+                        status_code=503, media_type='application/json')
 
     versions_url = webhook_url.rsplit('/', 1)[0] + '/versions'
     try:
         req = urllib.request.Request(versions_url, method='GET')
         req.add_header('X-Deploy-Token', secret)
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return flask.Response(resp.read(), content_type='application/json')
+            return Response(resp.read(), media_type='application/json')
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)}), 502
+        return Response(json.dumps({'ok': False, 'error': str(e)}),
+                        status_code=502, media_type='application/json')
 
 
-@app.route('/admin/stats')
-def route_stats():
-    denied = _require_admin()
-    if denied:
-        return flask.jsonify({'error': 'auth'}), 401
+@app.get('/admin/stats', dependencies=[Depends(require_admin)])
+async def route_stats(request: Request):
     if not _analytics_enabled():
-        return flask.jsonify({'enabled': False, 'count': None})
-    meet_id = flask.request.args.get('meet_id', '')
-    window  = flask.request.args.get('window', '24h')
+        return {'enabled': False, 'count': None}
+    meet_id = request.query_params.get('meet_id', '')
+    window  = request.query_params.get('window', '24h')
     if window == 'all':
         since = 0
     else:
         delta = _ANALYTICS_WINDOWS.get(window, _ANALYTICS_WINDOWS['24h'])
         since = int((datetime.datetime.now() - delta).timestamp())
-    return flask.jsonify({'enabled': True, 'count': _attendee_count(meet_id, since)})
+    return {'enabled': True, 'count': _attendee_count(meet_id, since)}
 
 
-@app.route('/admin', methods=['GET', 'POST'])
-def route_admin():
-    denied = _require_admin()
-    if denied:
-        return denied
-
+@app.api_route('/admin', methods=['GET', 'POST'], dependencies=[Depends(require_admin)])
+async def route_admin(request: Request):
     keys = _load_keys()
 
-    if flask.request.method == 'POST':
-        action = flask.request.form.get('action')
+    if request.method == 'POST':
+        form   = await request.form()
+        action = form.get('action')
         if action == 'add':
-            org = flask.request.form.get('organizer', '').strip()
+            org = form.get('organizer', '').strip()
             if org:
                 new_key = secrets.token_urlsafe(32)
                 keys[new_key] = {
@@ -953,18 +993,18 @@ def route_admin():
                 }
                 _save_keys(keys)
         elif action == 'revoke':
-            key = flask.request.form.get('key', '')
+            key = form.get('key', '')
             if key in keys:
                 keys[key]['active'] = False
                 _save_keys(keys)
         elif action == 'delete':
-            key = flask.request.form.get('key', '')
+            key = form.get('key', '')
             if key in keys:
                 del keys[key]
                 _save_keys(keys)
         elif action == 'set_expiry':
-            meet_id = flask.request.form.get('meet_id', '')
-            raw     = flask.request.form.get('expires_at', '').strip()
+            meet_id = form.get('meet_id', '')
+            raw     = form.get('expires_at', '').strip()
             with _lock:
                 if meet_id in _retained and meet_id not in _meets and raw:
                     try:
@@ -974,30 +1014,30 @@ def route_admin():
                     except ValueError:
                         pass
         elif action == 'delete_meet':
-            meet_id = flask.request.form.get('meet_id', '')
+            meet_id = form.get('meet_id', '')
             with _lock:
                 if meet_id in _retained and meet_id not in _meets:
                     del _retained[meet_id]
                     _save_retained()
         elif action == 'set_analytics':
             creds = _load_creds()
-            creds['analytics_enabled'] = flask.request.form.get('analytics_enabled') == '1'
+            creds['analytics_enabled'] = form.get('analytics_enabled') == '1'
             _save_creds(creds)
-            return flask.redirect(flask.url_for('route_admin'))
+            return RedirectResponse('/admin', status_code=303)
         elif action == 'change_locale':
-            locale = flask.request.form.get('locale', '')
+            locale = form.get('locale', '')
             creds  = _load_creds()
             creds['locale'] = locale
             _save_creds(creds)
             _locale_cache.clear()
-            return flask.redirect(flask.url_for('route_admin'))
+            return RedirectResponse('/admin', status_code=303)
         elif action == 'change_credentials':
-            t         = _load_cloud_strings()
+            t         = _load_cloud_strings(request)
             creds     = _load_creds()
-            cur_pw    = flask.request.form.get('current_password', '')
-            new_user  = flask.request.form.get('new_user', '').strip()
-            new_pw1   = flask.request.form.get('new_password', '')
-            new_pw2   = flask.request.form.get('new_password2', '')
+            cur_pw    = form.get('current_password', '')
+            new_user  = form.get('new_user', '').strip()
+            new_pw1   = form.get('new_password', '')
+            new_pw2   = form.get('new_password2', '')
             cur_hash, _ = _hash_password(cur_pw, creds['salt'])
             if not hmac.compare_digest(cur_hash, creds['password_hash']):
                 error = t.get('err_wrong_password', 'Incorrect current password.')
@@ -1009,46 +1049,39 @@ def route_admin():
                 creds['user'] = new_user or creds['user']
                 creds['password_hash'], creds['salt'] = _hash_password(new_pw1)
                 _save_creds(creds)
-                return flask.Response(
+                return Response(
                     'Credentials updated — <a href="/admin">sign in with new credentials</a>',
-                    401, {'WWW-Authenticate': 'Basic realm="Tremplin Admin"'}
-                )
-            return flask.render_template('admin.html', keys=keys,
-                                         active_meets=_admin_meet_list(),
-                                         t=t, creds_error=error,
-                                         locales=_available_locales(),
-                                         current_locale=_load_creds().get('locale', ''),
-                                         has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
-                                         analytics_enabled=_analytics_enabled(),
-                                         **_picker_appearance())
-        return flask.redirect(flask.url_for('route_admin'))
+                    status_code=401,
+                    headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
+            return render(request, 'admin.html', keys=keys,
+                          active_meets=_admin_meet_list(),
+                          t=t, creds_error=error,
+                          locales=_available_locales(),
+                          current_locale=_load_creds().get('locale', ''),
+                          has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
+                          analytics_enabled=_analytics_enabled(),
+                          **_picker_appearance())
+        return RedirectResponse('/admin', status_code=303)
 
     _sweep_expired()
-    return flask.render_template('admin.html', keys=keys,
-                                 active_meets=_admin_meet_list(),
-                                 t=_load_cloud_strings(), creds_error=None,
-                                 locales=_available_locales(),
-                                 current_locale=_load_creds().get('locale', ''),
-                                 has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
-                                 analytics_enabled=_analytics_enabled(),
-                                 **_picker_appearance())
+    return render(request, 'admin.html', keys=keys,
+                  active_meets=_admin_meet_list(),
+                  t=_load_cloud_strings(request), creds_error=None,
+                  locales=_available_locales(),
+                  current_locale=_load_creds().get('locale', ''),
+                  has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
+                  analytics_enabled=_analytics_enabled(),
+                  **_picker_appearance())
 
 
-# ── SocketIO — /relay namespace (Pi connections) ───────────────────────────────
+# ── WebSocket — /ws/relay (Pi connections) ─────────────────────────────────────
 
-@socketio.on('connect', namespace='/relay')
-def on_relay_connect():
-    pass  # auth happens in 'register'
-
-
-@socketio.on('register', namespace='/relay')
-def on_relay_register(data):
+async def _on_relay_register(ws, sid, data):
     key  = data.get('key', '')
     keys = _load_keys()
 
     if key not in keys or not keys[key].get('active', False):
-        socketio.emit('rejected', {'reason': 'invalid or inactive key'},
-                      namespace='/relay', to=flask.request.sid)
+        await manager.send(ws, 'rejected', {'reason': 'invalid or inactive key'})
         return
 
     # Meet id is stable per (key, meet_uid): one relay key can publish several
@@ -1064,7 +1097,6 @@ def on_relay_register(data):
             keys[key]['meet_id'] = meet_id
             _save_keys(keys)
 
-    sid = flask.request.sid
     with _lock:
         # If this socket was publishing a different meet (operator switched
         # LENEX files), retire it so it stays available as schedule-only.
@@ -1095,15 +1127,12 @@ def on_relay_register(data):
         _relay_sids[sid] = meet_id
         _persist_meet(meet_id, _meets[meet_id])
 
-    socketio.emit('registered', {'meet_id': meet_id},
-                  namespace='/relay', to=sid)
-    _emit_meet_live(meet_id, True)
+    await manager.send(ws, 'registered', {'meet_id': meet_id})
+    await _emit_meet_live(meet_id, True)
     print(f'[cloud] {keys[key]["organizer"]} registered as meet {meet_id}', flush=True)
 
 
-@socketio.on('disconnect', namespace='/relay')
-def on_relay_disconnect():
-    sid = flask.request.sid
+async def _on_relay_disconnect(sid):
     with _lock:
         meet_id = _relay_sids.pop(sid, None)
         meet    = _meets.get(meet_id) if meet_id else None
@@ -1113,14 +1142,13 @@ def on_relay_disconnect():
         if retired:
             _retire_locked(meet_id)
     if retired:
-        _emit_meet_live(meet_id, False)
+        await _emit_meet_live(meet_id, False)
     if meet_id:
         print(f'[cloud] meet {meet_id} disconnected', flush=True)
 
 
-def _forward(event, data):
+async def _forward(sid, event, data):
     """Cache and broadcast a relay event to all attendees of the sending meet."""
-    sid = flask.request.sid
     with _lock:
         meet_id = _relay_sids.get(sid)
         meet    = _meets.get(meet_id)
@@ -1130,122 +1158,137 @@ def _forward(event, data):
     if event == 'update_scoreboard':
         data.pop('running_time', None)
         meet['last_scoreboard'].update(data)
-        socketio.emit(event, data, room=f'meet:{meet_id}', namespace='/scoreboard')
+        await manager.broadcast(_ch('scoreboard', meet_id), event, data)
     elif event == 'results_snapshot':
         meet['last_results'] = data
-        socketio.emit(event, data, room=f'meet:{meet_id}', namespace='/results')
+        await manager.broadcast(_ch('results', meet_id), event, data)
     elif event == 'next_heats':
         meet['last_next_heats'] = data
-        socketio.emit(event, data, room=f'meet:{meet_id}', namespace='/results')
+        await manager.broadcast(_ch('results', meet_id), event, data)
     elif event == 'schedule_snapshot':
         meet['schedule_data'] = data
         with _lock:
             _persist_meet(meet_id, meet)
-        socketio.emit('schedule_update', room=f'meet:{meet_id}', namespace='/schedule')
+        await manager.broadcast(_ch('schedule', meet_id), 'schedule_update')
 
 
-@socketio.on('update_scoreboard', namespace='/relay')
-def on_relay_scoreboard(d):  _forward('update_scoreboard', d)
-
-@socketio.on('results_snapshot',  namespace='/relay')
-def on_relay_results(d):     _forward('results_snapshot', d)
-
-@socketio.on('next_heats',        namespace='/relay')
-def on_relay_next_heats(d):  _forward('next_heats', d)
-
-@socketio.on('schedule_snapshot', namespace='/relay')
-def on_relay_schedule(d):    _forward('schedule_snapshot', d)
-
-@socketio.on('reload', namespace='/relay')
-def on_relay_reload(d):
-    sid = flask.request.sid
+async def _on_relay_reload(sid):
     with _lock:
         meet_id = _relay_sids.get(sid)
     if not meet_id:
         return
-    socketio.emit('reload', room=f'meet:{meet_id}', namespace='/scoreboard')
-    socketio.emit('reload', room=f'meet:{meet_id}', namespace='/results')
+    await manager.broadcast(_ch('scoreboard', meet_id), 'reload')
+    await manager.broadcast(_ch('results', meet_id), 'reload')
 
 
-# ── SocketIO — /scoreboard namespace (attendees) ───────────────────────────────
+@app.websocket('/ws/relay')
+async def ws_relay(ws: WebSocket):
+    await ws.accept()
+    sid = id(ws)
+    try:
+        while True:
+            msg = await ws.receive_json()
+            event, data = msg.get('event'), msg.get('data') or {}
+            if event == 'register':
+                await _on_relay_register(ws, sid, data)
+            elif event in ('update_scoreboard', 'results_snapshot',
+                           'next_heats', 'schedule_snapshot'):
+                await _forward(sid, event, data)
+            elif event == 'reload':
+                await _on_relay_reload(sid)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await _on_relay_disconnect(sid)
 
-def _emit_meet_live(meet_id, live):
+
+# ── WebSocket — attendee namespaces ────────────────────────────────────────────
+
+async def _emit_meet_live(meet_id, live):
     """Tell scoreboard/results attendees whether a relay is currently feeding this
     meet, so live-only UI (the running-lane glow, the results board) reverts to its
     idle state when no console is connected."""
-    for ns in ('/scoreboard', '/results'):
-        socketio.emit('meet_live', {'live': live},
-                      room=f'meet:{meet_id}', namespace=ns)
+    for ns in ('scoreboard', 'results'):
+        await manager.broadcast(_ch(ns, meet_id), 'meet_live', {'live': live})
 
 
-@socketio.on('connect', namespace='/scoreboard')
-def on_scoreboard_connect():
-    pass
+@app.websocket('/ws/scoreboard')
+async def ws_scoreboard(ws: WebSocket):
+    await ws.accept()
+    try:
+        while True:
+            msg = await ws.receive_json()
+            if msg.get('event') != 'join_meet':
+                continue
+            data = msg.get('data') or {}
+            meet_id = data.get('meet_id', '')
+            with _lock:
+                meet = _get_meet(meet_id)
+                live = meet_id in _meets
+            if not meet:
+                continue
+            manager.join(ws, _ch('scoreboard', meet_id))
+            _log_connection(meet_id, data.get('vid', ''), 'scoreboard')
+            # Send live status first so the page knows whether to animate before
+            # the cached scoreboard snapshot is applied.
+            await manager.send(ws, 'meet_live', {'live': live})
+            if meet.get('last_scoreboard'):
+                await manager.send(ws, 'update_scoreboard', meet['last_scoreboard'])
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.leave_all(ws)
 
 
-@socketio.on('join_meet', namespace='/scoreboard')
-def on_scoreboard_join(data):
-    meet_id = data.get('meet_id', '')
-    with _lock:
-        meet = _get_meet(meet_id)
-        live = meet_id in _meets
-    if not meet:
-        return
-    flask_socketio.join_room(f'meet:{meet_id}')
-    _log_connection(meet_id, data.get('vid', ''), 'scoreboard')
-    # Send live status first so the page knows whether to animate before the
-    # cached scoreboard snapshot is applied.
-    socketio.emit('meet_live', {'live': live},
-                  namespace='/scoreboard', to=flask.request.sid)
-    if meet.get('last_scoreboard'):
-        socketio.emit('update_scoreboard', meet['last_scoreboard'],
-                      namespace='/scoreboard', to=flask.request.sid)
+@app.websocket('/ws/results')
+async def ws_results(ws: WebSocket):
+    await ws.accept()
+    try:
+        while True:
+            msg = await ws.receive_json()
+            if msg.get('event') != 'join_meet':
+                continue
+            data = msg.get('data') or {}
+            meet_id = data.get('meet_id', '')
+            with _lock:
+                meet = _get_meet(meet_id)
+                live = meet_id in _meets
+            if not meet:
+                continue
+            manager.join(ws, _ch('results', meet_id))
+            _log_connection(meet_id, data.get('vid', ''), 'results')
+            # Live status first, so the page reverts to "Waiting…" when no relay is feeding.
+            await manager.send(ws, 'meet_live', {'live': live})
+            if meet.get('last_results'):
+                await manager.send(ws, 'results_snapshot', meet['last_results'])
+            if meet.get('last_next_heats'):
+                await manager.send(ws, 'next_heats', meet['last_next_heats'])
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.leave_all(ws)
 
 
-# ── SocketIO — /results namespace (attendees) ──────────────────────────────────
-
-@socketio.on('connect', namespace='/results')
-def on_results_connect():
-    pass
-
-
-@socketio.on('join_meet', namespace='/results')
-def on_results_join(data):
-    meet_id = data.get('meet_id', '')
-    with _lock:
-        meet = _get_meet(meet_id)
-        live = meet_id in _meets
-    if not meet:
-        return
-    flask_socketio.join_room(f'meet:{meet_id}')
-    _log_connection(meet_id, data.get('vid', ''), 'results')
-    # Live status first, so the page reverts to "Waiting…" when no relay is feeding.
-    socketio.emit('meet_live', {'live': live},
-                  namespace='/results', to=flask.request.sid)
-    if meet.get('last_results'):
-        socketio.emit('results_snapshot', meet['last_results'],
-                      namespace='/results', to=flask.request.sid)
-    if meet.get('last_next_heats'):
-        socketio.emit('next_heats', meet['last_next_heats'],
-                      namespace='/results', to=flask.request.sid)
-
-
-# ── SocketIO — /schedule namespace (attendees) ────────────────────────────────
-
-@socketio.on('connect', namespace='/schedule')
-def on_schedule_connect():
-    pass
-
-
-@socketio.on('join_meet', namespace='/schedule')
-def on_schedule_join(data):
-    meet_id = data.get('meet_id', '')
-    with _lock:
-        meet = _get_meet(meet_id)
-    if not meet:
-        return
-    flask_socketio.join_room(f'meet:{meet_id}')
-    _log_connection(meet_id, data.get('vid', ''), 'schedule')
+@app.websocket('/ws/schedule')
+async def ws_schedule(ws: WebSocket):
+    await ws.accept()
+    try:
+        while True:
+            msg = await ws.receive_json()
+            if msg.get('event') != 'join_meet':
+                continue
+            data = msg.get('data') or {}
+            meet_id = data.get('meet_id', '')
+            with _lock:
+                meet = _get_meet(meet_id)
+            if not meet:
+                continue
+            manager.join(ws, _ch('schedule', meet_id))
+            _log_connection(meet_id, data.get('vid', ''), 'schedule')
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.leave_all(ws)
 
 
 # ── Theme defaults (fallback when Pi hasn't sent settings yet) ─────────────────
@@ -1266,6 +1309,5 @@ _DEFAULT_FONTS = {
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    os.makedirs(DATA_DIR, exist_ok=True)
-    _analytics_prune()
-    socketio.run(app, host='0.0.0.0', port=5000)
+    import uvicorn
+    uvicorn.run(app, host='0.0.0.0', port=5000)

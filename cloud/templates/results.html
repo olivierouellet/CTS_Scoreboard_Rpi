@@ -24,7 +24,7 @@
 var meet_live = false;   // a relay/console is currently feeding this meet
 function showWaiting() { document.getElementById('waiting').classList.remove('hidden'); }
 
-var sock = io('/results');
+var sock = tremplinSocket('/ws/results');
 sock.on('connect', function() { sock.emit('join_meet', { meet_id: MEET_ID, vid: tremplinVid() }); });
 sock.on('reload',   function() { location.reload(); });
 sock.on('disconnect', function() { meet_live = false; showWaiting(); });

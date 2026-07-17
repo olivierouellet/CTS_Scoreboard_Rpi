@@ -29,7 +29,7 @@ The script:
 - Adds the user to the `dialout` group for serial port access
 - Creates `~/TremplinData/` with `meet/`, `images/`, `icons/`, and `recorded/` subdirectories
 - Copies `settings.default.json` to `~/TremplinData/settings.json`
-- Downloads socket.io and xterm.js
+- Downloads xterm.js
 - Sets the static IP to `10.10.10.10/24` (asks for confirmation — this will drop your SSH session if connected over Ethernet)
 - Sets the hostname to `tremplin` (accessible as `tremplin.local` on the network)
 

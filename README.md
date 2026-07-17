@@ -48,7 +48,7 @@ Timing console
 
 | Device | IP | Role |
 | --- | --- | --- |
-| Pi #1 | `10.10.10.10` | Serial decoder + Flask server + admin UI |
+| Pi #1 | `10.10.10.10` | Serial decoder + FastAPI server + admin UI |
 | Pi #2 | DHCP | Chromium kiosk — fullscreen scoreboard on TV |
 
 | Item | Purpose |

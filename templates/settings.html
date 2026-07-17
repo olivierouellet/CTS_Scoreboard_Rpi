@@ -1157,7 +1157,7 @@ function onPasswordInput(form) {
 </div>
     <script src="/static/js/jquery-1.12.4.min.js"></script>
     <script src="/static/js/bootstrap.min.js"></script>
-    <script src="/static/js/socket.io.min.js"></script>
+    <script src="/static/js/ws.js"></script>
     <script>
     // ── Restore tab + flash button after form submit ──────────────────────────
     // Deferred so all tab-init functions are defined first
@@ -1668,7 +1668,7 @@ function onPasswordInput(form) {
     var _updateSock = null;
 
     function _ensureUpdateSock() {
-        if (!_updateSock) _updateSock = io('/settings');
+        if (!_updateSock) _updateSock = tremplinSocket('/ws/settings');
     }
 
     function loadVersions() {
@@ -2115,7 +2115,7 @@ function onPasswordInput(form) {
         _term.open(document.getElementById('terminal-container'));
         _term.onData(function(data) { if (_termSock) _termSock.emit('input', data); });
         if (!_termSock) {
-            _termSock = io('/terminal');
+            _termSock = tremplinSocket('/ws/terminal');
             _termSock.on('output', function(data) { if (_term) _term.write(data); });
             _termSock.on('exit', function() {
                 if (_term) { _term.write('\r\n\x1b[33m[Process exited]\x1b[0m\r\n'); }
@@ -2202,7 +2202,7 @@ function onPasswordInput(form) {
 
     function _initDebugSock() {
         if (_debugSock) return;
-        _debugSock = io('/settings');
+        _debugSock = tremplinSocket('/ws/settings');
         _debugSock.on('debug_line', function(d) {
             var out = document.getElementById('debug-output');
             var line = document.createElement('div');

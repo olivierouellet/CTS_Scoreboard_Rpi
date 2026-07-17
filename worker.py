@@ -6,9 +6,9 @@ import traceback
 
 import serial
 
+import bus
 import relay
 import state
-from extensions import socketio
 from meet_data import (
     format_delta_html, get_event_name_display, get_lane_alt, get_lane_parts,
     get_lane_seed_time, _get_next_heats, _build_results_snapshot, send_event_info,
@@ -18,7 +18,7 @@ from meet_data import (
 def _auto_dismiss_overlay():
     if state._overlay_active:
         state._overlay_active = False
-        socketio.emit('display_overlay', {'active': False}, namespace='/scoreboard')
+        bus.emit('/scoreboard', 'display_overlay', {'active': False})
 
 
 def _cleanup_test_meet():
@@ -71,7 +71,7 @@ def _on_event_changed(updates, ev, ht):
     print(f'[seed_times] event={(ev, ht)} loaded: {seed_times}', flush=True)
     next_heats_data = {'heats': _get_next_heats(ev, ht,
                                                 num_lanes=int(state.settings.get('num_lanes', 8)))}
-    socketio.emit('next_heats', next_heats_data, namespace='/results')
+    bus.emit('/results', 'next_heats', next_heats_data)
     relay.relay_emit('next_heats', next_heats_data)
 
 
@@ -113,7 +113,7 @@ def _emit_scoreboard_update():
         return
     try:
         data = dict(state.update)
-        socketio.emit('update_scoreboard', data, namespace='/scoreboard')
+        bus.emit('/scoreboard', 'update_scoreboard', data)
         relay.relay_emit('update_scoreboard', data)
     except Exception as e:
         print(f'[emit error] {e}', flush=True)
@@ -152,13 +152,13 @@ def _on_race_state_changed(now_finished, updates=None):
         state._last_results_snapshot = _build_results_snapshot()
         state._finish_timer_gen += 1
         def _finish_task(gen=state._finish_timer_gen, snap=state._last_results_snapshot):
-            socketio.sleep(float(state.settings.get('finish_debounce', 3.0)))
+            time.sleep(float(state.settings.get('finish_debounce', 3.0)))
             if state._finish_timer_gen == gen:
                 print('[race-state] results confirmed', flush=True)
-                socketio.emit('race_finished', {}, namespace='/scoreboard')
-                socketio.emit('results_snapshot', snap, namespace='/results')
+                bus.emit('/scoreboard', 'race_finished', {})
+                bus.emit('/results', 'results_snapshot', snap)
                 relay.relay_emit('results_snapshot', snap)
-        socketio.start_background_task(_finish_task)
+        bus.run_bg(_finish_task)
 
     elif not now_finished and prev:
         # Race left the finished state. Debounce the board wipe: a transient blip
@@ -167,15 +167,15 @@ def _on_race_state_changed(now_finished, updates=None):
         # re-start is still un-finished after the debounce window.
         state._finish_timer_gen += 1
         def _reset_task(gen=state._finish_timer_gen):
-            socketio.sleep(float(state.settings.get('reset_debounce', 1.0)))
+            time.sleep(float(state.settings.get('reset_debounce', 1.0)))
             if state._finish_timer_gen != gen or state._decoder.race_finished():
                 print('[race-state] reset skipped (transient un-finish suppressed)', flush=True)
                 return
             print('[race-state] board reset (sustained re-start)', flush=True)
             data = state._decoder.reset_lanes()
-            socketio.emit('update_scoreboard', data, namespace='/scoreboard')
+            bus.emit('/scoreboard', 'update_scoreboard', data)
             relay.relay_emit('update_scoreboard', data)
-        socketio.start_background_task(_reset_task)
+        bus.run_bg(_reset_task)
 
     state._results_prev_race_finished = now_finished
 
@@ -206,13 +206,12 @@ def _handle_packet(l):
         _on_race_state_changed(state._decoder.race_finished(), updates)
 
         if state._debug_serial and hex_str:
-            socketio.emit('debug_line', {'hex': hex_str, 'text': _packet_summary(updates)},
-                          namespace='/settings')
+            bus.emit('/settings', 'debug_line', {'hex': hex_str, 'text': _packet_summary(updates)})
 
     except Exception:
         traceback.print_exc()
     finally:
-        socketio.sleep(0)  # yield to gevent event loop after every packet
+        time.sleep(0)  # yield to gevent event loop after every packet
 
 
 # ── Session playback ───────────────────────────────────────────────────────────
@@ -242,7 +241,7 @@ def _play_cap_file(session_file):
             delay += 1 / 720.0
             if delay > 0.1:
                 delay = 0
-                socketio.sleep(0.1)
+                time.sleep(0.1)
 
 
 def _play_cts_file(session_file):
@@ -264,12 +263,12 @@ def _play_cts_file(session_file):
                 else:
                     delay = ts - state.in_speed * time.time() - start_time
                     if delay > 0:
-                        socketio.sleep(delay)
+                        time.sleep(delay)
                 continue
             l = _ingest_byte(int(d.group(2), 16), l)
             if delay > 0.1:
                 delay = 0
-                socketio.sleep(0.1)
+                time.sleep(0.1)
             else:
                 delay += 1 / 720.0
         if has_timestamps:
@@ -287,15 +286,15 @@ def _run_test_session(session_file):
         return
     state._test_session = None
     _cleanup_test_meet()
-    socketio.emit('test_mode',   {'active': False}, namespace='/scoreboard')
-    socketio.emit('test_status', {}, namespace='/settings')
+    bus.emit('/scoreboard', 'test_mode', {'active': False})
+    bus.emit('/settings', 'test_status', {})
 
 
 def _run_live_serial():
     """Read from the configured serial port until the worker is stopped, retrying on error."""
     def _set_serial_status(st, msg=''):
         state._serial_status = {'state': st, 'msg': msg}
-        socketio.emit('serial_log', {'state': st, 'msg': msg}, namespace='/settings')
+        bus.emit('/settings', 'serial_log', {'state': st, 'msg': msg})
 
     port = state.settings['serial_port']
 
@@ -334,7 +333,7 @@ def _run_live_serial():
                         if l and (time.time() - last_byte_time) >= 0.05:
                             _handle_packet(l)
                             l = []
-                        socketio.sleep(0.01)
+                        time.sleep(0.01)
 
         except (serial.SerialException, OSError) as e:
             # ── Error: wait 5 s then retry unless the worker was stopped ──────
@@ -344,7 +343,7 @@ def _run_live_serial():
             for _ in range(50):
                 if state._worker_stop:
                     break
-                socketio.sleep(0.1)
+                time.sleep(0.1)
             continue  # retry the outer while loop (re-open the port)
 
     # ── Worker stopped cleanly ─────────────────────────────────────────────────
@@ -370,5 +369,5 @@ def _restart_worker(session_path=None):
     state._test_session = session_path
     state._worker_stop  = True
     state._worker_gen  += 1
-    socketio.sleep(0.3)
-    state.main_thread = socketio.start_background_task(target=main_thread_worker)
+    time.sleep(0.3)
+    state.main_thread = bus.run_bg(main_thread_worker)
