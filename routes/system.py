@@ -9,6 +9,7 @@ import tomllib
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 import bus
 import state
@@ -52,7 +53,7 @@ _UV = _find_uv()
 # ── Time ───────────────────────────────────────────────────────────────────────
 
 @router.get('/time_status', dependencies=[Depends(require_login)])
-async def route_time_status():
+def route_time_status():
     now          = datetime.datetime.now()
     ntp_active   = False
     synchronized = False
@@ -81,7 +82,7 @@ async def route_time_status():
 
 
 @router.post('/time_sync', dependencies=[Depends(require_login)])
-async def route_time_sync():
+def route_time_sync():
     try:
         subprocess.run(['sudo', 'timedatectl', 'set-ntp', 'true'], timeout=5, check=True)
         subprocess.run(['sudo', 'systemctl', 'restart', 'systemd-timesyncd'], timeout=5)
@@ -92,9 +93,11 @@ async def route_time_sync():
 
 @router.post('/time_set', dependencies=[Depends(require_login)])
 async def route_time_set(request: Request):
-    data     = await request.json()
-    date_str = data.get('date', '')
-    time_str = data.get('time', '')
+    data = await request.json()
+    return await run_in_threadpool(_time_set, data.get('date', ''), data.get('time', ''))
+
+
+def _time_set(date_str, time_str):
     if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str) or \
        not re.match(r'^\d{2}:\d{2}(:\d{2})?$', time_str):
         return {'ok': False, 'error': 'Invalid date or time format'}
@@ -203,7 +206,7 @@ def _run_os_update():
 
 
 @router.get('/version_list', dependencies=[Depends(require_login)])
-async def route_version_list():
+def route_version_list():
     try:
         r = subprocess.run(['git', 'describe', '--tags', '--exact-match', 'HEAD'],
                            capture_output=True, text=True, cwd=state.app_dir, timeout=8)
@@ -244,7 +247,7 @@ async def route_update_start(request: Request):
 
 
 @router.post('/os_update_start', dependencies=[Depends(require_login)])
-async def route_os_update_start():
+def route_os_update_start():
     if state._os_update_in_progress:
         return JSONResponse({'error': 'OS update already in progress'}, status_code=409)
     state._os_update_in_progress = True
@@ -253,12 +256,12 @@ async def route_os_update_start():
 
 
 @router.get('/update_log', dependencies=[Depends(require_login)])
-async def route_update_log():
+def route_update_log():
     return {'lines': state._update_log_lines, 'done': state._update_log_done}
 
 
 @router.get('/os_update_log', dependencies=[Depends(require_login)])
-async def route_os_update_log():
+def route_os_update_log():
     return {'lines': state._os_update_log_lines, 'done': state._os_update_log_done}
 
 
@@ -268,7 +271,7 @@ _RTC_SCRIPT = os.path.join(state.app_dir, 'scripts', 'rtc_setup.sh')
 
 
 @router.get('/rtc_status', dependencies=[Depends(require_login)])
-async def route_rtc_status():
+def route_rtc_status():
     configured = False
     active     = False
 
@@ -317,7 +320,7 @@ def _run_rtc(action):
 
 
 @router.post('/rtc_install_start', dependencies=[Depends(require_login)])
-async def route_rtc_install_start():
+def route_rtc_install_start():
     if state._rtc_in_progress:
         return JSONResponse({'error': 'RTC setup already in progress'}, status_code=409)
     state._rtc_in_progress = True
@@ -326,7 +329,7 @@ async def route_rtc_install_start():
 
 
 @router.post('/rtc_remove_start', dependencies=[Depends(require_login)])
-async def route_rtc_remove_start():
+def route_rtc_remove_start():
     if state._rtc_in_progress:
         return JSONResponse({'error': 'RTC setup already in progress'}, status_code=409)
     state._rtc_in_progress = True
@@ -335,12 +338,12 @@ async def route_rtc_remove_start():
 
 
 @router.get('/rtc_log', dependencies=[Depends(require_login)])
-async def route_rtc_log():
+def route_rtc_log():
     return {'lines': state._rtc_log_lines, 'done': state._rtc_log_done}
 
 
 @router.get('/logs_download', dependencies=[Depends(require_login)])
-async def route_logs_download():
+def route_logs_download():
     text = '\n'.join(state._log_ring) + '\n'
     ts   = datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')
     return Response(
@@ -349,7 +352,7 @@ async def route_logs_download():
 
 
 @router.post('/logs_save', dependencies=[Depends(require_login)])
-async def route_logs_save():
+def route_logs_save():
     try:
         os.makedirs(state.LOGS_DIR, exist_ok=True)
         name = 'tremplin-log-' + datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S') + '.log'
@@ -362,7 +365,7 @@ async def route_logs_save():
 
 
 @router.post('/system_reboot', dependencies=[Depends(require_login)])
-async def route_system_reboot():
+def route_system_reboot():
     def _reboot():
         time.sleep(1)
         subprocess.run(['sudo', 'reboot'])
@@ -371,7 +374,7 @@ async def route_system_reboot():
 
 
 @router.post('/system_shutdown', dependencies=[Depends(require_login)])
-async def route_system_shutdown():
+def route_system_shutdown():
     def _shutdown():
         time.sleep(1)
         subprocess.run(['sudo', 'poweroff'])
@@ -380,7 +383,7 @@ async def route_system_shutdown():
 
 
 @router.get('/backup_download', dependencies=[Depends(require_login)])
-async def route_backup_download():
+def route_backup_download():
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode='w:gz') as tar:
         tar.add(state.SCOREBOARD_DIR, arcname='Tremplin')
@@ -398,8 +401,14 @@ async def route_backup_restore(request: Request):
     if not f or not getattr(f, 'filename', '').endswith('.tar.gz'):
         return JSONResponse({'ok': False, 'error': 'Please upload a .tar.gz backup file'},
                             status_code=400)
+    data = await f.read()
+    # Extracting the tarball is blocking; run it off the event loop.
+    return await run_in_threadpool(_restore_backup, data)
+
+
+def _restore_backup(data):
     try:
-        buf = io.BytesIO(await f.read())
+        buf = io.BytesIO(data)
         with tarfile.open(fileobj=buf, mode='r:gz') as tar:
             members = tar.getmembers()
             # Validate all paths stay within home dir (no path traversal)

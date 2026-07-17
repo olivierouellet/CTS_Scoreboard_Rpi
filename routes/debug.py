@@ -9,6 +9,7 @@ import subprocess
 
 from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 import bus
 import state
@@ -29,7 +30,7 @@ _TERMINAL_ALLOWED_CMDS = {
 
 
 @router.get('/test_status', dependencies=[Depends(require_login)])
-async def route_test_status():
+def route_test_status():
     return {
         'playing':        state._test_session is not None,
         'session':        os.path.basename(state._test_session) if state._test_session else '',
@@ -45,6 +46,11 @@ async def route_test_status():
 @router.post('/test_play', dependencies=[Depends(require_login)])
 async def route_test_play(request: Request):
     name = (await request.json()).get('name', '')
+    # Copying + parsing the companion LENEX is blocking — run off the loop.
+    return await run_in_threadpool(_test_play, name)
+
+
+def _test_play(name):
     for s in _list_sessions():
         if s['name'] == name:
             bus.emit('/scoreboard', 'test_mode', {'active': True})
@@ -87,7 +93,7 @@ async def route_test_play(request: Request):
 
 
 @router.post('/test_stop', dependencies=[Depends(require_login)])
-async def route_test_stop():
+def route_test_stop():
     _cleanup_test_meet()
     bus.emit('/scoreboard', 'test_mode', {'active': False})
     bus.run_bg(_restart_worker, None)
@@ -96,6 +102,12 @@ async def route_test_stop():
 
 @router.post('/test_meet_upload', dependencies=[Depends(require_login)])
 async def route_test_meet_upload(request: Request):
+    file = (await request.form()).get('meet_file')
+    # Saving + LENEX parsing is blocking — run off the loop.
+    return await run_in_threadpool(_test_meet_upload, file)
+
+
+def _test_meet_upload(file):
     if state._test_session is None:
         return {'ok': False, 'error': 'No test session is running'}
     if state._test_meet_active:
@@ -104,7 +116,6 @@ async def route_test_meet_upload(request: Request):
                  glob.glob(os.path.join(state.MEET_FOLDER, '*.csv'))
     if meet_files:
         return {'ok': False, 'error': 'A real meet file is already loaded'}
-    file = (await request.form()).get('meet_file')
     if not file or not file.filename:
         return {'ok': False, 'error': 'No file provided'}
     ext = os.path.splitext(file.filename)[1].lower()
@@ -155,7 +166,7 @@ async def route_test_record_start(request: Request):
 
 
 @router.post('/test_record_stop', dependencies=[Depends(require_login)])
-async def route_test_record_stop():
+def route_test_record_stop():
     if state._record_handle:
         state._record_handle.close()
         state._record_handle = None
@@ -187,23 +198,23 @@ async def route_test_session_upload(request: Request):
 
 
 @router.get('/serial_status', dependencies=[Depends(require_login)])
-async def route_serial_status():
+def route_serial_status():
     return state._serial_status
 
 
 @router.get('/debug_status', dependencies=[Depends(require_login)])
-async def route_debug_status():
+def route_debug_status():
     return {'enabled': state._debug_serial}
 
 
 @router.post('/debug_toggle', dependencies=[Depends(require_login)])
-async def route_debug_toggle():
+def route_debug_toggle():
     state._debug_serial = not state._debug_serial
     return {'enabled': state._debug_serial}
 
 
 @router.get('/debug/seed_times')
-async def route_debug_seed_times():
+def route_debug_seed_times():
     return {
         'lane_seed_times': state._decoder.lane_seed_times,
         'last_event_sent': state._decoder.last_event_sent,
@@ -271,7 +282,7 @@ async def route_terminal_start(request: Request):
 
 
 @router.post('/terminal_stop', dependencies=[Depends(require_login)])
-async def route_terminal_stop():
+def route_terminal_stop():
     if state._pty_pid:
         try:
             os.kill(state._pty_pid, signal.SIGTERM)

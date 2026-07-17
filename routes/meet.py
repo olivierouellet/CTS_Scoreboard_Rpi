@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.get('/meet')
-async def route_meet(request: Request):
+def route_meet(request: Request):
     data = _build_meet_data()
     return render(request, 'meet.html',
                   strings=state.load_preview_strings(),
@@ -21,7 +21,7 @@ async def route_meet(request: Request):
 
 
 @router.get('/full_schedule')
-async def route_full_schedule(request: Request):
+def route_full_schedule(request: Request):
     data = _build_meet_data()
     return render(request, 'full_schedule.html',
                   t=state._mobile_strings(),
@@ -34,7 +34,7 @@ async def route_full_schedule(request: Request):
 
 
 @router.get('/schedule')
-async def route_schedule(request: Request):
+def route_schedule(request: Request):
     data           = _build_meet_data()
     events_grouped = data.get('events_grouped', [])
     start_list     = data.get('start_list', {})
@@ -81,7 +81,7 @@ async def route_schedule(request: Request):
 
 
 @router.get('/search_suggestions')
-async def route_search_suggestions(request: Request):
+def route_search_suggestions(request: Request):
     import unicodedata
     def fold(s):
         return unicodedata.normalize('NFD', s.lower()).encode('ascii', 'ignore').decode()
@@ -118,17 +118,17 @@ async def route_search_suggestions(request: Request):
 
 
 @router.get('/hytek_preview')
-async def route_hytek_preview():
+def route_hytek_preview():
     return redirect('/meet')
 
 
 @router.get('/lenex_preview')
-async def route_lenex_preview(request: Request):
+def route_lenex_preview(request: Request):
     return redirect('/meet' + ('?kiosk' if 'kiosk' in request.query_params else ''))
 
 
 @router.get('/meet_status', dependencies=[Depends(require_login)])
-async def route_meet_status():
+def route_meet_status():
     file_list = sorted(
         os.path.basename(f)
         for f in glob.glob(os.path.join(state.MEET_FOLDER, '*.csv')) +
@@ -143,7 +143,7 @@ async def route_meet_status():
 
 
 @router.get('/meet_delete', dependencies=[Depends(require_login)])
-async def route_meet_delete(request: Request):
+def route_meet_delete(request: Request):
     filename = os.path.basename(request.query_params.get('file', '').strip())
     if filename:
         filepath = os.path.join(state.MEET_FOLDER, filename)
@@ -168,7 +168,7 @@ async def route_meet_delete(request: Request):
 
 
 @router.get('/meet_clear', dependencies=[Depends(require_login)])
-async def route_meet_clear():
+def route_meet_clear():
     for f in glob.glob(os.path.join(state.MEET_FOLDER, '*.csv')) + \
              glob.glob(os.path.join(state.MEET_FOLDER, '*.lxf')):
         os.remove(f)

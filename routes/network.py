@@ -3,6 +3,7 @@ import subprocess
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 import state
 from web import require_login
@@ -16,7 +17,7 @@ def _nmcli(*args, timeout=8):
 
 
 @router.get('/wifi_status', dependencies=[Depends(require_login)])
-async def route_wifi_status():
+def route_wifi_status():
     try:
         r       = _nmcli('radio', 'wifi')
         enabled = r.returncode == 0 and 'enabled' in r.stdout.lower()
@@ -63,7 +64,7 @@ async def route_wifi_status():
 
 
 @router.get('/wifi_scan', dependencies=[Depends(require_login)])
-async def route_wifi_scan():
+def route_wifi_scan():
     try:
         r     = _nmcli('--color', 'no', '-f', 'ACTIVE,SSID,SIGNAL,SECURITY',
                        'dev', 'wifi', 'list', timeout=20)
@@ -98,7 +99,7 @@ async def route_wifi_scan():
 
 
 @router.post('/wifi_toggle', dependencies=[Depends(require_login)])
-async def route_wifi_toggle():
+def route_wifi_toggle():
     try:
         r            = _nmcli('radio', 'wifi')
         currently_on = 'enabled' in r.stdout.lower()
@@ -111,13 +112,13 @@ async def route_wifi_toggle():
 
 
 @router.get('/cloud_status', dependencies=[Depends(require_login)])
-async def route_cloud_status():
+def route_cloud_status():
     import relay
     return relay.status()
 
 
 @router.post('/cloud_toggle', dependencies=[Depends(require_login)])
-async def route_cloud_toggle():
+def route_cloud_toggle():
     import relay
     if relay.status()['running']:
         relay.stop()
@@ -128,9 +129,13 @@ async def route_cloud_toggle():
 
 @router.post('/wifi_connect', dependencies=[Depends(require_login)])
 async def route_wifi_connect(request: Request):
-    data     = await request.json()
-    ssid     = data.get('ssid', '')
-    password = data.get('password', '')
+    data = await request.json()
+    # nmcli connect can take up to 30 s — run it off the event loop so live
+    # scoreboard broadcasts keep flowing while it works.
+    return await run_in_threadpool(_wifi_connect, data.get('ssid', ''), data.get('password', ''))
+
+
+def _wifi_connect(ssid, password):
     if not ssid:
         return JSONResponse({'error': 'No SSID provided'}, status_code=400)
     try:
@@ -153,7 +158,7 @@ async def route_wifi_connect(request: Request):
 
 
 @router.post('/eth_dhcp_set', dependencies=[Depends(require_login)])
-async def route_eth_dhcp_set():
+def route_eth_dhcp_set():
     try:
         r = subprocess.run(
             ['sudo', 'nmcli', 'con', 'mod', 'tremplin-eth',
@@ -170,9 +175,12 @@ async def route_eth_dhcp_set():
 
 @router.post('/eth_ip_set', dependencies=[Depends(require_login)])
 async def route_eth_ip_set(request: Request):
-    data       = await request.json()
-    ip_str     = data.get('ip', '').strip()
-    prefix_str = data.get('prefix', '24').strip()
+    data = await request.json()
+    return await run_in_threadpool(_eth_ip_set, data.get('ip', '').strip(),
+                                    data.get('prefix', '24').strip())
+
+
+def _eth_ip_set(ip_str, prefix_str):
     try:
         ipaddress.IPv4Address(ip_str)
         prefix = int(prefix_str)
@@ -195,6 +203,6 @@ async def route_eth_ip_set(request: Request):
 
 
 @router.get('/clients', dependencies=[Depends(require_login)])
-async def route_clients():
+def route_clients():
     # Browser tabs connected to the scoreboard WebSocket, shown in the Network tab
     return {'clients': list(state._scoreboard_clients.values())}

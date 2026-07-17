@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.get('/images/{filename:path}')
-async def serve_image(filename: str):
+def serve_image(filename: str):
     path = os.path.normpath(os.path.join(state.IMAGES_DIR, filename))
     if not path.startswith(os.path.normpath(state.IMAGES_DIR)) or not os.path.isfile(path):
         raise HTTPException(404)
@@ -22,7 +22,7 @@ async def serve_image(filename: str):
 
 
 @router.get('/splash_delete', dependencies=[Depends(require_login)])
-async def route_splash_delete():
+def route_splash_delete():
     filename = state.settings.get('splash_url', '')
     if filename:
         path = os.path.join(state.IMAGES_DIR, filename)
@@ -35,7 +35,7 @@ async def route_splash_delete():
 
 
 @router.get('/splash_delete_all', dependencies=[Depends(require_login)])
-async def route_splash_delete_all():
+def route_splash_delete_all():
     for f in os.listdir(state.IMAGES_DIR):
         fp = os.path.join(state.IMAGES_DIR, f)
         if os.path.isfile(fp):
@@ -47,7 +47,7 @@ async def route_splash_delete_all():
 
 
 @router.get('/icon_delete', dependencies=[Depends(require_login)])
-async def route_icon_delete(request: Request):
+def route_icon_delete(request: Request):
     filename = os.path.basename(request.query_params.get('file', '').strip())
     if filename and filename not in ('home_icon.png', 'home_icon_512.png'):
         path = os.path.join(state.ICONS_DIR, filename)
@@ -66,7 +66,7 @@ async def route_icon_delete(request: Request):
 
 
 @router.get('/icon_delete_all', dependencies=[Depends(require_login)])
-async def route_icon_delete_all():
+def route_icon_delete_all():
     if os.path.isdir(state.ICONS_DIR):
         for f in os.listdir(state.ICONS_DIR):
             fp = os.path.join(state.ICONS_DIR, f)
@@ -81,7 +81,7 @@ async def route_icon_delete_all():
 
 
 @router.get('/locale_delete', dependencies=[Depends(require_login)])
-async def route_locale_delete():
+def route_locale_delete():
     code = state.settings.get('locale', '')
     path = os.path.join(state.CUSTOM_LOCALE_FOLDER, code + '.toml')
     if os.path.isfile(path):
@@ -93,7 +93,7 @@ async def route_locale_delete():
 
 
 @router.get('/locale_delete_all', dependencies=[Depends(require_login)])
-async def route_locale_delete_all():
+def route_locale_delete_all():
     for f in os.listdir(state.CUSTOM_LOCALE_FOLDER):
         fp = os.path.join(state.CUSTOM_LOCALE_FOLDER, f)
         if os.path.isfile(fp):
@@ -108,7 +108,7 @@ async def route_locale_delete_all():
 
 
 @router.get('/theme_delete', dependencies=[Depends(require_login)])
-async def route_theme_delete():
+def route_theme_delete():
     code = state.settings.get('active_theme', '')
     path = os.path.join(state.CUSTOM_THEME_FOLDER, code + '.toml')
     if os.path.exists(path):
@@ -126,7 +126,7 @@ async def route_theme_delete():
 
 
 @router.get('/theme_delete_all', dependencies=[Depends(require_login)])
-async def route_theme_delete_all():
+def route_theme_delete_all():
     for f in glob.glob(os.path.join(state.CUSTOM_THEME_FOLDER, '*.toml')):
         os.remove(f)
     state.settings['active_theme'] = 'default'
@@ -142,7 +142,7 @@ async def route_theme_delete_all():
 
 
 @router.get('/picker_image_delete', dependencies=[Depends(require_login)])
-async def route_picker_image_delete(request: Request):
+def route_picker_image_delete(request: Request):
     filename = os.path.basename(request.query_params.get('file', '').strip())
     if filename:
         path = os.path.join(state.PICKER_DIR, filename)
@@ -158,7 +158,7 @@ async def route_picker_image_delete(request: Request):
 
 
 @router.get('/picker_image_delete_all', dependencies=[Depends(require_login)])
-async def route_picker_image_delete_all():
+def route_picker_image_delete_all():
     if os.path.isdir(state.PICKER_DIR):
         for f in os.listdir(state.PICKER_DIR):
             fp = os.path.join(state.PICKER_DIR, f)

@@ -7,6 +7,7 @@ import traceback
 import serial.tools.list_ports
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 import bus
 import relay
@@ -100,11 +101,16 @@ async def route_meet_update_file(request: Request):
     are never orphaned onto a new picker card. The new file overwrites the
     current meet file in place, then is reloaded and republished.
     """
+    file = (await request.form()).get('meet_file')
+    # Saving + LENEX parsing + reload is blocking — run it off the event loop.
+    return await run_in_threadpool(_meet_update_file, file)
+
+
+def _meet_update_file(file):
     if state._test_session is not None:
         return {'ok': False, 'error': 'A test session is running.'}
     if not state._active_meet_file:
         return {'ok': False, 'error': 'No meet is loaded to update.'}
-    file = (await request.form()).get('meet_file')
     if not file or not file.filename:
         return {'ok': False, 'error': 'No file selected.'}
     ext = os.path.splitext(file.filename)[1].lower()
@@ -138,8 +144,14 @@ async def route_meet_update_file(request: Request):
 
 @router.api_route('/settings', methods=['GET', 'POST'], dependencies=[Depends(require_login)])
 async def route_settings(request: Request):
+    form = await request.form() if request.method == 'POST' else None
+    # POST parses uploads (PIL resize), enumerates serial ports and writes files;
+    # the GET view also enumerates ports — all blocking, so run off the loop.
+    return await run_in_threadpool(_settings_view, request, form)
+
+
+def _settings_view(request, form):
     if request.method == 'POST':
-        form = await request.form()
         modified = False
         icon_error = None
 
@@ -507,7 +519,7 @@ async def route_settings(request: Request):
 
 
 @router.get('/home_icon')
-async def route_home_icon():
+def route_home_icon():
     if not os.path.exists(state.HOME_ICON_PATH):
         raise HTTPException(404)
     return FileResponse(state.HOME_ICON_PATH, media_type='image/png',
@@ -515,7 +527,7 @@ async def route_home_icon():
 
 
 @router.get('/home_icon_512')
-async def route_home_icon_512():
+def route_home_icon_512():
     path = state.HOME_ICON_512_PATH if os.path.exists(state.HOME_ICON_512_PATH) else state.HOME_ICON_PATH
     if not os.path.exists(path):
         raise HTTPException(404)
@@ -523,7 +535,7 @@ async def route_home_icon_512():
 
 
 @router.get('/picker_image')
-async def route_picker_image():
+def route_picker_image():
     active = state.settings.get('active_picker_image', '')
     if not active:
         raise HTTPException(404)
@@ -534,7 +546,7 @@ async def route_picker_image():
 
 
 @router.get('/manifest.json')
-async def route_manifest():
+def route_manifest():
     app_title = (state.settings.get('app_window_title') or
                  state.lenex_meet_info.get('name') or
                  state.settings.get('meet_title') or 'Tremplin')

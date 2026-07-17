@@ -27,6 +27,7 @@ from fastapi import (Depends, FastAPI, HTTPException, Request, WebSocket,
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 
 DATA_DIR    = os.environ.get('DATA_DIR', '/data')
 KEYS_FILE   = os.path.join(DATA_DIR, 'keys.json')
@@ -454,7 +455,7 @@ def _analytics_prune():
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @app.get('/')
-async def route_index(request: Request):
+def route_index(request: Request):
     _sweep_expired()
     with _lock:
         meets = [{'id': mid, 'name': m['name'], 'location': m['location'],
@@ -475,7 +476,7 @@ async def route_index(request: Request):
 
 
 @app.get('/mobile')
-async def route_mobile(request: Request):
+def route_mobile(request: Request):
     meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
@@ -491,7 +492,7 @@ async def route_mobile(request: Request):
 
 
 @app.get('/mobile/live')
-async def route_live(request: Request):
+def route_live(request: Request):
     meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
@@ -519,7 +520,7 @@ async def route_live(request: Request):
 
 
 @app.get('/mobile/results')
-async def route_results(request: Request):
+def route_results(request: Request):
     meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
@@ -578,7 +579,7 @@ def _build_heats_json(sched):
 
 
 @app.get('/mobile/schedule')
-async def route_schedule(request: Request):
+def route_schedule(request: Request):
     meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
@@ -600,7 +601,7 @@ async def route_schedule(request: Request):
 
 
 @app.get('/meet/{meet_id}/config')
-async def route_meet_config(meet_id: str):
+def route_meet_config(meet_id: str):
     """A meet's display config as JSON — for native attendee clients (iOS/Android)
     that render the board natively instead of loading the HTML page."""
     with _lock:
@@ -620,7 +621,7 @@ async def route_meet_config(meet_id: str):
 
 
 @app.get('/search_suggestions')
-async def route_search_suggestions(request: Request):
+def route_search_suggestions(request: Request):
     import unicodedata
     def fold(s):
         return unicodedata.normalize('NFD', s.lower()).encode('ascii', 'ignore').decode()
@@ -656,19 +657,19 @@ async def route_search_suggestions(request: Request):
 
 
 @app.get('/logout')
-async def route_logout():
+def route_logout():
     return Response(
         'Logged out — <a href="/admin">sign in again</a>', status_code=401,
         headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
 
 
 @app.get('/ping')
-async def route_ping():
+def route_ping():
     return Response('ok', media_type='text/plain')
 
 
 @app.get('/manifest/{meet_id}')
-async def route_manifest(meet_id: str):
+def route_manifest(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
@@ -694,7 +695,7 @@ async def route_manifest(meet_id: str):
 
 
 @app.get('/icon/{meet_id}')
-async def route_icon(meet_id: str):
+def route_icon(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
@@ -708,7 +709,7 @@ async def route_icon(meet_id: str):
 
 
 @app.get('/picker_image/{meet_id}')
-async def route_meet_picker_image(meet_id: str):
+def route_meet_picker_image(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
@@ -722,7 +723,7 @@ async def route_meet_picker_image(meet_id: str):
 
 
 @app.get('/picker_logo')
-async def route_picker_logo():
+def route_picker_logo():
     creds    = _load_creds()
     logo_b64 = creds.get('picker_logo_b64', '')
     if not logo_b64:
@@ -734,7 +735,7 @@ async def route_picker_logo():
 
 
 @app.get('/picker_icon')
-async def route_picker_icon():
+def route_picker_icon():
     icon_b64 = _load_creds().get('picker_icon_b64', '')
     if not icon_b64:
         default = os.path.join(_HERE, 'static', 'img', 'default_mobile_icon.png')
@@ -747,14 +748,14 @@ async def route_picker_icon():
 
 
 @app.get('/favicon.ico')
-async def route_favicon():
+def route_favicon():
     # Browsers auto-request this; serve a lean, scalable brand mark for the tab.
     return FileResponse(os.path.join(_HERE, 'static', 'img', 'favicon.svg'),
                         media_type='image/svg+xml')
 
 
 @app.get('/picker_manifest')
-async def route_picker_manifest():
+def route_picker_manifest():
     creds = _load_creds()
     raw_wt = creds.get('picker_window_title')
     app_title = ('Tremplin' if raw_wt is None else raw_wt) or 'Tremplin'
@@ -802,7 +803,7 @@ async def route_picker_appearance(request: Request):
 
 
 @app.get('/admin/backup/keys', dependencies=[Depends(require_admin)])
-async def route_backup_keys():
+def route_backup_keys():
     try:
         with open(KEYS_FILE) as f:
             keys = json.load(f)
@@ -862,7 +863,7 @@ async def route_restore_keys(request: Request):
 
 
 @app.get('/admin/backup/meets', dependencies=[Depends(require_admin)])
-async def route_backup_meets():
+def route_backup_meets():
     with _lock:
         meets = dict(_retained)
     backup = {'version': 1, 'meets': meets}
@@ -902,13 +903,18 @@ async def route_restore_meets(request: Request):
 
 @app.post('/admin/update', dependencies=[Depends(require_admin)])
 async def route_update(request: Request):
+    version = (await request.form()).get('version', 'latest')
+    # The webhook call is a blocking HTTP request — run it off the event loop
+    # so attendee broadcasts keep flowing.
+    return await run_in_threadpool(_trigger_update, version)
+
+
+def _trigger_update(version):
     url    = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not url or not secret:
         return Response(json.dumps({'error': 'Deploy webhook not configured'}),
                         status_code=503, media_type='application/json')
-
-    version = (await request.form()).get('version', 'latest')
     try:
         body = json.dumps({'version': version}).encode()
         req = urllib.request.Request(url, data=body, method='POST')
@@ -925,7 +931,7 @@ async def route_update(request: Request):
 
 
 @app.get('/admin/update_log', dependencies=[Depends(require_admin)])
-async def route_update_log():
+def route_update_log():
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
@@ -942,7 +948,7 @@ async def route_update_log():
 
 
 @app.get('/admin/logs', dependencies=[Depends(require_admin)])
-async def route_logs(request: Request):
+def route_logs(request: Request):
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
@@ -963,7 +969,7 @@ async def route_logs(request: Request):
 
 
 @app.get('/admin/versions', dependencies=[Depends(require_admin)])
-async def route_versions():
+def route_versions():
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
@@ -982,7 +988,7 @@ async def route_versions():
 
 
 @app.get('/admin/stats', dependencies=[Depends(require_admin)])
-async def route_stats(request: Request):
+def route_stats(request: Request):
     if not _analytics_enabled():
         return {'enabled': False, 'count': None}
     meet_id = request.query_params.get('meet_id', '')

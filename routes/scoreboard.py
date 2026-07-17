@@ -9,18 +9,18 @@ router = APIRouter()
 
 
 @router.get('/config')
-async def route_config():
+def route_config():
     """Display config as JSON — for native clients (Qt TV) that render natively."""
     return display_config()
 
 
 @router.get('/')
-async def route_index():
+def route_index():
     return redirect('/live')
 
 
 @router.get('/scoreboard')
-async def route_scoreboard_default(request: Request):
+def route_scoreboard_default(request: Request):
     lanes = int(state.settings.get('num_lanes', 8))
     return render(request, 'scoreboard.html',
                   meet_title=state.settings['meet_title'],
@@ -30,7 +30,7 @@ async def route_scoreboard_default(request: Request):
 
 
 @router.get('/live')
-async def route_live(request: Request):
+def route_live(request: Request):
     lanes = int(state.settings.get('num_lanes', 8))
     carousel_images = sorted(
         f for f in os.listdir(state.IMAGES_DIR)
@@ -48,7 +48,7 @@ async def route_live(request: Request):
 
 
 @router.get('/live-mobile')
-async def route_live_mobile(request: Request):
+def route_live_mobile(request: Request):
     lanes = int(state.settings.get('num_lanes', 8))
     carousel_images = sorted(
         f for f in os.listdir(state.IMAGES_DIR)
@@ -64,7 +64,7 @@ async def route_live_mobile(request: Request):
 
 
 @router.get('/mobile')
-async def route_mobile(request: Request):
+def route_mobile(request: Request):
     app_title = (state.settings.get('app_window_title') or
                  state.settings.get('meet_title') or 'Tremplin')
     return render(request, 'mobile.html', t=state._mobile_strings(),
@@ -72,7 +72,7 @@ async def route_mobile(request: Request):
 
 
 @router.get('/results')
-async def route_results(request: Request):
+def route_results(request: Request):
     return render(request, 'results.html',
                   num_lanes=int(state.settings.get('num_lanes', 8)),
                   theme_colors={**state.DEFAULT_THEME_COLORS,
@@ -83,7 +83,7 @@ async def route_results(request: Request):
 
 
 @router.get('/operator')
-async def route_operator(request: Request):
+def route_operator(request: Request):
     sides      = int(state.settings.get('touchpad_sides', 1))
     split_step = 2 if sides == 1 else 1
     return render(request, 'operator.html',
@@ -92,13 +92,13 @@ async def route_operator(request: Request):
 
 
 @router.get('/console')
-async def route_console(request: Request):
+def route_console(request: Request):
     return render(request, 'console.html',
                   num_lanes=max(int(state.settings.get('num_lanes', 8)), 12))
 
 
 @router.get('/next_heats')
-async def route_next_heats(request: Request):
+def route_next_heats(request: Request):
     return render(request, 'next_heats.html',
                   theme_colors={**state.DEFAULT_THEME_COLORS,
                                 **state.settings.get('theme_colors', {})},
@@ -109,10 +109,10 @@ async def route_next_heats(request: Request):
 
 
 @router.get('/info')
-async def route_info(request: Request):
+def route_info(request: Request):
     return render(request, 'info.html')
 
 
 @router.get('/help')
-async def route_help(request: Request):
+def route_help(request: Request):
     return render(request, 'help.html')
