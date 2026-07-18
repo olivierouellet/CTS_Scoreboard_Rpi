@@ -103,7 +103,7 @@ class TestLenexParser:
 
     def test_swimmer_name(self):
         data = load_lenex(make_lxf(lenex2_xml(EVENTS_XML)))
-        assert data.start_list[1][1][3]['name'] == 'Smith Jane'
+        assert data.start_list[1][1][3]['name'] == 'Jane Smith'
 
     def test_swimmer_club(self):
         data = load_lenex(make_lxf(lenex2_xml(EVENTS_XML)))
@@ -112,7 +112,7 @@ class TestLenexParser:
 
     def test_multiple_heats(self):
         data = load_lenex(make_lxf(lenex2_xml(EVENTS_XML)))
-        assert data.start_list[1][2][4]['name'] == 'Tremblay Marc'
+        assert data.start_list[1][2][4]['name'] == 'Marc Tremblay'
 
     def test_lenex3_namespace_same_results(self):
         data2 = load_lenex(make_lxf(lenex2_xml(EVENTS_XML)))
@@ -143,7 +143,7 @@ class TestLenexParser:
           </EVENT>
         """
         data = load_lenex(make_lxf(lenex2_xml(events_xml)))
-        assert data.start_list[1][1][3]['name'] == 'Smith Jane'
+        assert data.start_list[1][1][3]['name'] == 'Jane Smith'
         assert data.start_list[1][1][3]['club'] == 'AQUA'
         assert data.start_list[1][1][3]['seed_time'] == '58.20'
-        assert data.start_list[1][2][5]['name'] == 'Tremblay Marc'
+        assert data.start_list[1][2][5]['name'] == 'Marc Tremblay'
