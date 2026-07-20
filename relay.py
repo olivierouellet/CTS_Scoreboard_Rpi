@@ -9,6 +9,7 @@ import base64
 import json
 import os
 import threading
+import time
 
 import state
 
@@ -186,9 +187,13 @@ def _serialise_start_list(sl):
 
 # ── Background thread ──────────────────────────────────────────────────────────
 
+_PING_EVERY = 20   # recv() timeout: heartbeat cadence when the link is idle
+_STALE      = 50   # no inbound (incl. pong) for this long => dead link, reconnect
+
+
 def _run():
-    global _client, _connected
-    from websocket import create_connection
+    global _client, _connected, _meet_id
+    from websocket import WebSocketTimeoutException, create_connection
 
     while not _stop.is_set():
         url = state.settings.get('cloud_relay_url', '').strip()
@@ -200,7 +205,7 @@ def _run():
         ws = None
         try:
             ws = create_connection(_ws_url(url), timeout=15)
-            ws.settimeout(None)             # block on recv once connected
+            ws.settimeout(_PING_EVERY)       # recv() unblocks so we can heartbeat
             ws.enable_multithreading = True  # guard concurrent send() from worker threads
 
             _send_raw(ws, 'register', {**_get_metadata(), 'key': key})
@@ -214,17 +219,32 @@ def _run():
 
             # Receive loop: the relay is mostly outbound, but recv() keeps the
             # thread alive, detects a server-side close, and handles 'rejected'.
+            # A heartbeat detects a silently-dead cloud link (mobile/proxy half-open)
+            # and reconnects instead of blocking forever with no updates flowing.
+            last_rx = time.time()
             while not _stop.is_set():
-                raw = ws.recv()
+                try:
+                    raw = ws.recv()
+                except WebSocketTimeoutException:
+                    if time.time() - last_rx > _STALE:
+                        print('[relay] no response from cloud — reconnecting', flush=True)
+                        break
+                    try:
+                        _send_raw(ws, 'ping', {})   # cloud replies 'pong'
+                    except Exception:
+                        break                        # send failed => link is dead
+                    continue
                 if not raw:
                     break
+                last_rx = time.time()
                 try:
                     obj = json.loads(raw)
                 except Exception:
                     continue
                 ev = obj.get('event')
-                if ev == 'registered':
-                    global _meet_id
+                if ev == 'pong':
+                    continue
+                elif ev == 'registered':
                     _meet_id = (obj.get('data') or {}).get('meet_id')
                 elif ev == 'rejected':
                     print(f'[relay] rejected: {obj.get("data", {}).get("reason")}', flush=True)

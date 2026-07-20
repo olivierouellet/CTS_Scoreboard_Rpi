@@ -1222,6 +1222,8 @@ async def ws_relay(ws: WebSocket):
                 await _forward(sid, event, data)
             elif event == 'reload':
                 await _on_relay_reload(sid)
+            elif event == 'ping':
+                await manager.send(ws, 'pong')
     except WebSocketDisconnect:
         pass
     finally:
