@@ -58,6 +58,15 @@ function tremplinSocket(path) {
             (handlers[event] = handlers[event] || []).push(cb);
             return api;
         },
+        off: function (event, cb) {
+            // No event -> drop everything; event only -> drop all its handlers;
+            // event + cb -> drop that one. Mirrors socket.io's client .off().
+            if (!event) handlers = {};
+            else if (!cb) delete handlers[event];
+            else if (handlers[event])
+                handlers[event] = handlers[event].filter(function (h) { return h !== cb; });
+            return api;
+        },
         once: function (event, cb) {
             var wrap = function (data) {
                 var list = handlers[event] || [];
