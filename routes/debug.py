@@ -327,6 +327,8 @@ async def ws_terminal(ws: WebSocket):
                 _terminal_input(d)
             elif ev == 'resize':
                 _terminal_resize(d)
+            elif ev == 'ping':
+                await bus.manager.send(ws, 'pong')
     except WebSocketDisconnect:
         pass
     finally:

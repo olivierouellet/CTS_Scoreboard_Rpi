@@ -1244,6 +1244,9 @@ async def ws_scoreboard(ws: WebSocket):
     try:
         while True:
             msg = await ws.receive_json()
+            if msg.get('event') == 'ping':
+                await manager.send(ws, 'pong')
+                continue
             if msg.get('event') != 'join_meet':
                 continue
             data = msg.get('data') or {}
@@ -1272,6 +1275,9 @@ async def ws_results(ws: WebSocket):
     try:
         while True:
             msg = await ws.receive_json()
+            if msg.get('event') == 'ping':
+                await manager.send(ws, 'pong')
+                continue
             if msg.get('event') != 'join_meet':
                 continue
             data = msg.get('data') or {}
@@ -1301,6 +1307,9 @@ async def ws_schedule(ws: WebSocket):
     try:
         while True:
             msg = await ws.receive_json()
+            if msg.get('event') == 'ping':
+                await manager.send(ws, 'pong')
+                continue
             if msg.get('event') != 'join_meet':
                 continue
             data = msg.get('data') or {}

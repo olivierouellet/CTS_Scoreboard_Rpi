@@ -129,6 +129,8 @@ async def ws_scoreboard(ws: WebSocket):
                     event_tuple = event_list[0] if event_list else (0, 0)
                 state._decoder.last_event_sent = event_tuple
                 send_event_info()
+            elif ev == 'ping':
+                await bus.manager.send(ws, 'pong')
     except WebSocketDisconnect:
         pass
     finally:
@@ -147,7 +149,9 @@ async def ws_results(ws: WebSocket):
                                                      num_lanes=int(state.settings.get('num_lanes', 6)))})
     try:
         while True:
-            await ws.receive_json()   # results is receive-only from the client
+            msg = await ws.receive_json()   # results is receive-only apart from heartbeat
+            if msg.get('event') == 'ping':
+                await bus.manager.send(ws, 'pong')
     except WebSocketDisconnect:
         pass
     finally:
@@ -161,7 +165,9 @@ async def ws_settings(ws: WebSocket):
         state.main_thread = bus.run_bg(main_thread_worker)
     try:
         while True:
-            await ws.receive_json()
+            msg = await ws.receive_json()
+            if msg.get('event') == 'ping':
+                await bus.manager.send(ws, 'pong')
     except WebSocketDisconnect:
         pass
     finally:
