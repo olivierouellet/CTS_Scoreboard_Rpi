@@ -269,6 +269,12 @@ main_thread         = None
 # single thread can nest calls freely.
 _decoder_lock = threading.RLock()
 
+# Lanes currently emitting lane_running=True. Consoles only send the running flag
+# on state changes (start/split/finish), streaming just the clock in between, so
+# the debounced board-wipe must consult this rather than the momentary packet to
+# avoid clearing a heat that is mid-race. Guarded by _decoder_lock.
+_running_lanes = set()
+
 in_speed = 1.0
 
 _update_in_progress    = False

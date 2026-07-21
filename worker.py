@@ -172,8 +172,9 @@ def _on_race_state_changed(now_finished, updates=None):
         def _reset_task(gen=state._finish_timer_gen):
             time.sleep(float(state.settings.get('reset_debounce', 1.0)))
             with state._decoder_lock:   # reset_lanes() mutates the decoder — don't race feed()
-                if state._finish_timer_gen != gen or state._decoder.race_finished():
-                    print('[race-state] reset skipped (transient un-finish suppressed)', flush=True)
+                if (state._finish_timer_gen != gen or state._decoder.race_finished()
+                        or state._running_lanes):
+                    print('[race-state] reset skipped (race active or transient un-finish)', flush=True)
                     return
                 print('[race-state] board reset (sustained re-start)', flush=True)
                 data = state._decoder.reset_lanes()
@@ -198,6 +199,14 @@ def _handle_packet(l):
         # are non-blocking (they only schedule the broadcast), so the lock is brief.
         with state._decoder_lock:
             updates = state._decoder.feed(list(l))
+
+            # Track which lanes are currently running (consoles only send the flag
+            # on transitions), so the debounced board-wipe never clears a live heat.
+            for ln in range(1, 13):
+                key = f'lane_running{ln}'
+                if key in updates:
+                    (state._running_lanes.add if updates[key]
+                     else state._running_lanes.discard)(ln)
 
             if updates.pop('dismiss_overlay', False):
                 _auto_dismiss_overlay()
@@ -377,5 +386,7 @@ def _restart_worker(session_path=None):
     state._test_session = session_path
     state._worker_stop  = True
     state._worker_gen  += 1
+    with state._decoder_lock:
+        state._running_lanes.clear()   # fresh session — no lanes carried over
     time.sleep(0.3)
     state.main_thread = bus.run_bg(main_thread_worker)
