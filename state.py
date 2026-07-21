@@ -283,15 +283,30 @@ def install_log_capture():
 
 update      = {}
 
+# The last results payload, published by the worker and read by the results-WS
+# connect handler and the relay. Always reassigned as a whole dict (never mutated
+# in place) so the rebind is an atomic swap — a reader gets the old or new dict
+# whole, never half-built. Keep it that way: build a new dict, don't mutate this.
 _last_results_snapshot      = {}
 _results_prev_race_finished = False
 
 _worker_stop        = False
+# Invalidation token: bumped to signal older worker loops to exit. Bumped with
+# `+= 1` from more than one thread (concurrent _restart_worker calls), which is a
+# non-atomic read-modify-write — a racing bump can be lost. That's deliberately
+# fine: only a *change* matters (it cancels loops holding an older gen), never the
+# exact value, and the counter only moves forward. Don't "fix" it with a lock.
 _worker_gen         = 0
 _test_session       = None
 _record_handle      = None
 _debug_serial       = False
 _serial_status      = {'state': 'idle', 'msg': ''}
+# Invalidation token for the finish/reset debounce. Bumped by the worker on every
+# finish/un-finish transition and by the meet-load handler to cancel pending tasks
+# across a meet change — so `+= 1` runs from two threads and a bump can be lost.
+# Benign for the same reason as _worker_gen: a debounced task only fires if the gen
+# it captured still matches, so any advance invalidates stale tasks; exactness is
+# irrelevant. No lock needed.
 _finish_timer_gen   = 0
 _scoreboard_clients = {}
 _test_meet_active   = False
