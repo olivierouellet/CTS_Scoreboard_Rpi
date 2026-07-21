@@ -119,15 +119,17 @@ async def ws_scoreboard(ws: WebSocket):
                 lane  = int(d.get('lane', 0))
                 delta = int(d.get('delta', 0))
                 if 1 <= lane <= 12 and delta != 0:
-                    new_val = state._decoder.adjust_splits(lane, delta)
+                    with state._decoder_lock:   # don't mutate the decoder under the worker
+                        new_val = state._decoder.adjust_splits(lane, delta)
                     bus.emit('/scoreboard', 'update_scoreboard', {f'lane_splits{lane}': new_val})
             elif ev == 'next_heat':
-                event_list = sorted(state.event_info.events.keys())
-                try:
-                    event_tuple = event_list[event_list.index(state._decoder.last_event_sent) + 1]
-                except Exception:
-                    event_tuple = event_list[0] if event_list else (0, 0)
-                state._decoder.last_event_sent = event_tuple
+                with state._decoder_lock:
+                    event_list = sorted(state.event_info.events.keys())
+                    try:
+                        event_tuple = event_list[event_list.index(state._decoder.last_event_sent) + 1]
+                    except Exception:
+                        event_tuple = event_list[0] if event_list else (0, 0)
+                    state._decoder.last_event_sent = event_tuple
                 send_event_info()
             elif ev == 'ping':
                 await bus.manager.send(ws, 'pong')

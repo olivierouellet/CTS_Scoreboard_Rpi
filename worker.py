@@ -171,11 +171,12 @@ def _on_race_state_changed(now_finished, updates=None):
         state._finish_timer_gen += 1
         def _reset_task(gen=state._finish_timer_gen):
             time.sleep(float(state.settings.get('reset_debounce', 1.0)))
-            if state._finish_timer_gen != gen or state._decoder.race_finished():
-                print('[race-state] reset skipped (transient un-finish suppressed)', flush=True)
-                return
-            print('[race-state] board reset (sustained re-start)', flush=True)
-            data = state._decoder.reset_lanes()
+            with state._decoder_lock:   # reset_lanes() mutates the decoder — don't race feed()
+                if state._finish_timer_gen != gen or state._decoder.race_finished():
+                    print('[race-state] reset skipped (transient un-finish suppressed)', flush=True)
+                    return
+                print('[race-state] board reset (sustained re-start)', flush=True)
+                data = state._decoder.reset_lanes()
             bus.emit('/scoreboard', 'update_scoreboard', data)
             relay.relay_emit('update_scoreboard', data)
         bus.run_bg(_reset_task)
@@ -192,29 +193,33 @@ def _handle_packet(l):
             state._record_handle.write(log_line)
 
     try:
-        updates = state._decoder.feed(list(l))
+        # Hold the decoder lock for the whole packet so a concurrent reset/split
+        # from another thread can't mutate lane state mid-update. The emits inside
+        # are non-blocking (they only schedule the broadcast), so the lock is brief.
+        with state._decoder_lock:
+            updates = state._decoder.feed(list(l))
 
-        if updates.pop('dismiss_overlay', False):
-            _auto_dismiss_overlay()
+            if updates.pop('dismiss_overlay', False):
+                _auto_dismiss_overlay()
 
-        if 'event_changed' in updates:
-            ev, ht = updates.pop('event_changed')
-            print(f'[event] Event {ev} Heat {ht}', flush=True)
-            _on_event_changed(updates, ev, ht)
+            if 'event_changed' in updates:
+                ev, ht = updates.pop('event_changed')
+                print(f'[event] Event {ev} Heat {ht}', flush=True)
+                _on_event_changed(updates, ev, ht)
 
-        _add_lane_deltas(updates)
-        state.update.update(updates)
+            _add_lane_deltas(updates)
+            state.update.update(updates)
 
-        _emit_scoreboard_update()
-        _on_race_state_changed(state._decoder.race_finished(), updates)
+            _emit_scoreboard_update()
+            _on_race_state_changed(state._decoder.race_finished(), updates)
 
-        if state._debug_serial and hex_str:
-            bus.emit('/settings', 'debug_line', {'hex': hex_str, 'text': _packet_summary(updates)})
+            if state._debug_serial and hex_str:
+                bus.emit('/settings', 'debug_line', {'hex': hex_str, 'text': _packet_summary(updates)})
 
     except Exception:
         traceback.print_exc()
     finally:
-        time.sleep(0)  # yield to gevent event loop after every packet
+        time.sleep(0)  # cheap yield after every packet
 
 
 # ── Session playback ───────────────────────────────────────────────────────────

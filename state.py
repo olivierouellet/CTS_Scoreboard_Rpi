@@ -6,6 +6,7 @@ import os
 import os.path
 import re
 import sys
+import threading
 
 import tomllib
 
@@ -260,6 +261,13 @@ _cols_hidden        = False
 _pty_fd             = None
 _pty_pid            = None
 main_thread         = None
+
+# Serializes all access to _decoder. Under Flask/gevent everything ran on one
+# cooperative thread; now the serial/playback worker, the finish/reset debounce
+# threads, and the WebSocket handlers all touch the decoder from real threads, so
+# feed()/reset_lanes()/adjust_splits() must not run concurrently. Re-entrant so a
+# single thread can nest calls freely.
+_decoder_lock = threading.RLock()
 
 in_speed = 1.0
 
