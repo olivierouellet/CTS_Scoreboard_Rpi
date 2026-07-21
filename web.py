@@ -65,7 +65,7 @@ def _globals():
         split_min_duration=float(state.settings.get('split_min_duration', 1.0)),
         pool_length=int(state.settings.get('pool_length', 25)),
         touchpad_sides=int(state.settings.get('touchpad_sides', 1)),
-        lenex_pool_length=int(state.lenex_meet_info.get('pool_length_lenex') or 0),
+        lenex_pool_length=int(state.meet.meet_info.get('pool_length_lenex') or 0),
         theme_colors={**state.DEFAULT_THEME_COLORS, **state.settings.get('theme_colors', {})},
         theme_fonts={**state.DEFAULT_THEME_FONTS,  **state.settings.get('theme_fonts',  {})},
     )

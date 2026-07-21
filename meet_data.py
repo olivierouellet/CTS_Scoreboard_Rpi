@@ -41,24 +41,27 @@ def delta_fields(finish_str, seed_str):
 
 
 def get_lane_seed_time(event_num, heat_num, lane):
+    m = state.meet
     try:
-        return state.lenex_start_list[event_num][heat_num][lane].get('seed_time', '')
+        return m.start_list[event_num][heat_num][lane].get('seed_time', '')
     except (KeyError, TypeError):
-        return state.event_info.get_seed_time(event_num, heat_num, lane)
+        return m.event_info.get_seed_time(event_num, heat_num, lane)
 
 
 def get_event_name_display(event_num):
-    raw = state.lenex_event_names.get(event_num) or state.event_info.get_event_name(event_num)
+    m = state.meet
+    raw = m.event_names.get(event_num) or m.event_info.get_event_name(event_num)
     return state.translate_event_name(raw, state.load_event_translations())
 
 
 def get_lane_parts(event_num, heat_num, lane):
     """Return (name, club) tuple for display."""
+    m = state.meet
     try:
-        entry = state.lenex_start_list[event_num][heat_num][lane]
+        entry = m.start_list[event_num][heat_num][lane]
         return entry['name'], (entry['club'] or '')
     except (KeyError, TypeError):
-        s = state.event_info.get_display_string(event_num, heat_num, lane)
+        s = m.event_info.get_display_string(event_num, heat_num, lane)
         if len(s) > 5 and s[4] == ' ':
             return s[5:], s[:4].strip()
         return '', s.strip()
@@ -67,7 +70,7 @@ def get_lane_parts(event_num, heat_num, lane):
 def get_lane_alt(event_num, heat_num, lane):
     """Return alternate display string for relay lanes (first names), else ''."""
     try:
-        entry    = state.lenex_start_list[event_num][heat_num][lane]
+        entry    = state.meet.start_list[event_num][heat_num][lane]
         swimmers = entry.get('swimmers', [])
         if not swimmers:
             return ''
@@ -77,11 +80,12 @@ def get_lane_alt(event_num, heat_num, lane):
 
 
 def _get_next_heats(after_event=0, after_heat=0, n=3, num_lanes=8):
-    if not state.lenex_start_list:
+    m = state.meet
+    if not m.start_list:
         return []
     ordered = [(ev, ht)
-               for ev in sorted(state.lenex_start_list)
-               for ht in sorted(state.lenex_start_list[ev])]
+               for ev in sorted(m.start_list)
+               for ht in sorted(m.start_list[ev])]
     start = 0
     if after_event:
         for i, (ev, ht) in enumerate(ordered):
@@ -90,7 +94,7 @@ def _get_next_heats(after_event=0, after_heat=0, n=3, num_lanes=8):
                 break
     result = []
     for ev, ht in ordered[start:start + n]:
-        lanes_data = state.lenex_start_list[ev][ht]
+        lanes_data = m.start_list[ev][ht]
         swimmers = []
         for ln in range(1, num_lanes + 1):
             if ln in lanes_data:
@@ -104,7 +108,7 @@ def _get_next_heats(after_event=0, after_heat=0, n=3, num_lanes=8):
             'event':      ev,
             'heat':       ht,
             'event_name': get_event_name_display(ev),
-            'time':       state.lenex_heat_times.get(ev, {}).get(ht, ''),
+            'time':       m.heat_times.get(ev, {}).get(ht, ''),
             'swimmers':   swimmers,
         })
     return result
@@ -156,33 +160,35 @@ def _build_results_snapshot():
 
 def _build_meet_data():
     """Normalize Lenex or Hytek data into a unified structure for meet/schedule views."""
-    if state.lenex_start_list:
+    m = state.meet
+    if m.start_list:
         ev_trans    = state.load_event_translations()
         event_names = {num: state.translate_event_name(name, ev_trans)
-                       for num, name in state.lenex_event_names.items()}
-        events_grouped = [(ev, sorted(state.lenex_start_list[ev]))
-                          for ev in sorted(state.lenex_start_list)]
+                       for num, name in m.event_names.items()}
+        events_grouped = [(ev, sorted(m.start_list[ev]))
+                          for ev in sorted(m.start_list)]
         return dict(events_grouped=events_grouped, event_names=event_names,
-                    start_list=state.lenex_start_list,
-                    heat_times=state.lenex_heat_times,
-                    meet_info=state.lenex_meet_info)
+                    start_list=m.start_list,
+                    heat_times=m.heat_times,
+                    meet_info=m.meet_info)
     else:
+        info = m.event_info
         by_ev = {}
-        for (ev, ht) in sorted(state.event_info.events.keys()):
+        for (ev, ht) in sorted(info.events.keys()):
             by_ev.setdefault(ev, []).append(ht)
         events_grouped = list(sorted(by_ev.items()))
         start_list = {}
-        for (ev, ht), lane_data in state.event_info.events.items():
+        for (ev, ht), lane_data in info.events.items():
             sl_ht = start_list.setdefault(ev, {}).setdefault(ht, {})
             for lane, display in lane_data.items():
                 if len(display) > 5 and display[4] == ' ':
                     name, club = display[5:], display[:4].strip()
                 else:
                     name, club = '', display.strip()
-                seed = state.event_info.seed_times.get((ev, ht), {}).get(lane, '')
+                seed = info.seed_times.get((ev, ht), {}).get(lane, '')
                 sl_ht[lane] = {'name': name, 'club': club, 'seed_time': seed, 'swimmers': []}
         return dict(events_grouped=events_grouped,
-                    event_names=dict(state.event_info.event_names),
+                    event_names=dict(info.event_names),
                     start_list=start_list, heat_times={}, meet_info={})
 
 

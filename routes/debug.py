@@ -68,22 +68,13 @@ def _test_play(name):
                         except Exception:
                             pass
                 if state._test_meet_active:
-                    state.lenex_event_names.clear()
-                    state.lenex_start_list.clear()
-                    state.lenex_heat_times.clear()
-                    state.lenex_meet_info.clear()
-                    state.lenex_event_distances.clear()
+                    state.clear_meet()
                     state._test_meet_active = False
                 if not state._active_meet_file:
                     try:
                         dest = os.path.join(state.MEET_FOLDER, os.path.basename(companion))
                         shutil.copy2(companion, dest)
-                        data = load_lenex(dest)
-                        state.lenex_event_names.update(data.event_names)
-                        state.lenex_start_list.update(data.start_list)
-                        state.lenex_heat_times.update(data.heat_times)
-                        state.lenex_meet_info.update(data.meet_info)
-                        state.lenex_event_distances.update(data.event_distances)
+                        state.set_lenex(load_lenex(dest))
                         send_event_info()
                         state._test_meet_active = True
                     except Exception as e:
@@ -125,14 +116,9 @@ def _test_meet_upload(file):
     save_upload(file, dest)
     try:
         if ext == '.csv':
-            state.event_info.load(dest)
+            state.load_event_info(dest)
         else:
-            data = load_lenex(dest)
-            state.lenex_event_names.update(data.event_names)
-            state.lenex_start_list.update(data.start_list)
-            state.lenex_heat_times.update(data.heat_times)
-            state.lenex_meet_info.update(data.meet_info)
-            state.lenex_event_distances.update(data.event_distances)
+            state.set_lenex(load_lenex(dest))
         send_event_info()
         state._test_meet_active = True
         return {'ok': True, 'name': os.path.basename(file.filename)}
@@ -218,7 +204,7 @@ def route_debug_seed_times():
     return {
         'lane_seed_times': state._decoder.lane_seed_times,
         'last_event_sent': state._decoder.last_event_sent,
-        'lenex_loaded':    bool(state.lenex_start_list),
+        'lenex_loaded':    bool(state.meet.start_list),
     }
 
 

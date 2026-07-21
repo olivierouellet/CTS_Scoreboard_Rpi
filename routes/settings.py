@@ -43,26 +43,17 @@ def _render_home_icon(name):
 
 def _load_meet_file(path):
     """Clear current meet state and load *path* (Lenex or Hytek). Returns error string or None."""
-    state.event_info.clear()
-    state.lenex_event_names.clear()
-    state.lenex_start_list.clear()
-    state.lenex_heat_times.clear()
-    state.lenex_meet_info.clear()
-    state.lenex_event_distances.clear()
+    state.clear_meet()
     state._last_results_snapshot      = {}
     state._results_prev_race_finished = False
     state._finish_timer_gen          += 1
     try:
         if path.endswith('.csv'):
-            state.event_info.load(path)
+            state.load_event_info(path)
         else:
-            data = load_lenex(path)
-            state.lenex_event_names.update(data.event_names)
-            state.lenex_start_list.update(data.start_list)
-            state.lenex_heat_times.update(data.heat_times)
-            state.lenex_meet_info.update(data.meet_info)
-            state.lenex_event_distances.update(data.event_distances)
+            state.set_lenex(load_lenex(path))
     except Exception:
+        state.clear_meet()
         return traceback.format_exc()
     state._active_meet_file = os.path.basename(path)
     state.settings['last_meet_file'] = state._active_meet_file
@@ -179,12 +170,7 @@ def _settings_view(request, form):
                         return PlainTextResponse(err)
                     modified = True
             elif state._active_meet_file:
-                state.event_info.clear()
-                state.lenex_event_names.clear()
-                state.lenex_start_list.clear()
-                state.lenex_heat_times.clear()
-                state.lenex_meet_info.clear()
-                state.lenex_event_distances.clear()
+                state.clear_meet()
                 state._active_meet_file = ''
                 state.settings['last_meet_file'] = ''
                 send_event_info()
@@ -548,7 +534,7 @@ def route_picker_image():
 @router.get('/manifest.json')
 def route_manifest():
     app_title = (state.settings.get('app_window_title') or
-                 state.lenex_meet_info.get('name') or
+                 state.meet.meet_info.get('name') or
                  state.settings.get('meet_title') or 'Tremplin')
     icons = ([
         {'src': '/home_icon',     'sizes': '192x192', 'type': 'image/png'},

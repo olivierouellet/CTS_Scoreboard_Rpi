@@ -131,13 +131,52 @@ settings = {
 }
 
 # ── Meet data ──────────────────────────────────────────────────────────────────
+# The loaded meet (the LENEX dicts + the Hytek parser) lives in a single immutable
+# snapshot, `meet`. Publishing a new meet swaps that one reference — atomic in
+# CPython — so a reader on another thread (the worker mid-race, the relay) never
+# sees a half-updated dict. Read it as `state.meet.start_list`,
+# `state.meet.event_info`, …; a function that touches several fields should pin the
+# snapshot once (`m = state.meet`) so it sees a consistent view even if a swap lands
+# mid-read. Writers must go through set_lenex / load_event_info / clear_meet — the
+# published snapshot is never mutated in place.
 
-event_info            = HytekParser()
-lenex_event_names     = {}
-lenex_start_list      = {}
-lenex_heat_times      = {}
-lenex_meet_info       = {}
-lenex_event_distances = {}
+class _Meet:
+    __slots__ = ('event_names', 'start_list', 'heat_times', 'meet_info',
+                 'event_distances', 'event_info')
+
+    def __init__(self, event_names=None, start_list=None, heat_times=None,
+                 meet_info=None, event_distances=None, event_info=None):
+        self.event_names     = event_names     or {}
+        self.start_list      = start_list      or {}
+        self.heat_times      = heat_times      or {}
+        self.meet_info       = meet_info       or {}
+        self.event_distances = event_distances or {}
+        self.event_info      = event_info if event_info is not None else HytekParser()
+
+
+meet = _Meet()
+
+
+def set_lenex(data):
+    """Publish a LENEX meet atomically (from a parsers.lenex_parser result)."""
+    global meet
+    meet = _Meet(event_names=data.event_names, start_list=data.start_list,
+                 heat_times=data.heat_times, meet_info=data.meet_info,
+                 event_distances=data.event_distances)
+
+
+def load_event_info(path):
+    """Load a Hytek CSV into a fresh parser and publish it atomically."""
+    global meet
+    p = HytekParser()
+    p.load(path)
+    meet = _Meet(event_info=p)
+
+
+def clear_meet():
+    """Drop the loaded meet atomically."""
+    global meet
+    meet = _Meet()
 
 # Cloud-appearance overrides that travel per meet (not Pi-global). Keyed by
 # meet_uid() in settings['meet_profiles']; the active values are mirrored into
@@ -176,7 +215,7 @@ def meet_uid():
     Otherwise (Hytek CSV, no sessions) falls back to the loaded file name.
     Returns '' when nothing is loaded.
     """
-    return uid_from_meet_info(lenex_meet_info, _active_meet_file)
+    return uid_from_meet_info(meet.meet_info, _active_meet_file)
 
 
 def apply_meet_profile(uid):
@@ -466,18 +505,13 @@ def load_settings():
     csv_files = glob.glob(os.path.join(MEET_FOLDER, '*.csv'))
     if csv_files:
         try:
-            event_info.load(max(csv_files, key=os.path.getmtime))
+            load_event_info(max(csv_files, key=os.path.getmtime))
         except Exception:
             pass
     lxf_files = glob.glob(os.path.join(MEET_FOLDER, '*.lxf'))
     if lxf_files:
         try:
-            data = load_lenex(max(lxf_files, key=os.path.getmtime))
-            lenex_event_names.update(data.event_names)
-            lenex_start_list.update(data.start_list)
-            lenex_heat_times.update(data.heat_times)
-            lenex_meet_info.update(data.meet_info)
-            lenex_event_distances.update(data.event_distances)
+            set_lenex(load_lenex(max(lxf_files, key=os.path.getmtime)))
         except Exception:
             pass
     _decoder.configure(settings)

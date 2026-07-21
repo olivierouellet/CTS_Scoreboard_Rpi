@@ -40,6 +40,7 @@ def _send_raw(ws, event, data):
 # ── Meet metadata ──────────────────────────────────────────────────────────────
 
 def _get_metadata():
+    meet_info = state.meet.meet_info
     flat_labels = dict(state.load_locale(style=state.settings.get('cloud_label_style', 'short')))
     # Add UI strings the cloud templates need
     for key in ('waiting_results', 'no_upcoming', 'no_schedule'):
@@ -48,8 +49,8 @@ def _get_metadata():
             flat_labels[key] = val
 
     meta = {
-        'name':     state.settings.get('cloud_meet_title') or state.settings.get('meet_title') or state.lenex_meet_info.get('name', ''),
-        'location': state.lenex_meet_info.get('city')  or state.settings.get('meet_location', ''),
+        'name':     state.settings.get('cloud_meet_title') or state.settings.get('meet_title') or meet_info.get('name', ''),
+        'location': meet_info.get('city')  or state.settings.get('meet_location', ''),
         'sport':    state.settings.get('meet_sport', ''),
         'app_window_title': state.settings.get('app_window_title', ''),
         'meet_date': _last_session_date(),
@@ -90,7 +91,7 @@ def _last_session_date():
     LENEX dates are ISO-formatted, so a lexical max is also the chronological max.
     The cloud uses this to expire a retained meet the day after its final session.
     """
-    dates = [s.get('date', '') for s in state.lenex_meet_info.get('sessions', [])]
+    dates = [s.get('date', '') for s in state.meet.meet_info.get('sessions', [])]
     dates = [d for d in dates if d]
     return max(dates) if dates else ''
 
@@ -150,7 +151,8 @@ def send_schedule(client=None):
     _client is not yet assigned at that point and relay_emit would silently drop.
     """
     from meet_data import _build_meet_data
-    if not (state.lenex_start_list or state.event_info.events):
+    m = state.meet
+    if not (m.start_list or m.event_info.events):
         return
     try:
         md = _build_meet_data()

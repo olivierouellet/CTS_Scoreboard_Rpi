@@ -31,12 +31,7 @@ def _cleanup_test_meet():
             os.remove(f)
         except Exception:
             pass
-    state.event_info.clear()
-    state.lenex_event_names.clear()
-    state.lenex_start_list.clear()
-    state.lenex_heat_times.clear()
-    state.lenex_meet_info.clear()
-    state.lenex_event_distances.clear()
+    state.clear_meet()
     state._test_meet_active = False
     send_event_info()
 
@@ -54,10 +49,11 @@ def _list_sessions():
 # ── Packet handler helpers ─────────────────────────────────────────────────────
 
 def _on_event_changed(updates, ev, ht):
+    m = state.meet
     updates['event_name'] = get_event_name_display(ev)
-    updates['heat_time']  = state.lenex_heat_times.get(ev, {}).get(ht, '')
+    updates['heat_time']  = m.heat_times.get(ev, {}).get(ht, '')
     pool_len = int(state.settings.get('pool_length', 25))
-    dist     = state.lenex_event_distances.get(ev, 0)
+    dist     = m.event_distances.get(ev, 0)
     updates['expected_splits'] = (dist // pool_len) if (dist and pool_len) else 0
     seed_times = {}
     for i in range(1, 13):
@@ -203,7 +199,7 @@ def _worker_adjust_splits(lane, delta):
 
 
 def _worker_next_heat():
-    event_list = sorted(state.event_info.events.keys())
+    event_list = sorted(state.meet.event_info.events.keys())
     try:
         event_tuple = event_list[event_list.index(state._decoder.last_event_sent) + 1]
     except Exception:

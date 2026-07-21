@@ -65,7 +65,7 @@ def route_schedule(request: Request):
                 'lanes':      lanes_out,
             })
 
-    meet_name = (state.lenex_meet_info.get('name') or
+    meet_name = (state.meet.meet_info.get('name') or
                  state.settings.get('meet_title') or '')
 
     return render(request, 'schedule.html',
@@ -92,7 +92,7 @@ def route_search_suggestions(request: Request):
 
     swimmers = {}
     clubs    = set()
-    for ev_heats in state.lenex_start_list.values():
+    for ev_heats in state.meet.start_list.values():
         for heat_lanes in ev_heats.values():
             for entry in heat_lanes.values():
                 club = entry.get('club', '')
@@ -150,12 +150,7 @@ def route_meet_delete(request: Request):
         if os.path.isfile(filepath):
             os.remove(filepath)
             if state._active_meet_file == filename:
-                state.event_info.clear()
-                state.lenex_event_names.clear()
-                state.lenex_start_list.clear()
-                state.lenex_heat_times.clear()
-                state.lenex_meet_info.clear()
-                state.lenex_event_distances.clear()
+                state.clear_meet()
                 state._active_meet_file = ''
                 state._active_meet_uid  = ''
                 state.settings['last_meet_file'] = ''
@@ -172,12 +167,7 @@ def route_meet_clear():
     for f in glob.glob(os.path.join(state.MEET_FOLDER, '*.csv')) + \
              glob.glob(os.path.join(state.MEET_FOLDER, '*.lxf')):
         os.remove(f)
-    state.event_info.clear()
-    state.lenex_event_names.clear()
-    state.lenex_start_list.clear()
-    state.lenex_heat_times.clear()
-    state.lenex_meet_info.clear()
-    state.lenex_event_distances.clear()
+    state.clear_meet()
     state._active_meet_file = ''
     state._active_meet_uid  = ''
     state.settings['last_meet_file'] = ''
