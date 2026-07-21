@@ -4,9 +4,9 @@ import hashlib
 import json
 import os
 import os.path
+import queue
 import re
 import sys
-import threading
 
 import tomllib
 
@@ -262,17 +262,17 @@ _pty_fd             = None
 _pty_pid            = None
 main_thread         = None
 
-# Serializes all access to _decoder. Under Flask/gevent everything ran on one
-# cooperative thread; now the serial/playback worker, the finish/reset debounce
-# threads, and the WebSocket handlers all touch the decoder from real threads, so
-# feed()/reset_lanes()/adjust_splits() must not run concurrently. Re-entrant so a
-# single thread can nest calls freely.
-_decoder_lock = threading.RLock()
+# The decoder is owned by a single thread — the serial/playback worker. Other
+# threads that need a decoder operation (WS adjust_splits/next_heat, the reset
+# debounce) post a callable here instead of calling the decoder directly; the
+# worker drains this queue between packets. So the decoder is never touched
+# concurrently and needs no lock. See worker._drain_cmds and its command handlers.
+_worker_cmds = queue.Queue()
 
-# Lanes currently emitting lane_running=True. Consoles only send the running flag
-# on state changes (start/split/finish), streaming just the clock in between, so
-# the debounced board-wipe must consult this rather than the momentary packet to
-# avoid clearing a heat that is mid-race. Guarded by _decoder_lock.
+# Lanes currently emitting lane_running=True — worker-thread state. Consoles only
+# send the running flag on transitions (start/split/finish), streaming just the
+# clock in between, so the debounced board-wipe must consult this rather than the
+# momentary packet to avoid clearing a heat that is mid-race.
 _running_lanes = set()
 
 in_speed = 1.0

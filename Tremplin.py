@@ -15,7 +15,7 @@ import bus
 import state
 from meet_data import _get_next_heats, send_event_info
 from web import NotAuthenticated, render, templates
-from worker import main_thread_worker
+from worker import _worker_adjust_splits, _worker_next_heat, main_thread_worker
 
 from routes.scoreboard import router as scoreboard_router
 from routes.meet       import router as meet_router
@@ -119,18 +119,10 @@ async def ws_scoreboard(ws: WebSocket):
                 lane  = int(d.get('lane', 0))
                 delta = int(d.get('delta', 0))
                 if 1 <= lane <= 12 and delta != 0:
-                    with state._decoder_lock:   # don't mutate the decoder under the worker
-                        new_val = state._decoder.adjust_splits(lane, delta)
-                    bus.emit('/scoreboard', 'update_scoreboard', {f'lane_splits{lane}': new_val})
+                    # Hand decoder work to the worker (its sole owner) — see worker.py.
+                    state._worker_cmds.put(lambda l=lane, dl=delta: _worker_adjust_splits(l, dl))
             elif ev == 'next_heat':
-                with state._decoder_lock:
-                    event_list = sorted(state.event_info.events.keys())
-                    try:
-                        event_tuple = event_list[event_list.index(state._decoder.last_event_sent) + 1]
-                    except Exception:
-                        event_tuple = event_list[0] if event_list else (0, 0)
-                    state._decoder.last_event_sent = event_tuple
-                send_event_info()
+                state._worker_cmds.put(_worker_next_heat)
             elif ev == 'ping':
                 await bus.manager.send(ws, 'pong')
     except WebSocketDisconnect:

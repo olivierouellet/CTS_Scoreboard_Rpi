@@ -1,5 +1,6 @@
 import glob
 import os
+import queue
 import re
 import time
 import traceback
@@ -171,18 +172,56 @@ def _on_race_state_changed(now_finished, updates=None):
         state._finish_timer_gen += 1
         def _reset_task(gen=state._finish_timer_gen):
             time.sleep(float(state.settings.get('reset_debounce', 1.0)))
-            with state._decoder_lock:   # reset_lanes() mutates the decoder — don't race feed()
-                if (state._finish_timer_gen != gen or state._decoder.race_finished()
-                        or state._running_lanes):
-                    print('[race-state] reset skipped (race active or transient un-finish)', flush=True)
-                    return
-                print('[race-state] board reset (sustained re-start)', flush=True)
-                data = state._decoder.reset_lanes()
-            bus.emit('/scoreboard', 'update_scoreboard', data)
-            relay.relay_emit('update_scoreboard', data)
+            # Hand the wipe to the worker so it runs on the decoder-owning thread.
+            state._worker_cmds.put(lambda g=gen: _do_board_reset(g))
         bus.run_bg(_reset_task)
 
     state._results_prev_race_finished = now_finished
+
+
+# ── Worker command queue ───────────────────────────────────────────────────────
+# Operations that must touch the decoder but originate on another thread (the WS
+# adjust_splits/next_heat handlers, the reset debounce) are posted to
+# state._worker_cmds and executed here, on the decoder-owning worker thread, so the
+# decoder is never accessed concurrently — no lock required.
+
+def _drain_cmds():
+    while True:
+        try:
+            cmd = state._worker_cmds.get_nowait()
+        except queue.Empty:
+            return
+        try:
+            cmd()
+        except Exception:
+            traceback.print_exc()
+
+
+def _worker_adjust_splits(lane, delta):
+    new_val = state._decoder.adjust_splits(lane, delta)
+    bus.emit('/scoreboard', 'update_scoreboard', {f'lane_splits{lane}': new_val})
+
+
+def _worker_next_heat():
+    event_list = sorted(state.event_info.events.keys())
+    try:
+        event_tuple = event_list[event_list.index(state._decoder.last_event_sent) + 1]
+    except Exception:
+        event_tuple = event_list[0] if event_list else (0, 0)
+    state._decoder.last_event_sent = event_tuple
+    send_event_info()
+
+
+def _do_board_reset(gen):
+    """Board wipe on a genuine re-start; runs on the worker (the decoder owner)."""
+    if (state._finish_timer_gen != gen or state._decoder.race_finished()
+            or state._running_lanes):
+        print('[race-state] reset skipped (race active or transient un-finish)', flush=True)
+        return
+    print('[race-state] board reset (sustained re-start)', flush=True)
+    data = state._decoder.reset_lanes()
+    bus.emit('/scoreboard', 'update_scoreboard', data)
+    relay.relay_emit('update_scoreboard', data)
 
 
 def _handle_packet(l):
@@ -194,36 +233,37 @@ def _handle_packet(l):
             state._record_handle.write(log_line)
 
     try:
-        # Hold the decoder lock for the whole packet so a concurrent reset/split
-        # from another thread can't mutate lane state mid-update. The emits inside
-        # are non-blocking (they only schedule the broadcast), so the lock is brief.
-        with state._decoder_lock:
-            updates = state._decoder.feed(list(l))
+        # Run any queued commands (adjust_splits / next_heat / board-reset) here,
+        # on the decoder-owning thread, before feeding the new packet — so nothing
+        # else ever touches the decoder concurrently. No lock needed.
+        _drain_cmds()
 
-            # Track which lanes are currently running (consoles only send the flag
-            # on transitions), so the debounced board-wipe never clears a live heat.
-            for ln in range(1, 13):
-                key = f'lane_running{ln}'
-                if key in updates:
-                    (state._running_lanes.add if updates[key]
-                     else state._running_lanes.discard)(ln)
+        updates = state._decoder.feed(list(l))
 
-            if updates.pop('dismiss_overlay', False):
-                _auto_dismiss_overlay()
+        # Track which lanes are currently running (consoles only send the flag on
+        # transitions), so the debounced board-wipe never clears a live heat.
+        for ln in range(1, 13):
+            key = f'lane_running{ln}'
+            if key in updates:
+                (state._running_lanes.add if updates[key]
+                 else state._running_lanes.discard)(ln)
 
-            if 'event_changed' in updates:
-                ev, ht = updates.pop('event_changed')
-                print(f'[event] Event {ev} Heat {ht}', flush=True)
-                _on_event_changed(updates, ev, ht)
+        if updates.pop('dismiss_overlay', False):
+            _auto_dismiss_overlay()
 
-            _add_lane_deltas(updates)
-            state.update.update(updates)
+        if 'event_changed' in updates:
+            ev, ht = updates.pop('event_changed')
+            print(f'[event] Event {ev} Heat {ht}', flush=True)
+            _on_event_changed(updates, ev, ht)
 
-            _emit_scoreboard_update()
-            _on_race_state_changed(state._decoder.race_finished(), updates)
+        _add_lane_deltas(updates)
+        state.update.update(updates)
 
-            if state._debug_serial and hex_str:
-                bus.emit('/settings', 'debug_line', {'hex': hex_str, 'text': _packet_summary(updates)})
+        _emit_scoreboard_update()
+        _on_race_state_changed(state._decoder.race_finished(), updates)
+
+        if state._debug_serial and hex_str:
+            bus.emit('/settings', 'debug_line', {'hex': hex_str, 'text': _packet_summary(updates)})
 
     except Exception:
         traceback.print_exc()
@@ -280,6 +320,7 @@ def _play_cts_file(session_file):
                 else:
                     delay = ts - state.in_speed * time.time() - start_time
                     if delay > 0:
+                        _drain_cmds()   # process queued commands between events
                         time.sleep(delay)
                 continue
             l = _ingest_byte(int(d.group(2), 16), l)
@@ -350,6 +391,7 @@ def _run_live_serial():
                         if l and (time.time() - last_byte_time) >= 0.05:
                             _handle_packet(l)
                             l = []
+                        _drain_cmds()   # process queued commands while idle
                         time.sleep(0.01)
 
         except (serial.SerialException, OSError) as e:
@@ -371,6 +413,12 @@ def _run_live_serial():
 
 def main_thread_worker():
     state._worker_stop = False
+    state._running_lanes.clear()            # fresh worker — no lanes carried over
+    while not state._worker_cmds.empty():   # drop stale commands from a prior session
+        try:
+            state._worker_cmds.get_nowait()
+        except queue.Empty:
+            break
     my_gen = state._worker_gen
     try:
         if state._test_session:
@@ -386,7 +434,5 @@ def _restart_worker(session_path=None):
     state._test_session = session_path
     state._worker_stop  = True
     state._worker_gen  += 1
-    with state._decoder_lock:
-        state._running_lanes.clear()   # fresh session — no lanes carried over
     time.sleep(0.3)
     state.main_thread = bus.run_bg(main_thread_worker)
