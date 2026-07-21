@@ -516,6 +516,21 @@ def load_settings():
             pass
     _decoder.configure(settings)
 
+
+def save_settings():
+    """Persist the settings dict to disk atomically.
+
+    Serialize a top-level snapshot to a string first (so a concurrent write
+    from another handler thread can't corrupt the output mid-dump), then write
+    a temp file and os.replace it into place — a crash or power loss mid-write
+    (a real risk on the Pi) can't leave a truncated settings.json.
+    """
+    data = json.dumps(dict(settings), sort_keys=True, indent=4)
+    tmp = settings_file + '.tmp'
+    with open(tmp, 'wt') as f:
+        f.write(data)
+    os.replace(tmp, settings_file)
+
 # ── Decoder (initialized after settings dict is defined) ──────────────────────
 
 _decoder = make_decoder(settings.get('console_type', 'cts_gen6'), settings)

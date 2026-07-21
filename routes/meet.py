@@ -154,8 +154,7 @@ def route_meet_delete(request: Request):
                 state._active_meet_file = ''
                 state._active_meet_uid  = ''
                 state.settings['last_meet_file'] = ''
-                with open(state.settings_file, 'wt') as f:
-                    json.dump(state.settings, f, sort_keys=True, indent=4)
+                state.save_settings()
                 send_event_info()
                 import relay as _relay
                 _relay.update_metadata()
@@ -171,8 +170,7 @@ def route_meet_clear():
     state._active_meet_file = ''
     state._active_meet_uid  = ''
     state.settings['last_meet_file'] = ''
-    with open(state.settings_file, 'wt') as f:
-        json.dump(state.settings, f, sort_keys=True, indent=4)
+    state.save_settings()
     send_event_info()
     import relay as _relay
     _relay.update_metadata()

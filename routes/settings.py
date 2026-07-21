@@ -61,8 +61,7 @@ def _load_meet_file(path):
     # the Meet tab and the cloud publish reflect the loaded meet, not the last one.
     state._active_meet_uid = state.meet_uid()
     _render_home_icon(state.apply_meet_profile(state._active_meet_uid))
-    with open(state.settings_file, 'wt') as f:
-        json.dump(state.settings, f, sort_keys=True, indent=4)
+    state.save_settings()
     send_event_info()
     relay.update_metadata()   # re-register under the new meet_uid before the schedule
     relay.send_schedule()
@@ -414,8 +413,7 @@ def _settings_view(request, form):
                     modified = True
 
         if modified:
-            with open(state.settings_file, 'wt') as f:
-                json.dump(state.settings, f, sort_keys=True, indent=4)
+            state.save_settings()
             if 'display_settings_submit' in form or 'theme_update_submit' in form:
                 bus.emit('/scoreboard', 'reload')
                 bus.emit('/results', 'reload')

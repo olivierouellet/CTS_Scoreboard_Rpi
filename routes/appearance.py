@@ -1,5 +1,4 @@
 import glob
-import json
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -29,8 +28,7 @@ def route_splash_delete():
         if os.path.isfile(path):
             os.remove(path)
         state.settings['splash_url'] = ''
-        with open(state.settings_file, 'wt') as f:
-            json.dump(state.settings, f, sort_keys=True, indent=4)
+        state.save_settings()
     return redirect('/settings#tab-display')
 
 
@@ -41,8 +39,7 @@ def route_splash_delete_all():
         if os.path.isfile(fp):
             os.remove(fp)
     state.settings['splash_url'] = ''
-    with open(state.settings_file, 'wt') as f:
-        json.dump(state.settings, f, sort_keys=True, indent=4)
+    state.save_settings()
     return redirect('/settings#tab-display')
 
 
@@ -59,8 +56,7 @@ def route_icon_delete(request: Request):
                     os.remove(p)
             state.settings['active_home_icon'] = ''
             state.save_meet_profile(state._active_meet_uid)
-            with open(state.settings_file, 'wt') as f:
-                json.dump(state.settings, f, sort_keys=True, indent=4)
+            state.save_settings()
             relay.update_metadata()
     return redirect('/settings#tab-meet')
 
@@ -74,8 +70,7 @@ def route_icon_delete_all():
                 os.remove(fp)
     state.settings['active_home_icon'] = ''
     state.save_meet_profile(state._active_meet_uid)
-    with open(state.settings_file, 'wt') as f:
-        json.dump(state.settings, f, sort_keys=True, indent=4)
+    state.save_settings()
     relay.update_metadata()
     return redirect('/settings#tab-meet')
 
@@ -87,8 +82,7 @@ def route_locale_delete():
     if os.path.isfile(path):
         os.remove(path)
     state.settings['locale'] = 'fr'
-    with open(state.settings_file, 'wt') as f:
-        json.dump(state.settings, f, sort_keys=True, indent=4)
+    state.save_settings()
     return redirect('/settings')
 
 
@@ -102,8 +96,7 @@ def route_locale_delete_all():
                      for p in glob.glob(os.path.join('locales', '*.toml'))]
     if state.settings.get('locale') not in builtin_codes:
         state.settings['locale'] = 'fr'
-    with open(state.settings_file, 'wt') as f:
-        json.dump(state.settings, f, sort_keys=True, indent=4)
+    state.save_settings()
     return redirect('/settings')
 
 
@@ -117,8 +110,7 @@ def route_theme_delete():
     colors, fonts = state.load_theme('default')
     state.settings['theme_colors'] = colors
     state.settings['theme_fonts']  = fonts
-    with open(state.settings_file, 'wt') as f:
-        json.dump(state.settings, f, sort_keys=True, indent=4)
+    state.save_settings()
     bus.emit('/scoreboard', 'reload')
     bus.emit('/results', 'reload')
     relay.relay_emit('reload', {})
@@ -133,8 +125,7 @@ def route_theme_delete_all():
     colors, fonts = state.load_theme('default')
     state.settings['theme_colors'] = colors
     state.settings['theme_fonts']  = fonts
-    with open(state.settings_file, 'wt') as f:
-        json.dump(state.settings, f, sort_keys=True, indent=4)
+    state.save_settings()
     bus.emit('/scoreboard', 'reload')
     bus.emit('/results', 'reload')
     relay.relay_emit('reload', {})
@@ -151,8 +142,7 @@ def route_picker_image_delete(request: Request):
         if state.settings.get('active_picker_image') == filename:
             state.settings['active_picker_image'] = ''
             state.save_meet_profile(state._active_meet_uid)
-            with open(state.settings_file, 'wt') as f:
-                json.dump(state.settings, f, sort_keys=True, indent=4)
+            state.save_settings()
             relay.update_metadata()
     return redirect('/settings#tab-meet')
 
@@ -166,7 +156,6 @@ def route_picker_image_delete_all():
                 os.remove(fp)
     state.settings['active_picker_image'] = ''
     state.save_meet_profile(state._active_meet_uid)
-    with open(state.settings_file, 'wt') as f:
-        json.dump(state.settings, f, sort_keys=True, indent=4)
+    state.save_settings()
     relay.update_metadata()
     return redirect('/settings#tab-meet')

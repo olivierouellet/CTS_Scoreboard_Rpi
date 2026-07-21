@@ -203,6 +203,9 @@ def _eth_ip_set(ip_str, prefix_str):
 
 
 @router.get('/clients', dependencies=[Depends(require_login)])
-def route_clients():
-    # Browser tabs connected to the scoreboard WebSocket, shown in the Network tab
+async def route_clients():
+    # Browser tabs connected to the scoreboard WebSocket, shown in the Network tab.
+    # async so it runs on the event loop — the same context that mutates
+    # _scoreboard_clients (the WS connect/disconnect handlers) — so this snapshot
+    # can't be preempted mid-iteration by a connect/disconnect.
     return {'clients': list(state._scoreboard_clients.values())}
