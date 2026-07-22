@@ -17,6 +17,7 @@ import json
 import os
 import secrets
 import sqlite3
+import tempfile
 import threading
 import tomllib
 import urllib.request
@@ -183,19 +184,53 @@ def _load_retained():
 _retained = _load_retained()
 
 
-def _save_retained():
+def _dump_retained_locked():
+    """Serialize the retained store to a JSON string. Call under _lock so the
+    snapshot is consistent; the string can then be written off-loop."""
+    return json.dumps(_retained, indent=2)
+
+
+def _write_retained_bytes(blob):
+    """Write an already-serialized retained store to disk, atomically.
+
+    Blocking (disk I/O) — from an async loop handler call it via
+    run_in_threadpool so the event loop keeps broadcasting. No lock needed: the
+    snapshot was taken under _lock by _dump_retained_locked(). See
+    info/async_architecture.md ("Keeping the cloud lock cheap")."""
     os.makedirs(DATA_DIR, exist_ok=True)
-    with open(MEETS_FILE, 'w') as f:
-        json.dump(_retained, f, indent=2)
+    fd, tmp = tempfile.mkstemp(dir=DATA_DIR, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(blob)
+        os.replace(tmp, MEETS_FILE)   # atomic — no torn file on crash
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
-def _persist_meet(meet_id, meet):
-    """Write-through a live meet into the retained store. Caller holds _lock."""
+def _save_retained():
+    """Serialize + write in one blocking step. Caller holds _lock; used by the
+    sync threadpool paths. The async loop paths snapshot under the lock then
+    write off-loop (_dump_retained_locked + run_in_threadpool) instead."""
+    _write_retained_bytes(_dump_retained_locked())
+
+
+def _persist_meet_mem(meet_id, meet):
+    """In-memory write-through of a live meet into the retained store — no disk.
+    Caller holds _lock."""
     snap = _retained.get(meet_id, {})
     snap.update({k: meet.get(k) for k in _RETAINED_FIELDS})
     snap['last_seen']   = datetime.datetime.now().isoformat(timespec='seconds')
     snap['expires_at']  = None   # live — never expires while connected
     _retained[meet_id] = snap
+
+
+def _persist_meet(meet_id, meet):
+    """In-memory write-through + blocking disk flush. Caller holds _lock."""
+    _persist_meet_mem(meet_id, meet)
     _save_retained()
 
 
@@ -223,8 +258,9 @@ def _meet_id_for(key, meet_uid):
     return hashlib.sha256(f'{key}:{meet_uid}'.encode()).hexdigest()[:11]
 
 
-def _retire_locked(meet_id):
-    """Move a live meet into the retained store with an expiry. Caller holds _lock."""
+def _retire_mem(meet_id):
+    """Move a live meet into the retained store with an expiry, in memory only —
+    no disk. Caller holds _lock."""
     meet = _meets.pop(meet_id, None)
     if not meet:
         return
@@ -233,6 +269,11 @@ def _retire_locked(meet_id):
     snap['last_seen']  = datetime.datetime.now().isoformat(timespec='seconds')
     snap['expires_at'] = _compute_expiry(meet.get('meet_date', '')).isoformat(timespec='seconds')
     _retained[meet_id] = snap
+
+
+def _retire_locked(meet_id):
+    """In-memory retire + blocking disk flush. Caller holds _lock."""
+    _retire_mem(meet_id)
     _save_retained()
 
 
@@ -1123,12 +1164,12 @@ async def _on_relay_register(ws, sid, data):
             keys[key]['meet_id'] = meet_id
             _save_keys(keys)
 
-    with _lock:
+    with _lock:                                   # fast: in-memory + serialize
         # If this socket was publishing a different meet (operator switched
         # LENEX files), retire it so it stays available as schedule-only.
         prev_id = _relay_sids.get(sid)
         if prev_id and prev_id != meet_id:
-            _retire_locked(prev_id)
+            _retire_mem(prev_id)
 
         prev = _meets.get(meet_id, {})          # already-live data (settings re-register)
         snap = _retained.get(meet_id, {})        # persisted snapshot (fresh reconnect)
@@ -1151,7 +1192,9 @@ async def _on_relay_register(ws, sid, data):
             'schedule_data':    prev.get('schedule_data') or snap.get('schedule_data', {}),
         }
         _relay_sids[sid] = meet_id
-        _persist_meet(meet_id, _meets[meet_id])
+        _persist_meet_mem(meet_id, _meets[meet_id])
+        blob = _dump_retained_locked()
+    await run_in_threadpool(_write_retained_bytes, blob)   # slow: off the loop
 
     await manager.send(ws, 'registered', {'meet_id': meet_id})
     await _emit_meet_live(meet_id, True)
@@ -1193,8 +1236,10 @@ async def _forward(sid, event, data):
         await manager.broadcast(_ch('results', meet_id), event, data)
     elif event == 'schedule_snapshot':
         meet['schedule_data'] = data
-        with _lock:
-            _persist_meet(meet_id, meet)
+        with _lock:                               # fast: in-memory + serialize
+            _persist_meet_mem(meet_id, meet)
+            blob = _dump_retained_locked()
+        await run_in_threadpool(_write_retained_bytes, blob)   # slow: off the loop
         await manager.broadcast(_ch('schedule', meet_id), 'schedule_update')
 
 
