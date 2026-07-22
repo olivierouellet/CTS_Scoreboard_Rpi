@@ -281,14 +281,14 @@ def _ingest_byte(c, l):
     return l
 
 
-def _play_cap_file(session_file):
-    """Loop-play a binary .cap capture until the worker is stopped."""
+def _play_cap_file(session_file, my_gen):
+    """Loop-play a binary .cap capture until the worker is superseded."""
     raw_bytes = open(session_file, 'rb').read()
     delay = 0.0
-    while not state._worker_stop:
+    while state._worker_gen == my_gen:
         l = []
         for byte in raw_bytes:
-            if state._worker_stop:
+            if state._worker_gen != my_gen:
                 break
             l = _ingest_byte(byte, l)
             delay += 1 / 720.0
@@ -297,17 +297,17 @@ def _play_cap_file(session_file):
                 time.sleep(0.1)
 
 
-def _play_cts_file(session_file):
+def _play_cts_file(session_file, my_gen):
     """Play a timestamped or looping .cts/.raw session file."""
     text           = open(session_file, 'rt').read()
     has_timestamps = bool(re.search(r'\[[0-9.]+\]', text))
     start_time     = None
     delay          = 0.0
 
-    while not state._worker_stop:
+    while state._worker_gen == my_gen:
         l = []
         for d in re.finditer(r'\[([0-9.]+)\]\s*|([0-9a-fA-F]{2})', text):
-            if state._worker_stop:
+            if state._worker_gen != my_gen:
                 break
             if d.group(1):
                 ts = float(d.group(1))
@@ -329,14 +329,14 @@ def _play_cts_file(session_file):
             break
 
 
-def _run_test_session(session_file):
+def _run_test_session(session_file, my_gen):
     """Play a recorded session file, then emit cleanup events if it finishes naturally."""
     if session_file.endswith('.cap'):
-        _play_cap_file(session_file)
+        _play_cap_file(session_file, my_gen)
     else:
-        _play_cts_file(session_file)
+        _play_cts_file(session_file, my_gen)
 
-    if state._worker_stop:
+    if state._worker_gen != my_gen:   # superseded — the new worker owns cleanup
         return
     state._test_session = None
     _cleanup_test_meet()
@@ -344,15 +344,15 @@ def _run_test_session(session_file):
     bus.emit('/settings', 'test_status', {})
 
 
-def _run_live_serial():
-    """Read from the configured serial port until the worker is stopped, retrying on error."""
+def _run_live_serial(my_gen):
+    """Read from the configured serial port until superseded, retrying on error."""
     def _set_serial_status(st, msg=''):
         state._serial_status = {'state': st, 'msg': msg}
         bus.emit('/settings', 'serial_log', {'state': st, 'msg': msg})
 
     port = state.settings['serial_port']
 
-    while not state._worker_stop:
+    while state._worker_gen == my_gen:
         cfg = state._decoder.serial_config
         _PARITY = {'N': serial.PARITY_NONE, 'E': serial.PARITY_EVEN, 'O': serial.PARITY_ODD}
         _STOPBITS = {1: serial.STOPBITS_ONE, 2: serial.STOPBITS_TWO}
@@ -375,7 +375,7 @@ def _run_live_serial():
                 _set_serial_status('open', f'Connected: {port}')
                 l = []
                 last_byte_time = time.time()
-                while not state._worker_stop:
+                while state._worker_gen == my_gen:
                     c = f.read(1)
                     if c:
                         # Accumulate bytes; _ingest_byte flushes completed packets.
@@ -396,7 +396,7 @@ def _run_live_serial():
             print(f'Serial port error: {err}')
             _set_serial_status('error', err)
             for _ in range(50):
-                if state._worker_stop:
+                if state._worker_gen != my_gen:
                     break
                 time.sleep(0.1)
             continue  # retry the outer while loop (re-open the port)
@@ -408,7 +408,6 @@ def _run_live_serial():
 # ── Worker lifecycle ───────────────────────────────────────────────────────────
 
 def main_thread_worker():
-    state._worker_stop = False
     state._running_lanes.clear()            # fresh worker — no lanes carried over
     while not state._worker_cmds.empty():   # drop stale commands from a prior session
         try:
@@ -418,9 +417,9 @@ def main_thread_worker():
     my_gen = state._worker_gen
     try:
         if state._test_session:
-            _run_test_session(state._test_session)
+            _run_test_session(state._test_session, my_gen)
         else:
-            _run_live_serial()
+            _run_live_serial(my_gen)
     finally:
         if state._worker_gen == my_gen:
             state.main_thread = None
@@ -428,7 +427,6 @@ def main_thread_worker():
 
 def _restart_worker(session_path=None):
     state._test_session = session_path
-    state._worker_stop  = True
-    state._worker_gen  += 1
+    state._worker_gen  += 1   # supersede the current worker (see state._worker_gen)
     time.sleep(0.3)
     state.main_thread = bus.run_bg(main_thread_worker)

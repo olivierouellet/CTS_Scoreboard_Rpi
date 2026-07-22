@@ -290,12 +290,15 @@ update      = {}
 _last_results_snapshot      = {}
 _results_prev_race_finished = False
 
-_worker_stop        = False
-# Invalidation token: bumped to signal older worker loops to exit. Bumped with
-# `+= 1` from more than one thread (concurrent _restart_worker calls), which is a
-# non-atomic read-modify-write — a racing bump can be lost. That's deliberately
-# fine: only a *change* matters (it cancels loops holding an older gen), never the
-# exact value, and the counter only moves forward. Don't "fix" it with a lock.
+# The worker's stop signal. Each worker captures my_gen = _worker_gen at start and
+# runs while _worker_gen == my_gen; _restart_worker bumps it to stop the current
+# worker. It must be a monotonic token, NOT a resettable bool: a superseded worker
+# blocked in a long playback sleep could miss a bool that the new worker flips back,
+# then keep feeding the decoder — two owners at once. A gen it captured can never be
+# un-seen. Bumped with `+= 1` from more than one thread (concurrent _restart_worker
+# calls), a non-atomic read-modify-write whose lost updates are harmless: only a
+# *change* matters (it stops workers holding an older gen), never the exact value,
+# and it only moves forward. Don't "fix" that with a lock.
 _worker_gen         = 0
 _test_session       = None
 _record_handle      = None
