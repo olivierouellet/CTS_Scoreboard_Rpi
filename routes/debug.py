@@ -178,8 +178,12 @@ async def route_test_session_upload(request: Request):
     if file and (file.filename.endswith('.cts') or
                  file.filename.endswith('.raw') or
                  file.filename.endswith('.cap')):
-        save_upload(file, os.path.join(state.CUSTOM_SESSIONS_FOLDER,
-                                       os.path.basename(file.filename)))
+        # Writing the upload is blocking — run it off the event loop so live
+        # scoreboard broadcasts keep flowing (a .cap can be large).
+        await run_in_threadpool(
+            save_upload, file,
+            os.path.join(state.CUSTOM_SESSIONS_FOLDER,
+                         os.path.basename(file.filename)))
     return redirect('/settings')
 
 
