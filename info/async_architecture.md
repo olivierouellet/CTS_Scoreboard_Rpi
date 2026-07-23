@@ -90,24 +90,50 @@ the loop and the pool. (The instinct "async app ⇒ asyncio.Lock" is a trap here
 
 **Keeping the cloud lock cheap.** A `threading.Lock` taken *on the loop* blocks the
 whole loop until it's free, so a critical section must be short and must not do I/O.
-Almost all of them are just in-memory dict reads/updates (microseconds). The
-exception is the retained-meets file: writing it is disk I/O, and doing that under
-the lock on the loop stalled every spectator. So the persist paths (relay
-`register` and `schedule_snapshot`) follow **snapshot-under-lock, write-off-loop**:
+Almost all of them are just in-memory dict reads/updates (microseconds). The one
+place that broke this rule was persisting the retained-meets store — fixed next.
+
+**Scaling the cloud persistence (per-meet files).** `_retained` keeps each meet's
+record so a meet keeps showing after its relay disconnects. Two things made the naive
+design fall over at ~30 live meets:
+
+- each record embeds big blobs — the base64 **logo + background image** (pushed up by
+  the relay's `register`) and the **full start list** (`schedule_data`);
+- it was persisted as one file, re-serialized *whole* on every write.
+
+So every `register` (each reconnect) and every `schedule_snapshot` did a `json.dumps`
+of *all 30 meets* — tens of MB — **on the loop, under the lock** (~100 ms+), then
+rewrote the entire file (one meet changing rewrote all). The fix has two parts:
+
+1. **Per-meet files.** Each meet is `retained/<id>.json` (metadata), so a persist
+   serializes and writes only the meet that changed. (`<id>` is validated against
+   `_ID_RE`, so a relay- or backup-supplied id can't escape the directory.)
+2. **Blobs kept out of the metadata.** Images and the schedule live in their own files
+   (`<id>.icon`, `<id>.picker`, `<id>.schedule.json`) and are rewritten only by the
+   event that changes them (`register` → images, `schedule_snapshot` → schedule),
+   never on an unrelated persist. The metadata JSON stays a few KB.
+
+In memory `_retained[meet_id]` still holds the *whole* record (blobs reassembled on
+load), so every read/serve route is unchanged — only load and save changed. Combined
+with **snapshot-under-lock, write-off-loop**, a persist holds the lock only long
+enough to shallow-copy one small record; the serialize + atomic (temp-file +
+`os.replace`) write happen on a threadpool thread while the loop keeps broadcasting:
 
 ```python
-with _lock:                                 # fast: mutate memory + serialize
-    _persist_meet_mem(meet_id, meet)        # in-memory only, no disk
-    blob = _dump_retained_locked()          # consistent JSON snapshot
-await run_in_threadpool(_write_retained_bytes, blob)   # slow disk write, off the loop
+with _lock:                                  # fast: in-memory only
+    _persist_meet_mem(meet_id, meet)
+    rec = _record_copy_locked(meet_id)       # shallow copy of one record
+await run_in_threadpool(_write_meet_files, meet_id, rec, write_schedule, write_images)
 ```
 
-The lock is held only long enough to update the dict and serialize a consistent
-snapshot; the actual (atomic, temp-file + `os.replace`) write happens on a
-threadpool thread while the loop keeps broadcasting. It's the same idea as the local
-server's snapshot swap, applied to a file instead of an object. (A few rare
-*admin*-only writes — key/meet restore, `_on_relay_disconnect`'s retire — still
-flush inline; they're infrequent enough not to matter.)
+It's the same idea as the local server's snapshot swap, applied to files. (Rare
+*admin*-only writes — key/meet restore, `set_expiry`, `_on_relay_disconnect`'s retire
+— flush inline, but each now touches a single small per-meet file, so they're cheap.)
+
+**Known remaining on-loop write:** analytics logs each spectator join with an
+`INSERT` + `commit` under `_analytics_lock`, still on the loop — fine for steady
+churn, but a reconnect storm across many meets would serialize the commits. Batching
+or offloading it is the next scaling step if analytics is enabled at scale.
 
 ### Diagram
 

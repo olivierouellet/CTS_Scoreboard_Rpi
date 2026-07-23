@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sqlite3
 import tempfile
@@ -33,7 +34,8 @@ from starlette.concurrency import run_in_threadpool
 DATA_DIR    = os.environ.get('DATA_DIR', '/data')
 KEYS_FILE   = os.path.join(DATA_DIR, 'keys.json')
 CREDS_FILE  = os.path.join(DATA_DIR, 'credentials.json')
-MEETS_FILE  = os.path.join(DATA_DIR, 'meets.json')
+MEETS_FILE  = os.path.join(DATA_DIR, 'meets.json')   # legacy single-file store (migrated on load)
+RETAINED_DIR = os.path.join(DATA_DIR, 'retained')    # per-meet files: <id>.json + blobs
 ANALYTICS_FILE = os.path.join(DATA_DIR, 'analytics.db')
 _HERE       = os.path.dirname(__file__)
 LOCALES_DIR = os.path.join(_HERE, 'locales')
@@ -170,39 +172,33 @@ _lock       = threading.Lock()
 _RETAINED_FIELDS = ('organizer', 'relay_key', 'name', 'location', 'sport',
                     'app_window_title', 'meet_date', 'settings', 'schedule_data')
 
+# The retained store is persisted as one small metadata file per meet plus
+# separate files for the big fields — so a persist writes only the meet that
+# changed (not all 30), and the base64 logo/background and the full start list
+# never sit in the metadata JSON that gets rewritten on every register. In memory
+# `_retained[meet_id]` still holds the whole record (images + schedule),
+# reassembled on load, so every read/serve route is unchanged. Files per meet:
+#   <id>.json            metadata + settings MINUS the two *_b64 images
+#   <id>.schedule.json   schedule_data (start list)
+#   <id>.icon / .picker  the home-icon / picker-image base64 strings
+# See info/async_architecture.md ("Scaling the cloud persistence").
+_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')   # meet id -> safe filename
+
 
 # ── Retained meets (persistence) ───────────────────────────────────────────────
 
-def _load_retained():
-    try:
-        with open(MEETS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+def _meet_file(meet_id, suffix):
+    return os.path.join(RETAINED_DIR, meet_id + suffix)
 
 
-_retained = _load_retained()
-
-
-def _dump_retained_locked():
-    """Serialize the retained store to a JSON string. Call under _lock so the
-    snapshot is consistent; the string can then be written off-loop."""
-    return json.dumps(_retained, indent=2)
-
-
-def _write_retained_bytes(blob):
-    """Write an already-serialized retained store to disk, atomically.
-
-    Blocking (disk I/O) — from an async loop handler call it via
-    run_in_threadpool so the event loop keeps broadcasting. No lock needed: the
-    snapshot was taken under _lock by _dump_retained_locked(). See
-    info/async_architecture.md ("Keeping the cloud lock cheap")."""
-    os.makedirs(DATA_DIR, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=DATA_DIR, suffix='.tmp')
+def _atomic_write(path, text):
+    """Write text to path atomically (temp file + os.replace). Blocking I/O."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix='.tmp')
     try:
         with os.fdopen(fd, 'w') as f:
-            f.write(blob)
-        os.replace(tmp, MEETS_FILE)   # atomic — no torn file on crash
+            f.write(text)
+        os.replace(tmp, path)   # atomic — no torn file on crash
     except BaseException:
         try:
             os.remove(tmp)
@@ -211,11 +207,110 @@ def _write_retained_bytes(blob):
         raise
 
 
-def _save_retained():
-    """Serialize + write in one blocking step. Caller holds _lock; used by the
-    sync threadpool paths. The async loop paths snapshot under the lock then
-    write off-loop (_dump_retained_locked + run_in_threadpool) instead."""
-    _write_retained_bytes(_dump_retained_locked())
+def _write_blob(path, text):
+    """Write a blob file, or remove it when the value is empty."""
+    if text:
+        _atomic_write(path, text)
+    elif os.path.exists(path):
+        os.remove(path)
+
+
+def _split_record(rec):
+    """Split a full retained record into (meta, schedule, icon_b64, picker_b64).
+
+    `meta` is a shallow copy safe to serialize — the big fields are pulled out of
+    it, not out of the shared record."""
+    meta     = dict(rec)
+    schedule = meta.pop('schedule_data', None)
+    settings = dict(meta.get('settings') or {})
+    icon     = settings.pop('home_icon_b64', '')
+    picker   = settings.pop('picker_image_b64', '')
+    meta['settings'] = settings
+    return meta, schedule, icon, picker
+
+
+def _write_meet_files(meet_id, rec, write_schedule, write_images):
+    """Persist one meet's per-file record. Blocking (disk I/O) — call off the
+    loop. The metadata file is always written; the big blobs only when the event
+    that changed them asks (register -> images, schedule_snapshot -> schedule), so
+    an unchanged blob isn't rewritten on every reconnect."""
+    if not _ID_RE.match(meet_id or ''):
+        return
+    meta, schedule, icon, picker = _split_record(rec)
+    _atomic_write(_meet_file(meet_id, '.json'), json.dumps(meta, indent=2))
+    if write_schedule:
+        _write_blob(_meet_file(meet_id, '.schedule.json'),
+                    json.dumps(schedule) if schedule else '')
+    if write_images:
+        _write_blob(_meet_file(meet_id, '.icon'),   icon)
+        _write_blob(_meet_file(meet_id, '.picker'), picker)
+
+
+def _delete_meet_files(meet_id):
+    if not _ID_RE.match(meet_id or ''):
+        return
+    for suffix in ('.json', '.schedule.json', '.icon', '.picker'):
+        try:
+            os.remove(_meet_file(meet_id, suffix))
+        except OSError:
+            pass
+
+
+def _rewrite_all_retained(snapshot):
+    """Wipe the retained dir and rewrite it from `snapshot` (the restore path)."""
+    for p in glob.glob(os.path.join(RETAINED_DIR, '*')):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    for mid, rec in snapshot.items():
+        _write_meet_files(mid, rec, True, True)
+
+
+def _load_retained():
+    """Load every per-meet file back into one in-memory dict of full records."""
+    os.makedirs(RETAINED_DIR, exist_ok=True)
+    # One-time migration from the legacy single-file meets.json.
+    if os.path.exists(MEETS_FILE):
+        try:
+            with open(MEETS_FILE) as f:
+                legacy = json.load(f)
+            for mid, rec in legacy.items():
+                _write_meet_files(mid, rec, True, True)
+            os.replace(MEETS_FILE, MEETS_FILE + '.migrated')
+        except (json.JSONDecodeError, OSError):
+            pass
+    store = {}
+    for path in glob.glob(os.path.join(RETAINED_DIR, '*.json')):
+        if path.endswith('.schedule.json'):
+            continue
+        mid = os.path.basename(path)[:-len('.json')]
+        try:
+            with open(path) as f:
+                rec = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
+        sp = _meet_file(mid, '.schedule.json')
+        if os.path.exists(sp):
+            try:
+                with open(sp) as f:
+                    rec['schedule_data'] = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        settings = rec.setdefault('settings', {})
+        for suffix, field in (('.icon', 'home_icon_b64'), ('.picker', 'picker_image_b64')):
+            bp = _meet_file(mid, suffix)
+            if os.path.exists(bp):
+                try:
+                    with open(bp) as f:
+                        settings[field] = f.read()
+                except OSError:
+                    pass
+        store[mid] = rec
+    return store
+
+
+_retained = _load_retained()
 
 
 def _persist_meet_mem(meet_id, meet):
@@ -228,10 +323,11 @@ def _persist_meet_mem(meet_id, meet):
     _retained[meet_id] = snap
 
 
-def _persist_meet(meet_id, meet):
-    """In-memory write-through + blocking disk flush. Caller holds _lock."""
-    _persist_meet_mem(meet_id, meet)
-    _save_retained()
+def _record_copy_locked(meet_id):
+    """Shallow copy of a retained record, to serialize off the lock. Its big
+    fields (settings, schedule_data) are rebound wholesale, never mutated in
+    place, so sharing their references with the writer thread is safe."""
+    return dict(_retained[meet_id])
 
 
 def _compute_expiry(meet_date, when=None):
@@ -272,25 +368,29 @@ def _retire_mem(meet_id):
 
 
 def _retire_locked(meet_id):
-    """In-memory retire + blocking disk flush. Caller holds _lock."""
+    """In-memory retire + a small metadata flush. Caller holds _lock.
+
+    Only the metadata changed (expires_at/last_seen); the schedule/image blobs on
+    disk stay as written while live, so the retired meet still renders them."""
     _retire_mem(meet_id)
-    _save_retained()
+    if meet_id in _retained:
+        _write_meet_files(meet_id, _retained[meet_id], False, False)
 
 
 def _sweep_expired():
     """Drop retained meets past their expiry. Live meets are never swept."""
-    now     = datetime.datetime.now()
-    removed = False
+    now = datetime.datetime.now()
     with _lock:
+        expired = []
         for meet_id in list(_retained):
             if meet_id in _meets:
                 continue  # still connected — keep visible regardless of expiry
             exp = _retained[meet_id].get('expires_at')
             if exp and datetime.datetime.fromisoformat(exp) <= now:
                 del _retained[meet_id]
-                removed = True
-        if removed:
-            _save_retained()
+                expired.append(meet_id)
+    for meet_id in expired:
+        _delete_meet_files(meet_id)
 
 
 def _get_meet(meet_id):
@@ -932,7 +1032,8 @@ async def route_restore_meets(request: Request):
             # re-persist themselves on disconnect, so they're never lost.
             _retained.clear()
             _retained.update(meets)
-            _save_retained()
+            snapshot = {mid: dict(rec) for mid, rec in _retained.items()}
+        await run_in_threadpool(_rewrite_all_retained, snapshot)
         return {'ok': True, 'count': len(meets)}
     except (json.JSONDecodeError, ValueError) as e:
         return Response(json.dumps({'error': f'Invalid file: {e}'}),
@@ -1073,19 +1174,24 @@ async def route_admin(request: Request):
             meet_id = form.get('meet_id', '')
             raw     = form.get('expires_at', '').strip()
             with _lock:
+                rec = None
                 if meet_id in _retained and meet_id not in _meets and raw:
                     try:
                         exp = datetime.datetime.fromisoformat(raw)
                         _retained[meet_id]['expires_at'] = exp.isoformat(timespec='seconds')
-                        _save_retained()
+                        rec = _record_copy_locked(meet_id)
                     except ValueError:
                         pass
+            if rec is not None:
+                _write_meet_files(meet_id, rec, False, False)   # metadata only
         elif action == 'delete_meet':
             meet_id = form.get('meet_id', '')
             with _lock:
-                if meet_id in _retained and meet_id not in _meets:
+                gone = meet_id in _retained and meet_id not in _meets
+                if gone:
                     del _retained[meet_id]
-                    _save_retained()
+            if gone:
+                _delete_meet_files(meet_id)
         elif action == 'set_analytics':
             creds = _load_creds()
             creds['analytics_enabled'] = form.get('analytics_enabled') == '1'
@@ -1164,12 +1270,14 @@ async def _on_relay_register(ws, sid, data):
             keys[key]['meet_id'] = meet_id
             _save_keys(keys)
 
-    with _lock:                                   # fast: in-memory + serialize
+    with _lock:                                   # fast: in-memory only
         # If this socket was publishing a different meet (operator switched
         # LENEX files), retire it so it stays available as schedule-only.
-        prev_id = _relay_sids.get(sid)
+        prev_id  = _relay_sids.get(sid)
+        prev_rec = None
         if prev_id and prev_id != meet_id:
             _retire_mem(prev_id)
+            prev_rec = _record_copy_locked(prev_id) if prev_id in _retained else None
 
         prev = _meets.get(meet_id, {})          # already-live data (settings re-register)
         snap = _retained.get(meet_id, {})        # persisted snapshot (fresh reconnect)
@@ -1193,8 +1301,12 @@ async def _on_relay_register(ws, sid, data):
         }
         _relay_sids[sid] = meet_id
         _persist_meet_mem(meet_id, _meets[meet_id])
-        blob = _dump_retained_locked()
-    await run_in_threadpool(_write_retained_bytes, blob)   # slow: off the loop
+        rec = _record_copy_locked(meet_id)
+    # Off the loop: write this meet's files (metadata + schedule + images); and
+    # the retired meet's metadata, if this register displaced one.
+    await run_in_threadpool(_write_meet_files, meet_id, rec, True, True)
+    if prev_rec is not None:
+        await run_in_threadpool(_write_meet_files, prev_id, prev_rec, False, False)
 
     await manager.send(ws, 'registered', {'meet_id': meet_id})
     await _emit_meet_live(meet_id, True)
@@ -1236,10 +1348,11 @@ async def _forward(sid, event, data):
         await manager.broadcast(_ch('results', meet_id), event, data)
     elif event == 'schedule_snapshot':
         meet['schedule_data'] = data
-        with _lock:                               # fast: in-memory + serialize
+        with _lock:                               # fast: in-memory only
             _persist_meet_mem(meet_id, meet)
-            blob = _dump_retained_locked()
-        await run_in_threadpool(_write_retained_bytes, blob)   # slow: off the loop
+            rec = _record_copy_locked(meet_id)
+        # Off the loop: metadata + the (changed) schedule; images are untouched.
+        await run_in_threadpool(_write_meet_files, meet_id, rec, True, False)
         await manager.broadcast(_ch('schedule', meet_id), 'schedule_update')
 
 
