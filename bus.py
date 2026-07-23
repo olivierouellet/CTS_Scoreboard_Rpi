@@ -46,15 +46,19 @@ class ConnectionManager:
 
     async def broadcast(self, channel, event, data=None):
         """Send one frame to every socket in a channel; drop any that fail."""
+        targets = list(self.channels.get(channel, ()))
+        if not targets:
+            return
         frame = {'event': event, 'data': data}
-        dead = []
-        for ws in list(self.channels.get(channel, ())):
-            try:
-                await ws.send_json(frame)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.disconnect(ws, channel)
+        # Send to every client concurrently so one slow/backed-up socket (a phone
+        # on flaky venue Wi-Fi) can't delay the rest — including the on-site kiosk,
+        # which shares this channel and streams the running-time clock. Still one
+        # loop: this overlaps the sends' I/O waits, it is not parallelism.
+        results = await asyncio.gather(*(ws.send_json(frame) for ws in targets),
+                                       return_exceptions=True)
+        for ws, result in zip(targets, results):
+            if isinstance(result, Exception):
+                self.disconnect(ws, channel)
 
 
 manager = ConnectionManager()
