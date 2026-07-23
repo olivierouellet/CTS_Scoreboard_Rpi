@@ -111,7 +111,10 @@ async def lifespan(app):
             await flush_task
         except asyncio.CancelledError:
             pass
-        await run_in_threadpool(_flush_analytics)   # persist anything still queued
+        try:
+            await run_in_threadpool(_flush_analytics)   # persist anything still queued
+        except Exception:
+            pass                                        # don't let a failed drain error shutdown
 
 
 app = FastAPI(lifespan=lifespan)
@@ -592,7 +595,12 @@ async def _analytics_flush_loop():
     """Periodically flush queued analytics joins to the DB, off the event loop."""
     while True:
         await asyncio.sleep(_ANALYTICS_FLUSH_SECS)
-        await run_in_threadpool(_flush_analytics)
+        try:
+            await run_in_threadpool(_flush_analytics)
+        except Exception as e:
+            # A transient DB error (locked, disk full) must not kill the loop —
+            # that would stop all future flushes and grow the queue unbounded.
+            print(f'[cloud] analytics flush failed: {e}', flush=True)
 
 
 def _attendee_count(meet_id, since_ts):
