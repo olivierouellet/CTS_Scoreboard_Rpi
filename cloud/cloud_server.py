@@ -28,7 +28,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import (Depends, FastAPI, HTTPException, Request, WebSocket,
                      WebSocketDisconnect)
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
@@ -1006,8 +1006,7 @@ def route_backup_keys():
 async def route_restore_keys(request: Request):
     uploaded = (await request.form()).get('keys_file')
     if not uploaded:
-        return Response(json.dumps({'error': 'No file provided'}),
-                        status_code=400, media_type='application/json')
+        return JSONResponse({'error': 'No file provided'}, status_code=400)
     try:
         data = json.loads(await uploaded.read())
         if not isinstance(data, dict):
@@ -1029,11 +1028,9 @@ async def route_restore_keys(request: Request):
             await run_in_threadpool(_save_creds, creds)
         return {'ok': True, 'count': len(keys)}
     except (json.JSONDecodeError, ValueError) as e:
-        return Response(json.dumps({'error': f'Invalid file: {e}'}),
-                        status_code=400, media_type='application/json')
+        return JSONResponse({'error': f'Invalid file: {e}'}, status_code=400)
     except Exception as e:
-        return Response(json.dumps({'error': str(e)}),
-                        status_code=500, media_type='application/json')
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
 @app.get('/admin/backup/meets', dependencies=[Depends(require_admin)])
@@ -1051,8 +1048,7 @@ def route_backup_meets():
 async def route_restore_meets(request: Request):
     uploaded = (await request.form()).get('meets_file')
     if not uploaded:
-        return Response(json.dumps({'error': 'No file provided'}),
-                        status_code=400, media_type='application/json')
+        return JSONResponse({'error': 'No file provided'}, status_code=400)
     try:
         data = json.loads(await uploaded.read())
         if not isinstance(data, dict):
@@ -1069,11 +1065,9 @@ async def route_restore_meets(request: Request):
         await run_in_threadpool(_rewrite_all_retained, snapshot)
         return {'ok': True, 'count': len(meets)}
     except (json.JSONDecodeError, ValueError) as e:
-        return Response(json.dumps({'error': f'Invalid file: {e}'}),
-                        status_code=400, media_type='application/json')
+        return JSONResponse({'error': f'Invalid file: {e}'}, status_code=400)
     except Exception as e:
-        return Response(json.dumps({'error': str(e)}),
-                        status_code=500, media_type='application/json')
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
 @app.post('/admin/update', dependencies=[Depends(require_admin)])
@@ -1088,8 +1082,7 @@ def _trigger_update(version):
     url    = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not url or not secret:
-        return Response(json.dumps({'error': 'Deploy webhook not configured'}),
-                        status_code=503, media_type='application/json')
+        return JSONResponse({'error': 'Deploy webhook not configured'}, status_code=503)
     try:
         body = json.dumps({'version': version}).encode()
         req = urllib.request.Request(url, data=body, method='POST')
@@ -1098,11 +1091,9 @@ def _trigger_update(version):
         with urllib.request.urlopen(req, timeout=5) as resp:
             if resp.status == 200:
                 return {'status': 'started'}
-            return Response(json.dumps({'error': f'webhook {resp.status}'}),
-                            status_code=502, media_type='application/json')
+            return JSONResponse({'error': f'webhook {resp.status}'}, status_code=502)
     except Exception as e:
-        return Response(json.dumps({'error': str(e)}),
-                        status_code=502, media_type='application/json')
+        return JSONResponse({'error': str(e)}, status_code=502)
 
 
 @app.get('/admin/update_log', dependencies=[Depends(require_admin)])
@@ -1127,8 +1118,7 @@ def route_logs(request: Request):
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
-        return Response(json.dumps({'ok': False, 'error': 'not configured'}),
-                        status_code=503, media_type='application/json')
+        return JSONResponse({'ok': False, 'error': 'not configured'}, status_code=503)
 
     source = request.query_params.get('source', 'app')
     tail   = request.query_params.get('tail', '300')
@@ -1139,8 +1129,7 @@ def route_logs(request: Request):
         with urllib.request.urlopen(req, timeout=15) as resp:
             return Response(resp.read(), media_type='application/json')
     except Exception as e:
-        return Response(json.dumps({'ok': False, 'error': str(e)}),
-                        status_code=502, media_type='application/json')
+        return JSONResponse({'ok': False, 'error': str(e)}, status_code=502)
 
 
 @app.get('/admin/versions', dependencies=[Depends(require_admin)])
@@ -1148,8 +1137,7 @@ def route_versions():
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
-        return Response(json.dumps({'ok': False, 'error': 'not configured'}),
-                        status_code=503, media_type='application/json')
+        return JSONResponse({'ok': False, 'error': 'not configured'}, status_code=503)
 
     versions_url = webhook_url.rsplit('/', 1)[0] + '/versions'
     try:
@@ -1158,8 +1146,7 @@ def route_versions():
         with urllib.request.urlopen(req, timeout=15) as resp:
             return Response(resp.read(), media_type='application/json')
     except Exception as e:
-        return Response(json.dumps({'ok': False, 'error': str(e)}),
-                        status_code=502, media_type='application/json')
+        return JSONResponse({'ok': False, 'error': str(e)}, status_code=502)
 
 
 @app.get('/admin/stats', dependencies=[Depends(require_admin)])
