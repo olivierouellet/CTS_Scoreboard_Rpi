@@ -130,10 +130,16 @@ It's the same idea as the local server's snapshot swap, applied to files. (Rare
 *admin*-only writes — key/meet restore, `set_expiry`, `_on_relay_disconnect`'s retire
 — flush inline, but each now touches a single small per-meet file, so they're cheap.)
 
-**Known remaining on-loop write:** analytics logs each spectator join with an
-`INSERT` + `commit` under `_analytics_lock`, still on the loop — fine for steady
-churn, but a reconnect storm across many meets would serialize the commits. Batching
-or offloading it is the next scaling step if analytics is enabled at scale.
+**Analytics writes are batched.** Logging every spectator join with its own
+`INSERT` + `commit` under `_analytics_lock` — on the loop, from the WS connect
+handlers — would serialize thousands of disk commits during a reconnect storm (a
+venue Wi-Fi blip dropping every phone at once, which the client heartbeat guarantees
+will retry). Instead `_log_connection` just does a non-blocking `queue.put` (no I/O),
+and a background task (`_analytics_flush_loop`, started in `lifespan`) drains the
+queue every few seconds and writes the whole batch in **one** `executemany` +
+`commit` via `run_in_threadpool` — off the loop. A storm of N joins becomes one
+batched transaction per interval instead of N commits on the loop; the queue is
+drained (and discarded, if analytics is disabled) on shutdown too.
 
 ### Diagram
 

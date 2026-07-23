@@ -8,6 +8,7 @@ FastAPI + plain WebSockets. Each former SocketIO namespace is a WebSocket path
 per-meet room is a channel keyed ``<namespace>:<meet_id>``. Messages are JSON
 frames ``{"event", "data"}``.
 """
+import asyncio
 import base64
 import datetime
 import glob
@@ -15,6 +16,7 @@ import hashlib
 import hmac
 import json
 import os
+import queue
 import re
 import secrets
 import sqlite3
@@ -100,7 +102,16 @@ def _locale_name(code):
 async def lifespan(app):
     os.makedirs(DATA_DIR, exist_ok=True)
     _analytics_prune()
-    yield
+    flush_task = asyncio.create_task(_analytics_flush_loop())
+    try:
+        yield
+    finally:
+        flush_task.cancel()
+        try:
+            await flush_task
+        except asyncio.CancelledError:
+            pass
+        await run_in_threadpool(_flush_analytics)   # persist anything still queued
 
 
 app = FastAPI(lifespan=lifespan)
@@ -529,8 +540,10 @@ def require_admin(request: Request):
 # admin panel. Lives in its own SQLite file inside the existing /data volume.
 
 _ANALYTICS_RETENTION_DAYS = 120
-_analytics_lock = threading.Lock()
-_analytics_db   = None
+_ANALYTICS_FLUSH_SECS     = 5      # how often the background task drains the queue
+_analytics_lock  = threading.Lock()
+_analytics_db    = None
+_analytics_queue = queue.Queue()   # pending joins, flushed to the DB off the loop
 
 # window key -> timedelta; 'all' means since the beginning of time.
 _ANALYTICS_WINDOWS = {
@@ -562,16 +575,38 @@ def _analytics_enabled():
 
 
 def _log_connection(meet_id, visitor_id, namespace):
-    """Record one attendee join. No-op unless analytics is enabled."""
-    if not meet_id or not visitor_id or not _analytics_enabled():
+    """Queue one attendee join. Called from the WS connect handlers on the event
+    loop, so it does no I/O — just a non-blocking in-memory enqueue. The
+    background flush task batches these off the loop and drops them if analytics
+    is disabled (so a reconnect storm can't stall the loop with per-join commits)."""
+    if not meet_id or not visitor_id:
         return
-    visitor_id = str(visitor_id)[:64]
-    now = int(datetime.datetime.now().timestamp())
+    _analytics_queue.put((meet_id, str(visitor_id)[:64],
+                          int(datetime.datetime.now().timestamp()), namespace))
+
+
+def _flush_analytics():
+    """Drain queued joins into the DB in one transaction. Blocking (disk I/O) —
+    run off the loop. Rows are discarded when analytics is disabled."""
+    rows = []
+    try:
+        while True:
+            rows.append(_analytics_queue.get_nowait())
+    except queue.Empty:
+        pass
+    if not rows or not _analytics_enabled():
+        return
     with _analytics_lock:
         db = _get_analytics_db()
-        db.execute('INSERT INTO connections VALUES (?, ?, ?, ?)',
-                   (meet_id, visitor_id, now, namespace))
+        db.executemany('INSERT INTO connections VALUES (?, ?, ?, ?)', rows)
         db.commit()
+
+
+async def _analytics_flush_loop():
+    """Periodically flush queued analytics joins to the DB, off the event loop."""
+    while True:
+        await asyncio.sleep(_ANALYTICS_FLUSH_SECS)
+        await run_in_threadpool(_flush_analytics)
 
 
 def _attendee_count(meet_id, since_ts):
