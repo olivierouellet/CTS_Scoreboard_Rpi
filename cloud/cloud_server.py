@@ -274,17 +274,6 @@ def _delete_meet_files(meet_id):
             pass
 
 
-def _rewrite_all_retained(snapshot):
-    """Wipe the retained dir and rewrite it from `snapshot` (the restore path)."""
-    for p in glob.glob(os.path.join(RETAINED_DIR, '*')):
-        try:
-            os.remove(p)
-        except OSError:
-            pass
-    for mid, rec in snapshot.items():
-        _write_meet_files(mid, rec, True, True)
-
-
 def _load_retained():
     """Load every per-meet file back into one in-memory dict of full records."""
     os.makedirs(RETAINED_DIR, exist_ok=True)
@@ -1057,13 +1046,17 @@ async def route_restore_meets(request: Request):
         if not isinstance(meets, dict):
             raise ValueError('invalid meets section')
         with _lock:
-            # Replace retained snapshots. Live meets stay in _meets untouched and
-            # re-persist themselves on disconnect, so they're never lost.
-            _retained.clear()
-            _retained.update(meets)
-            snapshot = {mid: dict(rec) for mid, rec in _retained.items()}
-        await run_in_threadpool(_rewrite_all_retained, snapshot)
-        return {'ok': True, 'count': len(meets)}
+            # Merge (upsert) the backup's meets into the store — never clear. A
+            # meet not in the backup is left alone, and a currently-live meet is
+            # skipped so its fresh state isn't overwritten by a stale backup. This
+            # is additive: retained meets auto-expire, and "Delete meet" removes
+            # one. Nothing is wiped, so a concurrent register can't be clobbered.
+            incoming = {mid: rec for mid, rec in meets.items() if mid not in _meets}
+            _retained.update(incoming)
+            recs = {mid: dict(_retained[mid]) for mid in incoming}
+        for mid, rec in recs.items():
+            await run_in_threadpool(_write_meet_files, mid, rec, True, True)
+        return {'ok': True, 'count': len(incoming)}
     except (json.JSONDecodeError, ValueError) as e:
         return JSONResponse({'error': f'Invalid file: {e}'}, status_code=400)
     except Exception as e:

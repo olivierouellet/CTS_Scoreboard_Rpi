@@ -328,7 +328,7 @@
                     <a id="backup-meets-btn" href="/admin/backup/meets" style="font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;text-decoration:none;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">{{ t.get('download_backup', 'Download') }}</a>
                 </div>
                 <div class="panel-row" style="align-items:flex-start;flex-direction:column;gap:6px;">
-                    <span style="font-size:0.78em;color:#555;">{{ t.get('restore_meets_note', 'Restore retained meets (schedules, images, icons). This replaces all current retained meets; live meets are unaffected.') }}</span>
+                    <span style="font-size:0.78em;color:#555;">{{ t.get('restore_meets_note', 'Restore retained meets (schedules, images, icons) from a backup. Adds them to the current set — nothing is removed, and currently-live meets keep their own data.') }}</span>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                         <label style="display:inline-block;font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;cursor:pointer;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">
                             {{ t.get('restore_backup', 'Restore…') }}<input type="file" accept=".json" style="display:none;" onchange="restoreMeets(this)">
