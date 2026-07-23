@@ -149,15 +149,19 @@ class ConnectionManager:
             pass
 
     async def broadcast(self, channel, event, data=None):
+        targets = list(self.channels.get(channel, ()))
+        if not targets:
+            return
         frame = {'event': event, 'data': data}
-        dead = []
-        for ws in list(self.channels.get(channel, ())):
-            try:
-                await ws.send_json(frame)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.leave_all(ws)
+        # Send to every attendee concurrently so one slow/backed-up client can't
+        # delay delivery to the rest (still one loop — this overlaps the I/O waits,
+        # it is not parallelism). return_exceptions keeps one failure from
+        # cancelling the others; failed sockets are dropped.
+        results = await asyncio.gather(*(ws.send_json(frame) for ws in targets),
+                                       return_exceptions=True)
+        for ws, result in zip(targets, results):
+            if isinstance(result, Exception):
+                self.leave_all(ws)
 
 
 manager = ConnectionManager()
