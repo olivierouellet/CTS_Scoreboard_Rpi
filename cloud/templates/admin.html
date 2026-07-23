@@ -311,11 +311,12 @@
             <div class="panel" style="margin-top:16px;">
                 <h2 style="margin-bottom:14px;">{{ t.get('backup', 'Backup') }}</h2>
                 <div class="panel-row">
-                    <span class="panel-label" style="color:#444;">{{ t.get('backup_keys', 'Keys') }}</span>
+                    <span class="panel-label" style="color:#444;">{{ t.get('backup_keys', 'Keys & settings') }}</span>
                     <a id="backup-download-btn" href="/admin/backup/keys" style="font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;text-decoration:none;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">{{ t.get('download_backup', 'Download') }}</a>
+                    <a id="backup-download-full-btn" href="/admin/backup/keys?full=1" style="font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;text-decoration:none;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">{{ t.get('download_backup_full', 'Download full (incl. login)') }}</a>
                 </div>
                 <div class="panel-row" style="align-items:flex-start;flex-direction:column;gap:6px;">
-                    <span style="font-size:0.78em;color:#555;">{{ t.get('restore_keys_note', 'Restore a previously downloaded keys backup. This replaces all current keys.') }}</span>
+                    <span style="font-size:0.78em;color:#555;">{{ t.get('restore_keys_note', 'Restore relay keys and settings (picker appearance, analytics, locale) from a backup. The admin login is only restored from a “full” backup; a regular backup leaves the current password unchanged. A full backup contains the password hash — keep it private.') }}</span>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                         <label style="display:inline-block;font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;cursor:pointer;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">
                             {{ t.get('restore_backup', 'Restore…') }}<input type="file" accept=".json" style="display:none;" onchange="restoreKeys(this)">

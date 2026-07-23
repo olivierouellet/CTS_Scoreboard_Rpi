@@ -965,30 +965,32 @@ async def route_picker_appearance(request: Request):
     return {'ok': True}
 
 
+_LOGIN_FIELDS = ('user', 'password_hash', 'salt')
+
+
 @app.get('/admin/backup/keys', dependencies=[Depends(require_admin)])
-def route_backup_keys():
+def route_backup_keys(request: Request):
     try:
         with open(KEYS_FILE) as f:
             keys = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         keys = {}
-    creds  = _load_creds()
-    backup = {
-        'version': 1,
-        'keys': keys,
-        'appearance': {
-            'picker_title':        creds.get('picker_title'),
-            'picker_window_title': creds.get('picker_window_title'),
-            'picker_logo_b64':     creds.get('picker_logo_b64', ''),
-            'picker_logo_mime':    creds.get('picker_logo_mime', ''),
-            'picker_logo_above':   creds.get('picker_logo_above', False),
-            'picker_icon_b64':     creds.get('picker_icon_b64', ''),
-        },
-    }
+    # keys + credentials.json (picker appearance, analytics toggle, locale). By
+    # default the admin login is excluded, so a routine backup never carries the
+    # password hash. ?full=1 adds the login (marked 'full') for a bare-metal
+    # rebuild — that file contains the password hash + salt, so keep it private.
+    full  = request.query_params.get('full') == '1'
+    creds = _load_creds()
+    if not full:
+        creds = {k: v for k, v in creds.items() if k not in _LOGIN_FIELDS}
+    backup = {'version': 2, 'keys': keys, 'credentials': creds}
+    if full:
+        backup['full'] = True
+    name = 'tremplin-backup-full.json' if full else 'tremplin-backup.json'
     return Response(
         json.dumps(backup, indent=2),
         media_type='application/json',
-        headers={'Content-Disposition': 'attachment; filename="tremplin-backup.json"'})
+        headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
 
 @app.post('/admin/restore/keys', dependencies=[Depends(require_admin)])
@@ -998,23 +1000,21 @@ async def route_restore_keys(request: Request):
         return JSONResponse({'error': 'No file provided'}, status_code=400)
     try:
         data = json.loads(await uploaded.read())
-        if not isinstance(data, dict):
-            raise ValueError('expected a JSON object')
-        if 'keys' in data:
-            keys       = data['keys']
-            appearance = data.get('appearance', {})
-        else:
-            keys       = data
-            appearance = {}
-        if not isinstance(keys, dict):
-            raise ValueError('invalid keys section')
+        if not isinstance(data, dict) or not isinstance(data.get('keys'), dict):
+            raise ValueError('not a valid backup file')
+        keys = data['keys']
         await run_in_threadpool(_save_keys, keys)
-        if appearance:
-            creds = _load_creds()
-            for field in ('picker_title', 'picker_window_title', 'picker_logo_b64', 'picker_logo_mime', 'picker_logo_above', 'picker_icon_b64'):
-                if field in appearance:
-                    creds[field] = appearance[field]
-            await run_in_threadpool(_save_creds, creds)
+        # Merge the backup's credentials (appearance, analytics, locale) onto the
+        # current ones so the backup wins but no required field goes missing. The
+        # admin login is only touched when the file is an explicit full backup —
+        # otherwise restoring a routine backup would silently reset the password.
+        creds_in = data.get('credentials')
+        if isinstance(creds_in, dict):
+            creds_in = dict(creds_in)
+            if not data.get('full'):
+                for f in _LOGIN_FIELDS:
+                    creds_in.pop(f, None)
+            await run_in_threadpool(_save_creds, {**_load_creds(), **creds_in})
         return {'ok': True, 'count': len(keys)}
     except (json.JSONDecodeError, ValueError) as e:
         return JSONResponse({'error': f'Invalid file: {e}'}, status_code=400)
