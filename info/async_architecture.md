@@ -126,9 +126,15 @@ with _lock:                                  # fast: in-memory only
 await run_in_threadpool(_write_meet_files, meet_id, rec, write_schedule, write_images)
 ```
 
-It's the same idea as the local server's snapshot swap, applied to files. (Rare
-*admin*-only writes — key/meet restore, `set_expiry`, `_on_relay_disconnect`'s retire
-— flush inline, but each now touches a single small per-meet file, so they're cheap.)
+It's the same idea as the local server's snapshot swap, applied to files.
+
+Every other disk write follows the same discipline — **no `async` handler blocks the
+loop on I/O**. The keys/credentials files are written atomically (temp + `os.replace`,
+so a crash can't corrupt them and lock admins out), and the admin routes that write
+them (key add/revoke, `set_expiry`, `delete_meet`, the logo/icon upload, restore) and
+the relay's disconnect-retire all wrap the write in `await run_in_threadpool(...)`.
+Sync `def` routes (backups, the picker page) already run in the threadpool by
+default, so their reads/writes are off the loop for free.
 
 **Analytics writes are batched.** Logging every spectator join with its own
 `INSERT` + `commit` under `_analytics_lock` — on the loop, from the WS connect

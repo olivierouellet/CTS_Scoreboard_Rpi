@@ -378,16 +378,6 @@ def _retire_mem(meet_id):
     _retained[meet_id] = snap
 
 
-def _retire_locked(meet_id):
-    """In-memory retire + a small metadata flush. Caller holds _lock.
-
-    Only the metadata changed (expires_at/last_seen); the schedule/image blobs on
-    disk stay as written while live, so the retired meet still renders them."""
-    _retire_mem(meet_id)
-    if meet_id in _retained:
-        _write_meet_files(meet_id, _retained[meet_id], False, False)
-
-
 def _sweep_expired():
     """Drop retained meets past their expiry. Live meets are never swept."""
     now = datetime.datetime.now()
@@ -433,9 +423,7 @@ def _load_keys():
 
 
 def _save_keys(keys):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(KEYS_FILE, 'w') as f:
-        json.dump(keys, f, indent=2)
+    _atomic_write(KEYS_FILE, json.dumps(keys, indent=2))
 
 
 # ── Admin credentials ──────────────────────────────────────────────────────────
@@ -463,9 +451,7 @@ def _load_creds():
 
 
 def _save_creds(creds):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(CREDS_FILE, 'w') as f:
-        json.dump(creds, f, indent=2)
+    _atomic_write(CREDS_FILE, json.dumps(creds, indent=2))
 
 
 def _picker_appearance():
@@ -974,7 +960,7 @@ async def route_picker_appearance(request: Request):
         icon = form.get('picker_icon')
         if icon and icon.filename:
             creds['picker_icon_b64'] = base64.b64encode(await icon.read()).decode()
-    _save_creds(creds)
+    await run_in_threadpool(_save_creds, creds)
     return {'ok': True}
 
 
@@ -1022,13 +1008,13 @@ async def route_restore_keys(request: Request):
             appearance = {}
         if not isinstance(keys, dict):
             raise ValueError('invalid keys section')
-        _save_keys(keys)
+        await run_in_threadpool(_save_keys, keys)
         if appearance:
             creds = _load_creds()
             for field in ('picker_title', 'picker_window_title', 'picker_logo_b64', 'picker_logo_mime', 'picker_logo_above', 'picker_icon_b64'):
                 if field in appearance:
                     creds[field] = appearance[field]
-            _save_creds(creds)
+            await run_in_threadpool(_save_creds, creds)
         return {'ok': True, 'count': len(keys)}
     except (json.JSONDecodeError, ValueError) as e:
         return Response(json.dumps({'error': f'Invalid file: {e}'}),
@@ -1194,17 +1180,17 @@ async def route_admin(request: Request):
                     'created':   datetime.date.today().isoformat(),
                     'active':    True,
                 }
-                _save_keys(keys)
+                await run_in_threadpool(_save_keys, keys)
         elif action == 'revoke':
             key = form.get('key', '')
             if key in keys:
                 keys[key]['active'] = False
-                _save_keys(keys)
+                await run_in_threadpool(_save_keys, keys)
         elif action == 'delete':
             key = form.get('key', '')
             if key in keys:
                 del keys[key]
-                _save_keys(keys)
+                await run_in_threadpool(_save_keys, keys)
         elif action == 'set_expiry':
             meet_id = form.get('meet_id', '')
             raw     = form.get('expires_at', '').strip()
@@ -1218,7 +1204,7 @@ async def route_admin(request: Request):
                     except ValueError:
                         pass
             if rec is not None:
-                _write_meet_files(meet_id, rec, False, False)   # metadata only
+                await run_in_threadpool(_write_meet_files, meet_id, rec, False, False)  # metadata only
         elif action == 'delete_meet':
             meet_id = form.get('meet_id', '')
             with _lock:
@@ -1226,17 +1212,17 @@ async def route_admin(request: Request):
                 if gone:
                     del _retained[meet_id]
             if gone:
-                _delete_meet_files(meet_id)
+                await run_in_threadpool(_delete_meet_files, meet_id)
         elif action == 'set_analytics':
             creds = _load_creds()
             creds['analytics_enabled'] = form.get('analytics_enabled') == '1'
-            _save_creds(creds)
+            await run_in_threadpool(_save_creds, creds)
             return RedirectResponse('/admin', status_code=303)
         elif action == 'change_locale':
             locale = form.get('locale', '')
             creds  = _load_creds()
             creds['locale'] = locale
-            _save_creds(creds)
+            await run_in_threadpool(_save_creds, creds)
             _locale_cache.clear()
             return RedirectResponse('/admin', status_code=303)
         elif action == 'change_credentials':
@@ -1256,7 +1242,7 @@ async def route_admin(request: Request):
             else:
                 creds['user'] = new_user or creds['user']
                 creds['password_hash'], creds['salt'] = _hash_password(new_pw1)
-                _save_creds(creds)
+                await run_in_threadpool(_save_creds, creds)
                 return Response(
                     'Credentials updated — <a href="/admin">sign in with new credentials</a>',
                     status_code=401,
@@ -1271,7 +1257,7 @@ async def route_admin(request: Request):
                           **_picker_appearance())
         return RedirectResponse('/admin', status_code=303)
 
-    _sweep_expired()
+    await run_in_threadpool(_sweep_expired)
     return render(request, 'admin.html', keys=keys,
                   active_meets=_admin_meet_list(),
                   t=_load_cloud_strings(request), creds_error=None,
@@ -1303,7 +1289,7 @@ async def _on_relay_register(ws, sid, data):
         if not meet_id:
             meet_id = secrets.token_urlsafe(8)
             keys[key]['meet_id'] = meet_id
-            _save_keys(keys)
+            await run_in_threadpool(_save_keys, keys)
 
     with _lock:                                   # fast: in-memory only
         # If this socket was publishing a different meet (operator switched
@@ -1349,6 +1335,7 @@ async def _on_relay_register(ws, sid, data):
 
 
 async def _on_relay_disconnect(sid):
+    rec = None
     with _lock:
         meet_id = _relay_sids.pop(sid, None)
         meet    = _meets.get(meet_id) if meet_id else None
@@ -1356,7 +1343,10 @@ async def _on_relay_disconnect(sid):
         # still the one bound to it (a newer socket may have re-registered).
         retired = bool(meet and meet.get('relay_sid') == sid)
         if retired:
-            _retire_locked(meet_id)
+            _retire_mem(meet_id)
+            rec = _record_copy_locked(meet_id) if meet_id in _retained else None
+    if rec is not None:
+        await run_in_threadpool(_write_meet_files, meet_id, rec, False, False)  # metadata only
     if retired:
         await _emit_meet_live(meet_id, False)
     if meet_id:
