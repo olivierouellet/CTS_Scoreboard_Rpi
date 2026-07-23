@@ -1,7 +1,7 @@
-"""Realtime message bus — plain-WebSocket replacement for Flask-SocketIO.
+"""Realtime message bus — plain-WebSocket fan-out to connected clients.
 
-Each former SocketIO namespace (``/scoreboard``, ``/results`` …) is a *channel*:
-a set of connected WebSockets. Messages are JSON frames ``{"event", "data"}``.
+Each *channel* (``/scoreboard``, ``/results`` …) is a set of connected
+WebSockets. Messages are JSON frames ``{"event", "data"}``.
 
 The serial worker runs in a background *thread* (blocking serial I/O), so it
 cannot ``await`` anything. It calls :func:`emit`, which is thread-safe: it
@@ -81,7 +81,7 @@ def emit(channel, event, data=None):
 
 
 def run_bg(fn, *args):
-    """Run ``fn(*args)`` in a daemon thread (start_background_task replacement)."""
+    """Run ``fn(*args)`` in a daemon thread."""
     t = threading.Thread(target=fn, args=args, daemon=True)
     t.start()
     return t

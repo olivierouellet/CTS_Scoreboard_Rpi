@@ -3,7 +3,7 @@
 Receives scoreboard events from Pi relays and forwards them to attendees.
 One instance handles all active meets; each meet is a broadcast channel.
 
-FastAPI + plain WebSockets. Each former SocketIO namespace is a WebSocket path
+FastAPI + plain WebSockets. Each WebSocket path
 (``/ws/relay`` ``/ws/scoreboard`` ``/ws/results`` ``/ws/schedule``) and each
 per-meet room is a channel keyed ``<namespace>:<meet_id>``. Messages are JSON
 frames ``{"event", "data"}``.

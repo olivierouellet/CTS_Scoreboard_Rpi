@@ -1,9 +1,8 @@
 """Shared FastAPI web helpers for the local Tremplin server.
 
-Centralises Jinja templating (with the global template context that Flask used to
-inject via ``@app.context_processor``), the login dependency, and small
-Flask-shaped helpers (``redirect``, ``save_upload``) so the route modules read
-close to their former selves.
+Centralises Jinja templating (with the global template context injected into
+every render), the login dependency, and small shared helpers (``redirect``,
+``save_upload``) so the route modules stay lean.
 """
 import os
 import shutil
@@ -27,7 +26,7 @@ templates = Jinja2Templates(directory=os.path.join(state.app_dir, 'templates'))
 
 
 def _url_for(name, **kw):
-    """Flask-compatible ``url_for`` for the handful of endpoints templates use."""
+    """``url_for`` helper for the handful of endpoints templates use."""
     if name == 'static':
         return '/static/' + kw.get('filename', '')
     if name == 'appearance.serve_image':
@@ -39,7 +38,7 @@ templates.env.globals['url_for'] = _url_for
 
 
 def _globals():
-    """Template values formerly provided by Flask's context_processor.
+    """Global template values merged into every render.
 
     Recomputed per render so live settings changes take effect immediately.
     """
@@ -89,7 +88,7 @@ def display_config():
 
 
 def redirect(url: str, status_code: int = 303):
-    """See-Other redirect (GET on the target), matching Flask's post-action nav."""
+    """See-Other redirect (GET on the target) for post-action navigation."""
     return RedirectResponse(url, status_code=status_code)
 
 
@@ -106,7 +105,7 @@ def require_login(request: Request):
 
 
 def save_upload(upload, dest: str):
-    """Persist a Starlette UploadFile to *dest* (replacement for Flask's file.save)."""
+    """Persist a Starlette UploadFile to *dest*."""
     upload.file.seek(0)
     with open(dest, 'wb') as f:
         shutil.copyfileobj(upload.file, f)

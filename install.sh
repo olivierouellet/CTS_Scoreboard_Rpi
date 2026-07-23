@@ -3,7 +3,7 @@
 #
 # Usage:
 #   bash install.sh           interactive role selection
-#   bash install.sh server    Pi #1 — pool deck Flask server
+#   bash install.sh server    Pi #1 — pool deck FastAPI server
 #   bash install.sh kiosk     Pi #2 — TV kiosk display
 #
 # Run from inside the cloned repo, or from anywhere (it will clone automatically).
@@ -49,7 +49,7 @@ if [[ -z "$ROLE" ]]; then
     echo "Which role is this?"
     PS3="Choice: "
     select _choice in \
-        "Server  (Pi #1 — pool deck, Flask + serial decoder)" \
+        "Server  (Pi #1 — pool deck, FastAPI + serial decoder)" \
         "Kiosk   (Pi #2 — TV display, Chromium fullscreen)" \
         "Cloud   (Debian VM — public relay server)" \
         "Quit"; do

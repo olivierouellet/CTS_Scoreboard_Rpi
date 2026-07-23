@@ -7,7 +7,7 @@
 - Connecting to the Pi **by its IP address** works:
   `http://10.8.20.103/` and `http://10.8.20.103:5000/live` both load.
 
-So the Pi, the Flask service, and the port-80 redirect are all healthy — only
+So the Pi, the FastAPI service, and the port-80 redirect are all healthy — only
 the **hostname** fails to load.
 
 ## Cause

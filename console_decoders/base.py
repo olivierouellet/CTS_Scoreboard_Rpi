@@ -15,7 +15,7 @@ class ConsoleDecoder(ABC):
 
     Implementors receive raw byte packets and return structured update dicts
     whose keys match the scoreboard's update_scoreboard event payload.
-    No Flask, SocketIO, or app-layer dependencies belong here.
+    No web-framework, transport, or app-layer dependencies belong here.
     """
 
     @property
