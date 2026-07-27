@@ -1,4 +1,5 @@
 import subprocess
+import time
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -136,13 +137,20 @@ def route_wifi_status():
             dependencies=[Depends(require_login)])
 def route_wifi_scan():
     try:
+        # `dev wifi list` returns the *cached* scan immediately — right after
+        # connecting that cache often holds only the associated AP, which is
+        # why the list showed a single network. Trigger an explicit rescan and
+        # give the driver a moment to report neighbours before listing.
+        # (rescan exits non-zero if a scan is already running — that's fine.)
+        _nmcli('dev', 'wifi', 'rescan', timeout=20)
+        time.sleep(4)
         # Terse (-t) output is one AP per line with ':'-separated fields, far
         # more robust than parsing the fixed-width table (whose column offsets
         # shift with content and silently drop most rows). SSID is requested
         # last because it can contain ':' — nmcli escapes those as '\:', which
         # _split_terse() honours so the SSID stays intact.
         r     = _nmcli('-t', '-f', 'IN-USE,SIGNAL,SECURITY,SSID',
-                       'dev', 'wifi', 'list', '--rescan', 'auto', timeout=30)
+                       'dev', 'wifi', 'list', timeout=20)
         networks, seen = [], set()
         for line in r.stdout.splitlines():
             if not line:
