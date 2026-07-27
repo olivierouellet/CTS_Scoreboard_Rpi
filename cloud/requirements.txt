@@ -1,4 +1,4 @@
-flask
-flask-socketio
-gevent
-gevent-websocket
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart

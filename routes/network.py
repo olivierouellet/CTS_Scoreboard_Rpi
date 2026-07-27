@@ -1,13 +1,58 @@
-import ipaddress
 import subprocess
+import time
 
-import flask
-import flask_login
-from flask import Blueprint
+from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, IPvAnyAddress
+from starlette.concurrency import run_in_threadpool
 
 import state
+from web import ActionResult, EnabledFlag, require_login
 
-bp = Blueprint('network', __name__)
+router = APIRouter(tags=['Network'])
+
+
+class EthIP(BaseModel):
+    ip: IPvAnyAddress
+    prefix: int = Field(24, ge=1, le=32)
+
+
+class WifiConnect(BaseModel):
+    ssid: str = ''
+    password: str = ''
+
+
+class WifiStatus(BaseModel):
+    enabled: bool
+    ssid: str
+    wifi_ip: str
+    eth_ip: str
+
+
+class WifiNetwork(BaseModel):
+    ssid: str
+    signal: int
+    security: str
+    active: bool
+
+
+class WifiScan(BaseModel):
+    networks: list[WifiNetwork]
+
+
+class CloudStatus(BaseModel):
+    connected: bool
+    running: bool
+    url: str
+
+
+class ScoreboardClient(BaseModel):
+    ip: str
+    at: str
+
+
+class Clients(BaseModel):
+    clients: list[ScoreboardClient]
 
 
 def _nmcli(*args, timeout=8):
@@ -15,8 +60,33 @@ def _nmcli(*args, timeout=8):
                           capture_output=True, text=True, timeout=timeout)
 
 
-@bp.route('/wifi_status')
-@flask_login.login_required
+def _split_terse(line, count):
+    """Split an nmcli terse ('-t') line into `count` fields.
+
+    nmcli escapes ':' and '\\' inside values, so we split on unescaped ':'
+    only, then unescape. The last requested field absorbs any trailing
+    unescaped ':' (there shouldn't be any given the field order)."""
+    fields, buf, i = [], [], 0
+    while i < len(line):
+        c = line[i]
+        if c == '\\' and i + 1 < len(line):
+            buf.append(line[i + 1])
+            i += 2
+        elif c == ':' and len(fields) < count - 1:
+            fields.append(''.join(buf))
+            buf = []
+            i += 1
+        else:
+            buf.append(c)
+            i += 1
+    fields.append(''.join(buf))
+    while len(fields) < count:
+        fields.append('')
+    return fields
+
+
+@router.get('/wifi_status', response_model=WifiStatus,
+            dependencies=[Depends(require_login)])
 def route_wifi_status():
     try:
         r       = _nmcli('radio', 'wifi')
@@ -51,56 +121,75 @@ def route_wifi_status():
                 ssid = line.split(':', 1)[1]
                 break
 
-        return flask.jsonify({
+        return {
             'enabled': enabled,
             'ssid':    ssid,
             'wifi_ip': get_ip(wifi_dev) if enabled else '',
             'eth_ip':  get_ip(eth_dev),
-        })
+        }
     except FileNotFoundError:
-        return flask.jsonify({'error': 'nmcli not found'}), 503
+        return JSONResponse({'error': 'nmcli not found'}, status_code=503)
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@bp.route('/wifi_scan')
-@flask_login.login_required
+@router.get('/wifi_scan', response_model=WifiScan,
+            dependencies=[Depends(require_login)])
 def route_wifi_scan():
     try:
-        r     = _nmcli('--color', 'no', '-f', 'ACTIVE,SSID,SIGNAL,SECURITY',
+        # `dev wifi list` returns the *cached* scan immediately — right after
+        # connecting that cache often holds only the associated AP, which is
+        # why the list showed a single network. Trigger an explicit rescan and
+        # give the driver a moment to report neighbours before listing.
+        # rescan needs root: unprivileged callers get a polkit "not authorized"
+        # error and the cache is never refreshed, so run it through sudo like
+        # the other privileged nmcli calls here. It also exits non-zero if a
+        # scan is already in progress — both cases are harmless, so ignore.
+        subprocess.run(['sudo', 'nmcli', 'dev', 'wifi', 'rescan'],
+                       capture_output=True, text=True, timeout=20)
+        time.sleep(4)
+        # Terse (-t) output is one AP per line with ':'-separated fields, far
+        # more robust than parsing the fixed-width table (whose column offsets
+        # shift with content and silently drop most rows). SSID is requested
+        # last because it can contain ':' — nmcli escapes those as '\:', which
+        # _split_terse() honours so the SSID stays intact.
+        r     = _nmcli('-t', '-f', 'IN-USE,SIGNAL,SECURITY,SSID',
                        'dev', 'wifi', 'list', timeout=20)
-        lines = r.stdout.splitlines()
-        if len(lines) < 2:
-            return flask.jsonify({'networks': []})
-        hdr = lines[0]
-        col = {name: hdr.index(name) for name in ('ACTIVE', 'SSID', 'SIGNAL', 'SECURITY')}
-        networks, seen = [], set()
-        for line in lines[1:]:
-            if len(line) <= col['SECURITY']:
+        # A single SSID can appear several times (one row per BSSID/band). Merge
+        # them by SSID so each network shows once, keeping the strongest signal
+        # and marking it active if *any* of its BSSIDs is the in-use one — the
+        # connected AP is often not the strongest row, so dropping duplicates
+        # naively would lose the '*' and hide the "Connected" state.
+        by_ssid = {}
+        for line in r.stdout.splitlines():
+            if not line:
                 continue
-            ssid     = line[col['SSID']   : col['SIGNAL']  ].strip()
-            signal   = line[col['SIGNAL'] : col['SECURITY']].strip()
-            security = line[col['SECURITY']:               ].strip()
-            active   = line[col['ACTIVE'] : col['SSID']   ].strip()
-            if not ssid or ssid in seen:
+            active, signal, security, ssid = _split_terse(line, 4)
+            if not ssid:
                 continue
-            seen.add(ssid)
-            networks.append({
-                'ssid':     ssid,
-                'signal':   int(signal) if signal.isdigit() else 0,
-                'security': '' if security in ('--', '') else security,
-                'active':   '*' in active,
-            })
-        networks.sort(key=lambda n: n['signal'], reverse=True)
-        return flask.jsonify({'networks': networks})
+            sig = int(signal) if signal.isdigit() else 0
+            net = by_ssid.get(ssid)
+            if net is None:
+                by_ssid[ssid] = {
+                    'ssid':     ssid,
+                    'signal':   sig,
+                    'security': '' if security in ('--', '') else security,
+                    'active':   '*' in active,
+                }
+            else:
+                net['signal'] = max(net['signal'], sig)
+                net['active'] = net['active'] or ('*' in active)
+        networks = sorted(by_ssid.values(),
+                          key=lambda n: n['signal'], reverse=True)
+        return {'networks': networks}
     except FileNotFoundError:
-        return flask.jsonify({'error': 'nmcli not found'}), 503
+        return JSONResponse({'error': 'nmcli not found'}, status_code=503)
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@bp.route('/wifi_toggle', methods=['POST'])
-@flask_login.login_required
+@router.post('/wifi_toggle', response_model=EnabledFlag,
+             dependencies=[Depends(require_login)])
 def route_wifi_toggle():
     try:
         r            = _nmcli('radio', 'wifi')
@@ -108,37 +197,40 @@ def route_wifi_toggle():
         st           = 'off' if currently_on else 'on'
         subprocess.run(['sudo', 'nmcli', 'radio', 'wifi', st],
                        capture_output=True, timeout=8)
-        return flask.jsonify({'enabled': not currently_on})
+        return {'enabled': not currently_on}
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@bp.route('/cloud_status')
-@flask_login.login_required
+@router.get('/cloud_status', response_model=CloudStatus,
+            dependencies=[Depends(require_login)])
 def route_cloud_status():
     import relay
-    return flask.jsonify(relay.status())
+    return relay.status()
 
 
-@bp.route('/cloud_toggle', methods=['POST'])
-@flask_login.login_required
+@router.post('/cloud_toggle', response_model=CloudStatus,
+             dependencies=[Depends(require_login)])
 def route_cloud_toggle():
     import relay
     if relay.status()['running']:
         relay.stop()
     else:
         relay.start()
-    return flask.jsonify(relay.status())
+    return relay.status()
 
 
-@bp.route('/wifi_connect', methods=['POST'])
-@flask_login.login_required
-def route_wifi_connect():
-    data     = flask.request.get_json(force=True)
-    ssid     = data.get('ssid', '')
-    password = data.get('password', '')
+@router.post('/wifi_connect', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+async def route_wifi_connect(body: WifiConnect):
+    # nmcli connect can take up to 30 s — run it off the event loop so live
+    # scoreboard broadcasts keep flowing while it works.
+    return await run_in_threadpool(_wifi_connect, body.ssid, body.password)
+
+
+def _wifi_connect(ssid, password):
     if not ssid:
-        return flask.jsonify({'error': 'No SSID provided'}), 400
+        return JSONResponse({'error': 'No SSID provided'}, status_code=400)
     try:
         # Remove any stale connection profile for this SSID first. nmcli
         # otherwise reuses an existing profile (e.g. from a previous attempt
@@ -152,14 +244,14 @@ def route_wifi_connect():
             cmd += ['password', password]
         r = _nmcli(*cmd, timeout=30)
         if r.returncode == 0:
-            return flask.jsonify({'ok': True})
-        return flask.jsonify({'error': (r.stderr or r.stdout).strip()}), 400
+            return {'ok': True}
+        return JSONResponse({'error': (r.stderr or r.stdout).strip()}, status_code=400)
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@bp.route('/eth_dhcp_set', methods=['POST'])
-@flask_login.login_required
+@router.post('/eth_dhcp_set', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_eth_dhcp_set():
     try:
         r = subprocess.run(
@@ -167,43 +259,41 @@ def route_eth_dhcp_set():
              'ipv4.method', 'auto', 'ipv4.addresses', '', 'ipv4.gateway', ''],
             capture_output=True, text=True, timeout=8)
         if r.returncode != 0:
-            return flask.jsonify({'ok': False, 'error': r.stderr.strip() or 'nmcli error'})
+            return {'ok': False, 'error': r.stderr.strip() or 'nmcli error'}
         subprocess.run(['sudo', 'nmcli', 'con', 'up', 'tremplin-eth'],
                        capture_output=True, timeout=8)
-        return flask.jsonify({'ok': True})
+        return {'ok': True}
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)})
+        return {'ok': False, 'error': str(e)}
 
 
-@bp.route('/eth_ip_set', methods=['POST'])
-@flask_login.login_required
-def route_eth_ip_set():
-    data       = flask.request.get_json()
-    ip_str     = data.get('ip', '').strip()
-    prefix_str = data.get('prefix', '24').strip()
-    try:
-        ipaddress.IPv4Address(ip_str)
-        prefix = int(prefix_str)
-        if not (1 <= prefix <= 32):
-            raise ValueError
-    except Exception:
-        return flask.jsonify({'ok': False, 'error': 'Invalid IP address or prefix length'})
+@router.post('/eth_ip_set', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+async def route_eth_ip_set(body: EthIP):
+    # ip/prefix are already validated by the EthIP model.
+    return await run_in_threadpool(_eth_ip_set, str(body.ip), body.prefix)
+
+
+def _eth_ip_set(ip_str, prefix):
     cidr = f'{ip_str}/{prefix}'
     try:
         r = subprocess.run(
             ['sudo', 'nmcli', 'con', 'mod', 'tremplin-eth', 'ipv4.addresses', cidr],
             capture_output=True, text=True, timeout=8)
         if r.returncode != 0:
-            return flask.jsonify({'ok': False, 'error': r.stderr.strip() or 'nmcli error'})
+            return {'ok': False, 'error': r.stderr.strip() or 'nmcli error'}
         subprocess.run(['sudo', 'nmcli', 'con', 'up', 'tremplin-eth'],
                        capture_output=True, timeout=8)
-        return flask.jsonify({'ok': True})
+        return {'ok': True}
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)})
+        return {'ok': False, 'error': str(e)}
 
 
-@bp.route('/clients')
-@flask_login.login_required
-def route_clients():
-    # Browser tabs connected to the scoreboard WebSocket, shown in the Network tab
-    return flask.jsonify({'clients': list(state._scoreboard_clients.values())})
+@router.get('/clients', response_model=Clients,
+            dependencies=[Depends(require_login)])
+async def route_clients():
+    # Browser tabs connected to the scoreboard WebSocket, shown in the Network tab.
+    # async so it runs on the event loop — the same context that mutates
+    # _scoreboard_clients (the WS connect/disconnect handlers) — so this snapshot
+    # can't be preempted mid-iteration by a connect/disconnect.
+    return {'clients': list(state._scoreboard_clients.values())}

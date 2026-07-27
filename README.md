@@ -19,6 +19,7 @@ CTS serial protocol documentation by [hwbrill/vsCTS](https://github.com/hwbrill/
 | [Admin guide](docs/admin.md) | Meet-day workflow, settings tabs, pages, localisation |
 | [Cloud relay](docs/cloud.md) | Public scoreboard for remote attendees |
 | [Development](docs/development.md) | Data flow, adding a console decoder, bundled assets |
+| [API contract](docs/api.md) | WebSocket + REST contract for native clients (TV / iOS / Android) |
 
 ---
 
@@ -48,7 +49,7 @@ Timing console
 
 | Device | IP | Role |
 | --- | --- | --- |
-| Pi #1 | `10.10.10.10` | Serial decoder + Flask server + admin UI |
+| Pi #1 | `10.10.10.10` | Serial decoder + FastAPI server + admin UI |
 | Pi #2 | DHCP | Chromium kiosk — fullscreen scoreboard on TV |
 
 | Item | Purpose |

@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import os.path
+import queue
 import re
 import sys
 
@@ -130,13 +131,52 @@ settings = {
 }
 
 # ── Meet data ──────────────────────────────────────────────────────────────────
+# The loaded meet (the LENEX dicts + the Hytek parser) lives in a single immutable
+# snapshot, `meet`. Publishing a new meet swaps that one reference — atomic in
+# CPython — so a reader on another thread (the worker mid-race, the relay) never
+# sees a half-updated dict. Read it as `state.meet.start_list`,
+# `state.meet.event_info`, …; a function that touches several fields should pin the
+# snapshot once (`m = state.meet`) so it sees a consistent view even if a swap lands
+# mid-read. Writers must go through set_lenex / load_event_info / clear_meet — the
+# published snapshot is never mutated in place.
 
-event_info            = HytekParser()
-lenex_event_names     = {}
-lenex_start_list      = {}
-lenex_heat_times      = {}
-lenex_meet_info       = {}
-lenex_event_distances = {}
+class _Meet:
+    __slots__ = ('event_names', 'start_list', 'heat_times', 'meet_info',
+                 'event_distances', 'event_info')
+
+    def __init__(self, event_names=None, start_list=None, heat_times=None,
+                 meet_info=None, event_distances=None, event_info=None):
+        self.event_names     = event_names     or {}
+        self.start_list      = start_list      or {}
+        self.heat_times      = heat_times      or {}
+        self.meet_info       = meet_info       or {}
+        self.event_distances = event_distances or {}
+        self.event_info      = event_info if event_info is not None else HytekParser()
+
+
+meet = _Meet()
+
+
+def set_lenex(data):
+    """Publish a LENEX meet atomically (from a parsers.lenex_parser result)."""
+    global meet
+    meet = _Meet(event_names=data.event_names, start_list=data.start_list,
+                 heat_times=data.heat_times, meet_info=data.meet_info,
+                 event_distances=data.event_distances)
+
+
+def load_event_info(path):
+    """Load a Hytek CSV into a fresh parser and publish it atomically."""
+    global meet
+    p = HytekParser()
+    p.load(path)
+    meet = _Meet(event_info=p)
+
+
+def clear_meet():
+    """Drop the loaded meet atomically."""
+    global meet
+    meet = _Meet()
 
 # Cloud-appearance overrides that travel per meet (not Pi-global). Keyed by
 # meet_uid() in settings['meet_profiles']; the active values are mirrored into
@@ -175,7 +215,7 @@ def meet_uid():
     Otherwise (Hytek CSV, no sessions) falls back to the loaded file name.
     Returns '' when nothing is loaded.
     """
-    return uid_from_meet_info(lenex_meet_info, _active_meet_file)
+    return uid_from_meet_info(meet.meet_info, _active_meet_file)
 
 
 def apply_meet_profile(uid):
@@ -243,15 +283,33 @@ def install_log_capture():
 
 update      = {}
 
+# The last results payload, published by the worker and read by the results-WS
+# connect handler and the relay. Always reassigned as a whole dict (never mutated
+# in place) so the rebind is an atomic swap — a reader gets the old or new dict
+# whole, never half-built. Keep it that way: build a new dict, don't mutate this.
 _last_results_snapshot      = {}
 _results_prev_race_finished = False
 
-_worker_stop        = False
+# The worker's stop signal. Each worker captures my_gen = _worker_gen at start and
+# runs while _worker_gen == my_gen; _restart_worker bumps it to stop the current
+# worker. It must be a monotonic token, NOT a resettable bool: a superseded worker
+# blocked in a long playback sleep could miss a bool that the new worker flips back,
+# then keep feeding the decoder — two owners at once. A gen it captured can never be
+# un-seen. Bumped with `+= 1` from more than one thread (concurrent _restart_worker
+# calls), a non-atomic read-modify-write whose lost updates are harmless: only a
+# *change* matters (it stops workers holding an older gen), never the exact value,
+# and it only moves forward. Don't "fix" that with a lock.
 _worker_gen         = 0
 _test_session       = None
 _record_handle      = None
 _debug_serial       = False
 _serial_status      = {'state': 'idle', 'msg': ''}
+# Invalidation token for the finish/reset debounce. Bumped by the worker on every
+# finish/un-finish transition and by the meet-load handler to cancel pending tasks
+# across a meet change — so `+= 1` runs from two threads and a bump can be lost.
+# Benign for the same reason as _worker_gen: a debounced task only fires if the gen
+# it captured still matches, so any advance invalidates stale tasks; exactness is
+# irrelevant. No lock needed.
 _finish_timer_gen   = 0
 _scoreboard_clients = {}
 _test_meet_active   = False
@@ -260,6 +318,19 @@ _cols_hidden        = False
 _pty_fd             = None
 _pty_pid            = None
 main_thread         = None
+
+# The decoder is owned by a single thread — the serial/playback worker. Other
+# threads that need a decoder operation (WS adjust_splits/next_heat, the reset
+# debounce) post a callable here instead of calling the decoder directly; the
+# worker drains this queue between packets. So the decoder is never touched
+# concurrently and needs no lock. See worker._drain_cmds and its command handlers.
+_worker_cmds = queue.Queue()
+
+# Lanes currently emitting lane_running=True — worker-thread state. Consoles only
+# send the running flag on transitions (start/split/finish), streaming just the
+# clock in between, so the debounced board-wipe must consult this rather than the
+# momentary packet to avoid clearing a heat that is mid-race.
+_running_lanes = set()
 
 in_speed = 1.0
 
@@ -452,21 +523,31 @@ def load_settings():
     csv_files = glob.glob(os.path.join(MEET_FOLDER, '*.csv'))
     if csv_files:
         try:
-            event_info.load(max(csv_files, key=os.path.getmtime))
+            load_event_info(max(csv_files, key=os.path.getmtime))
         except Exception:
             pass
     lxf_files = glob.glob(os.path.join(MEET_FOLDER, '*.lxf'))
     if lxf_files:
         try:
-            data = load_lenex(max(lxf_files, key=os.path.getmtime))
-            lenex_event_names.update(data.event_names)
-            lenex_start_list.update(data.start_list)
-            lenex_heat_times.update(data.heat_times)
-            lenex_meet_info.update(data.meet_info)
-            lenex_event_distances.update(data.event_distances)
+            set_lenex(load_lenex(max(lxf_files, key=os.path.getmtime)))
         except Exception:
             pass
     _decoder.configure(settings)
+
+
+def save_settings():
+    """Persist the settings dict to disk atomically.
+
+    Serialize a top-level snapshot to a string first (so a concurrent write
+    from another handler thread can't corrupt the output mid-dump), then write
+    a temp file and os.replace it into place — a crash or power loss mid-write
+    (a real risk on the Pi) can't leave a truncated settings.json.
+    """
+    data = json.dumps(dict(settings), sort_keys=True, indent=4)
+    tmp = settings_file + '.tmp'
+    with open(tmp, 'wt') as f:
+        f.write(data)
+    os.replace(tmp, settings_file)
 
 # ── Decoder (initialized after settings dict is defined) ──────────────────────
 

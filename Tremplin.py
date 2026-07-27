@@ -1,195 +1,225 @@
 #! /usr/bin/python3
+import asyncio
+import datetime
 import glob
 import os
-import sys
 import traceback
+from contextlib import asynccontextmanager
 
-import flask
-import flask_login
+from fastapi import Depends, FastAPI, Form, Request, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
+import bus
 import state
-from extensions import socketio
 from meet_data import _get_next_heats, send_event_info
-from worker import _restart_worker, main_thread_worker
+from web import NotAuthenticated, render, require_login, templates
+from worker import _worker_adjust_splits, _worker_next_heat, main_thread_worker
 
-from routes.scoreboard import bp as scoreboard_bp
-from routes.meet       import bp as meet_bp
-from routes.settings   import bp as settings_bp
-from routes.debug      import bp as debug_bp
-from routes.system     import bp as system_bp
-from routes.network    import bp as network_bp
-from routes.appearance import bp as appearance_bp
+from routes.scoreboard import router as scoreboard_router
+from routes.meet       import router as meet_router
+from routes.settings   import router as settings_router
+from routes.debug      import router as debug_router
+from routes.system     import router as system_router
+from routes.network    import router as network_router
+from routes.appearance import router as appearance_router
 
-DEBUG = False
+SECRET_KEY = 'rimnqiuqnewiornhf7nfwenjmqvliwynhtmlfnlsklrmqwe'
 
-app = flask.Flask(__name__)
-app.config.update(
-    DEBUG=False,
-    SECRET_KEY='rimnqiuqnewiornhf7nfwenjmqvliwynhtmlfnlsklrmqwe',
-)
-socketio.init_app(app, async_mode='gevent')
 
-app.register_blueprint(scoreboard_bp)
-app.register_blueprint(meet_bp)
-app.register_blueprint(settings_bp)
-app.register_blueprint(debug_bp)
-app.register_blueprint(system_bp)
-app.register_blueprint(network_bp)
-app.register_blueprint(appearance_bp)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Capture the event loop so the serial worker thread can broadcast onto it.
+    bus.set_loop(asyncio.get_running_loop())
+    state.install_log_capture()
+    import relay
+    from console_decoders import load_custom_decoders
+    from routes.settings import _load_meet_file
+    state.load_settings()
+    load_custom_decoders(state.CUSTOM_DECODERS_FOLDER)
+    relay.start()
+    _register_locale_aliases()
+    _last = state.settings.get('last_meet_file', '')
+    if _last:
+        _path = os.path.join(state.MEET_FOLDER, _last)
+        if os.path.isfile(_path):
+            _load_meet_file(_path)
+    yield
+
+
+# Built-in docs are disabled here and re-served below behind `require_login`, so
+# the OpenAPI schema and Swagger/ReDoc UIs are only reachable once signed in.
+app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+app.mount('/static', StaticFiles(directory=os.path.join(state.app_dir, 'static')), name='static')
+
+app.include_router(scoreboard_router)
+app.include_router(meet_router)
+app.include_router(settings_router)
+app.include_router(debug_router)
+app.include_router(system_router)
+app.include_router(network_router)
+app.include_router(appearance_router)
+
+
+@app.exception_handler(NotAuthenticated)
+async def _redirect_to_login(request: Request, exc: NotAuthenticated):
+    return RedirectResponse('/login', status_code=303)
+
+
+@app.exception_handler(RequestValidationError)
+async def _on_validation_error(request: Request, exc: RequestValidationError):
+    """Return request-body validation failures in the app's ``{ok, error}`` shape.
+
+    The JSON front-end reads ``d.ok`` / ``d.error`` off a parsed body and never
+    inspects the HTTP status, so reshaping FastAPI's default ``{detail: [...]}``
+    here lets endpoints push validation into their Pydantic models while the
+    friendly single-line error the UI shows stays intact. ``detail`` is kept for
+    API/`/docs` consumers.
+    """
+    errors = exc.errors()
+    error  = 'Invalid request.'
+    if errors:
+        e   = errors[0]
+        msg = e.get('msg', 'Invalid input')
+        # A field_validator raising ValueError('X') surfaces as 'Value error, X'.
+        if msg.startswith('Value error, '):
+            error = msg[len('Value error, '):]
+        else:
+            loc   = [str(x) for x in e.get('loc', ()) if x != 'body']
+            field = '.'.join(loc)
+            error = f'{field}: {msg}' if field else msg
+    # A field_validator's ValueError lands in each error's ``ctx`` as a live
+    # exception object, which JSONResponse can't serialize — keep only the
+    # JSON-safe fields so ``detail`` never breaks the response.
+    detail = [{k: e[k] for k in ('type', 'loc', 'msg', 'input') if k in e}
+              for e in errors]
+    return JSONResponse({'ok': False, 'error': error, 'detail': detail}, status_code=422)
+
+
+# ── API docs (login-gated) ───────────────────────────────────────────────────
+# Unauthenticated hits raise NotAuthenticated → redirect to /login. Once signed
+# in, the session cookie also authorizes Swagger UI's fetch of /openapi.json.
+
+@app.get('/openapi.json', include_in_schema=False,
+         dependencies=[Depends(require_login)])
+async def route_openapi():
+    return app.openapi()
+
+
+@app.get('/docs', include_in_schema=False, dependencies=[Depends(require_login)])
+async def route_docs():
+    return get_swagger_ui_html(openapi_url='/openapi.json', title='Tremplin API docs')
+
+
+@app.get('/redoc', include_in_schema=False, dependencies=[Depends(require_login)])
+async def route_redoc():
+    return get_redoc_html(openapi_url='/openapi.json', title='Tremplin API docs')
+
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
-login_manager = flask_login.LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'route_login'
+@app.get('/login', tags=['Auth'])
+async def route_login_form(request: Request):
+    return templates.TemplateResponse(request, 'login.html', {})
 
 
-class User(flask_login.UserMixin):
-    def __init__(self, id):
-        self.id       = id
-        self.name     = state.settings['username']
-        self.password = state.settings['password']
-
-    def __repr__(self):
-        return '%d/%s' % (self.id, self.name)
-
-
-user = User(0)
+@app.post('/login', tags=['Auth'])
+async def route_login(request: Request,
+                      username: str = Form(''), password: str = Form('')):
+    if (username == state.settings['username'] and
+            password == state.settings['password']):
+        request.session['user'] = username
+        return RedirectResponse(request.query_params.get('next') or '/', status_code=303)
+    return templates.TemplateResponse(request, 'login.html', {'login_failed': True},
+                                      status_code=401)
 
 
-@login_manager.user_loader
-def load_user(userid):
-    return User(userid)
+@app.get('/logout', tags=['Auth'])
+async def route_logout(request: Request):
+    request.session.pop('user', None)
+    return RedirectResponse('/', status_code=303)
 
 
-@app.route('/login', methods=['GET', 'POST'])
-def route_login():
-    if flask.request.method == 'POST':
-        if (flask.request.form['username'] == state.settings['username'] and
-                flask.request.form['password'] == state.settings['password']):
-            flask_login.login_user(User(0))
-            return flask.redirect(flask.request.args.get('next'))
-        else:
-            return flask.abort(401)
-    return flask.render_template('login.html')
+# ── WebSocket endpoints ─────────────────────────────────────────────────────────
 
-
-@app.route('/logout')
-@flask_login.login_required
-def route_logout():
-    flask_login.logout_user()
-    return flask.redirect('/')
-
-
-@app.errorhandler(401)
-def page_not_found(e):
-    return flask.render_template('login.html', login_failed=True)
-
-
-# ── SocketIO handlers ──────────────────────────────────────────────────────────
-
-@socketio.on('connect', namespace='/scoreboard')
-def ws_scoreboard_connect():
-    import datetime
-    state._scoreboard_clients[flask.request.sid] = {
-        'ip': flask.request.remote_addr,
+@app.websocket('/ws/scoreboard')
+async def ws_scoreboard(ws: WebSocket):
+    await bus.manager.connect(ws, '/scoreboard')
+    state._scoreboard_clients[id(ws)] = {
+        'ip': ws.client.host if ws.client else '',
         'at': datetime.datetime.now().strftime('%H:%M:%S'),
     }
     if state.main_thread is None:
-        state.main_thread = socketio.start_background_task(target=main_thread_worker)
-    socketio.emit('test_mode',       {'active': state._test_session is not None}, namespace='/scoreboard')
-    socketio.emit('display_overlay', {'active': state._overlay_active},           namespace='/scoreboard')
-    socketio.emit('columns_state',   {'hidden': state._cols_hidden},               namespace='/scoreboard')
+        state.main_thread = bus.run_bg(main_thread_worker)
+    await bus.manager.send(ws, 'test_mode',       {'active': state._test_session is not None})
+    await bus.manager.send(ws, 'display_overlay', {'active': state._overlay_active})
+    await bus.manager.send(ws, 'columns_state',   {'hidden': state._cols_hidden})
     send_event_info()
-
-
-@socketio.on('disconnect', namespace='/scoreboard')
-def ws_scoreboard_disconnect():
-    state._scoreboard_clients.pop(flask.request.sid, None)
-
-
-@socketio.on('set_overlay', namespace='/scoreboard')
-def ws_set_overlay(d):
-    state._overlay_active = bool(d.get('active', False))
-    socketio.emit('display_overlay', {'active': state._overlay_active}, namespace='/scoreboard')
-
-
-@socketio.on('set_columns', namespace='/scoreboard')
-def ws_set_columns(d):
-    state._cols_hidden = bool(d.get('hidden', False))
-    socketio.emit('columns_state', {'hidden': state._cols_hidden}, namespace='/scoreboard')
-
-
-@socketio.on('adjust_splits', namespace='/scoreboard')
-def ws_adjust_splits(d):
-    lane  = int(d.get('lane', 0))
-    delta = int(d.get('delta', 0))
-    if lane < 1 or lane > 12 or delta == 0:
-        return
-    new_val = state._decoder.adjust_splits(lane, delta)
-    socketio.emit('update_scoreboard', {f'lane_splits{lane}': new_val}, namespace='/scoreboard')
-
-
-@socketio.on('next_heat', namespace='/scoreboard')
-def ws_next_heat(d):
-    event_list = list(state.event_info.events.keys())
-    event_list.sort()
     try:
-        event_tuple = event_list[event_list.index(state._decoder.last_event_sent) + 1]
-    except Exception:
-        event_tuple = event_list[0]
-    state._decoder.last_event_sent = event_tuple
-    send_event_info()
+        while True:
+            msg = await ws.receive_json()
+            ev, d = msg.get('event'), msg.get('data') or {}
+            if ev == 'set_overlay':
+                state._overlay_active = bool(d.get('active', False))
+                bus.emit('/scoreboard', 'display_overlay', {'active': state._overlay_active})
+            elif ev == 'set_columns':
+                state._cols_hidden = bool(d.get('hidden', False))
+                bus.emit('/scoreboard', 'columns_state', {'hidden': state._cols_hidden})
+            elif ev == 'adjust_splits':
+                lane  = int(d.get('lane', 0))
+                delta = int(d.get('delta', 0))
+                if 1 <= lane <= 12 and delta != 0:
+                    # Hand decoder work to the worker (its sole owner) — see worker.py.
+                    state._worker_cmds.put(lambda l=lane, dl=delta: _worker_adjust_splits(l, dl))
+            elif ev == 'next_heat':
+                state._worker_cmds.put(_worker_next_heat)
+            elif ev == 'ping':
+                await bus.manager.send(ws, 'pong')
+    except WebSocketDisconnect:
+        pass
+    finally:
+        bus.manager.disconnect(ws, '/scoreboard')
+        state._scoreboard_clients.pop(id(ws), None)
 
 
-@socketio.on('connect', namespace='/results')
-def ws_results_connect():
+@app.websocket('/ws/results')
+async def ws_results(ws: WebSocket):
+    await bus.manager.connect(ws, '/results')
     if state._last_results_snapshot:
-        socketio.emit('results_snapshot', state._last_results_snapshot,
-                      namespace='/results', to=flask.request.sid)
+        await bus.manager.send(ws, 'results_snapshot', state._last_results_snapshot)
     ev, ht = state._decoder.last_event_sent if state._decoder.last_event_sent != (0, 0) else (0, 0)
-    socketio.emit('next_heats',
-                  {'heats': _get_next_heats(ev, ht,
-                                            num_lanes=int(state.settings.get('num_lanes', 6)))},
-                  namespace='/results', to=flask.request.sid)
+    await bus.manager.send(ws, 'next_heats',
+                           {'heats': _get_next_heats(ev, ht,
+                                                     num_lanes=int(state.settings.get('num_lanes', 6)))})
+    try:
+        while True:
+            msg = await ws.receive_json()   # results is receive-only apart from heartbeat
+            if msg.get('event') == 'ping':
+                await bus.manager.send(ws, 'pong')
+    except WebSocketDisconnect:
+        pass
+    finally:
+        bus.manager.disconnect(ws, '/results')
 
 
-@socketio.on('connect', namespace='/settings')
-def ws_settings_connect():
+@app.websocket('/ws/settings')
+async def ws_settings(ws: WebSocket):
+    await bus.manager.connect(ws, '/settings')
     if state.main_thread is None and state._test_session is None:
-        state.main_thread = socketio.start_background_task(target=main_thread_worker)
-
-
-# ── Template context ───────────────────────────────────────────────────────────
-
-@app.context_processor
-def inject_globals():
-    return dict(
-        splash_url=state.settings.get('splash_url', ''),
-        labels=state.load_locale(),
-        show_lane_header=state.settings.get('show_lane_header', True),
-        show_name_header=state.settings.get('show_name_header', True),
-        show_club_header=state.settings.get('show_club_header', True),
-        show_time_header=state.settings.get('show_time_header', True),
-        show_delta_header=state.settings.get('show_delta_header', True),
-        show_position_header=state.settings.get('show_position_header', True),
-        show_name=state.settings.get('show_name', True),
-        show_club=state.settings.get('show_club', True),
-        show_delta=state.settings.get('show_delta', True),
-        show_position=state.settings.get('show_position', True),
-        show_podium=state.settings.get('show_podium', True),
-        num_lanes=int(state.settings.get('num_lanes', 6)),
-        intro_timeout=int(state.settings.get('intro_timeout', 300)),
-        results_timeout=int(state.settings.get('results_timeout', 300)),
-        server_update_timeout=int(state.settings.get('server_update_timeout', 300)),
-        finish_debounce=float(state.settings.get('finish_debounce', 3.0)),
-        split_min_duration=float(state.settings.get('split_min_duration', 1.0)),
-        pool_length=int(state.settings.get('pool_length', 25)),
-        touchpad_sides=int(state.settings.get('touchpad_sides', 1)),
-        lenex_pool_length=int(state.lenex_meet_info.get('pool_length_lenex') or 0),
-        theme_colors={**state.DEFAULT_THEME_COLORS, **state.settings.get('theme_colors', {})},
-        theme_fonts={**state.DEFAULT_THEME_FONTS,  **state.settings.get('theme_fonts',  {})},
-    )
+        state.main_thread = bus.run_bg(main_thread_worker)
+    try:
+        while True:
+            msg = await ws.receive_json()
+            if msg.get('event') == 'ping':
+                await bus.manager.send(ws, 'pong')
+    except WebSocketDisconnect:
+        pass
+    finally:
+        bus.manager.disconnect(ws, '/settings')
 
 
 # ── Locale URL aliases ─────────────────────────────────────────────────────────
@@ -207,11 +237,10 @@ def _register_locale_aliases():
                     continue
                 seen.add(alias)
                 def make_redirect(t):
-                    def view():
-                        return flask.redirect(t)
-                    view.__name__ = 'alias_' + alias
+                    async def view():
+                        return RedirectResponse(t, status_code=303)
                     return view
-                app.add_url_rule('/' + alias, view_func=make_redirect(target))
+                app.add_api_route('/' + alias, make_redirect(target), methods=['GET'])
         except Exception:
             pass
 
@@ -219,20 +248,8 @@ def _register_locale_aliases():
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    state.install_log_capture()
-    import relay
-    from console_decoders import load_custom_decoders
-    from routes.settings import _load_meet_file
-    state.load_settings()
-    load_custom_decoders(state.CUSTOM_DECODERS_FOLDER)
-    relay.start()
-    _register_locale_aliases()
-    _last = state.settings.get('last_meet_file', '')
-    if _last:
-        _path = os.path.join(state.MEET_FOLDER, _last)
-        if os.path.isfile(_path):
-            _load_meet_file(_path)
+    import uvicorn
     try:
-        socketio.run(app, host='0.0.0.0')
+        uvicorn.run(app, host='0.0.0.0', port=5000)
     except Exception:
         traceback.print_exc()

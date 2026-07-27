@@ -1,8 +1,14 @@
 """Tremplin cloud relay server.
 
 Receives scoreboard events from Pi relays and forwards them to attendees.
-One instance handles all active meets; each meet is a SocketIO room.
+One instance handles all active meets; each meet is a broadcast channel.
+
+FastAPI + plain WebSockets. Each WebSocket path
+(``/ws/relay`` ``/ws/scoreboard`` ``/ws/results`` ``/ws/schedule``) and each
+per-meet room is a channel keyed ``<namespace>:<meet_id>``. Messages are JSON
+frames ``{"event", "data"}``.
 """
+import asyncio
 import base64
 import datetime
 import glob
@@ -10,21 +16,52 @@ import hashlib
 import hmac
 import json
 import os
+import queue
+import re
 import secrets
 import sqlite3
+import tempfile
 import threading
 import tomllib
 import urllib.request
+from contextlib import asynccontextmanager
 
-import flask
-import flask_socketio
+from fastapi import (Depends, FastAPI, HTTPException, Request, WebSocket,
+                     WebSocketDisconnect)
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+
+
+class ActionResult(BaseModel):
+    """Success/failure body for admin actions (error only present on failure)."""
+    ok: bool
+    error: str | None = None
+
+
+class RestoreResult(BaseModel):
+    """Result of a backup restore: how many records were merged in."""
+    ok: bool
+    count: int = 0
+    error: str | None = None
+
+
+class StatsResult(BaseModel):
+    """Attendee count for a meet/window; count is null when analytics are off."""
+    enabled: bool
+    count: int | None = None
 
 DATA_DIR    = os.environ.get('DATA_DIR', '/data')
 KEYS_FILE   = os.path.join(DATA_DIR, 'keys.json')
 CREDS_FILE  = os.path.join(DATA_DIR, 'credentials.json')
-MEETS_FILE  = os.path.join(DATA_DIR, 'meets.json')
+MEETS_FILE  = os.path.join(DATA_DIR, 'meets.json')   # legacy single-file store (migrated on load)
+RETAINED_DIR = os.path.join(DATA_DIR, 'retained')    # per-meet files: <id>.json + blobs
 ANALYTICS_FILE = os.path.join(DATA_DIR, 'analytics.db')
-LOCALES_DIR = os.path.join(os.path.dirname(__file__), 'locales')
+_HERE       = os.path.dirname(__file__)
+LOCALES_DIR = os.path.join(_HERE, 'locales')
 
 _locale_cache = {}
 
@@ -46,31 +83,31 @@ def _strings(lang, section):
             _locale_cache[lang] = tomllib.load(f)
     return _locale_cache[lang].get(section, {})
 
-def _browser_lang():
+def _browser_lang(request):
     """First Accept-Language entry matching an available locale, or None."""
     available = {code for code, _ in _available_locales()}
-    accept = flask.request.headers.get('Accept-Language', '')
+    accept = request.headers.get('Accept-Language', '')
     for part in accept.replace('-', '_').split(','):
         code = part.split(';')[0].strip().split('_')[0].lower()
         if code in available:
             return code
     return None
 
-def _server_lang():
+def _server_lang(request):
     # Admin's pinned locale wins; otherwise follow the browser.
     available = {code for code, _ in _available_locales()}
     stored = _load_creds().get('locale', '')
     if stored and stored in available:
         return stored
-    return _browser_lang() or 'en'
+    return _browser_lang(request) or 'en'
 
-def _picker_lang():
+def _picker_lang(request):
     # Public picker: each visitor's browser language wins; the admin/default
     # locale is only a fallback when the browser language isn't available.
-    return _browser_lang() or _server_lang()
+    return _browser_lang(request) or _server_lang(request)
 
-def _load_cloud_strings():
-    return _strings(_server_lang(), 'cloud')
+def _load_cloud_strings(request):
+    return _strings(_server_lang(request), 'cloud')
 
 def _meet_lang(meet):
     return meet.get('settings', {}).get('locale') or 'en'
@@ -81,9 +118,81 @@ def _locale_name(code):
             return name
     return code
 
-app = flask.Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
-socketio = flask_socketio.SocketIO(app, async_mode='gevent', cors_allowed_origins='*')
+
+@asynccontextmanager
+async def lifespan(app):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    _analytics_prune()
+    flush_task = asyncio.create_task(_analytics_flush_loop())
+    try:
+        yield
+    finally:
+        flush_task.cancel()
+        try:
+            await flush_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await run_in_threadpool(_flush_analytics)   # persist anything still queued
+        except Exception:
+            pass                                        # don't let a failed drain error shutdown
+
+
+# Built-in docs are disabled here and re-served below behind `require_admin`, so
+# the OpenAPI schema and Swagger/ReDoc UIs require admin Basic-auth credentials.
+app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+app.mount('/static', StaticFiles(directory=os.path.join(_HERE, 'static'), check_dir=False),
+          name='static')
+templates = Jinja2Templates(directory=os.path.join(_HERE, 'templates'))
+
+
+def render(request, name, **ctx):
+    return templates.TemplateResponse(request, name, ctx)
+
+
+# ── Realtime (plain WebSocket) ─────────────────────────────────────────────────
+
+class ConnectionManager:
+    """Attendee WebSockets grouped into per-meet channels."""
+
+    def __init__(self):
+        self.channels: dict[str, set] = {}
+
+    def join(self, ws, channel):
+        self.channels.setdefault(channel, set()).add(ws)
+
+    def leave_all(self, ws):
+        for conns in self.channels.values():
+            conns.discard(ws)
+
+    async def send(self, ws, event, data=None):
+        try:
+            await ws.send_json({'event': event, 'data': data})
+        except Exception:
+            pass
+
+    async def broadcast(self, channel, event, data=None):
+        targets = list(self.channels.get(channel, ()))
+        if not targets:
+            return
+        frame = {'event': event, 'data': data}
+        # Send to every attendee concurrently so one slow/backed-up client can't
+        # delay delivery to the rest (still one loop — this overlaps the I/O waits,
+        # it is not parallelism). return_exceptions keeps one failure from
+        # cancelling the others; failed sockets are dropped.
+        results = await asyncio.gather(*(ws.send_json(frame) for ws in targets),
+                                       return_exceptions=True)
+        for ws, result in zip(targets, results):
+            if isinstance(result, Exception):
+                self.leave_all(ws)
+
+
+manager = ConnectionManager()
+
+
+def _ch(ns, meet_id):
+    return f'{ns}:{meet_id}'
+
 
 # ── Per-meet state ─────────────────────────────────────────────────────────────
 # _meets: meet_id -> {
@@ -97,41 +206,158 @@ socketio = flask_socketio.SocketIO(app, async_mode='gevent', cors_allowed_origin
 #   organizer, relay_key, name, location, sport, app_window_title, meet_date,
 #   settings, schedule_data, last_seen (iso), expires_at (iso or None while live).
 _meets      = {}
-_relay_sids = {}   # relay_sid -> meet_id
+_relay_sids = {}   # relay connection id -> meet_id
 _lock       = threading.Lock()
 
 # Fields copied from a live meet into its retained snapshot.
 _RETAINED_FIELDS = ('organizer', 'relay_key', 'name', 'location', 'sport',
                     'app_window_title', 'meet_date', 'settings', 'schedule_data')
 
+# The retained store is persisted as one small metadata file per meet plus
+# separate files for the big fields — so a persist writes only the meet that
+# changed (not all 30), and the base64 logo/background and the full start list
+# never sit in the metadata JSON that gets rewritten on every register. In memory
+# `_retained[meet_id]` still holds the whole record (images + schedule),
+# reassembled on load, so every read/serve route is unchanged. Files per meet:
+#   <id>.json            metadata + settings MINUS the two *_b64 images
+#   <id>.schedule.json   schedule_data (start list)
+#   <id>.icon / .picker  the home-icon / picker-image base64 strings
+# See info/async_architecture.md ("Scaling the cloud persistence").
+_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')   # meet id -> safe filename
+
 
 # ── Retained meets (persistence) ───────────────────────────────────────────────
 
-def _load_retained():
+def _meet_file(meet_id, suffix):
+    return os.path.join(RETAINED_DIR, meet_id + suffix)
+
+
+def _atomic_write(path, text):
+    """Write text to path atomically (temp file + os.replace). Blocking I/O."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix='.tmp')
     try:
-        with open(MEETS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        os.replace(tmp, path)   # atomic — no torn file on crash
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _write_blob(path, text):
+    """Write a blob file, or remove it when the value is empty."""
+    if text:
+        _atomic_write(path, text)
+    elif os.path.exists(path):
+        os.remove(path)
+
+
+def _split_record(rec):
+    """Split a full retained record into (meta, schedule, icon_b64, picker_b64).
+
+    `meta` is a shallow copy safe to serialize — the big fields are pulled out of
+    it, not out of the shared record."""
+    meta     = dict(rec)
+    schedule = meta.pop('schedule_data', None)
+    settings = dict(meta.get('settings') or {})
+    icon     = settings.pop('home_icon_b64', '')
+    picker   = settings.pop('picker_image_b64', '')
+    meta['settings'] = settings
+    return meta, schedule, icon, picker
+
+
+def _write_meet_files(meet_id, rec, write_schedule, write_images):
+    """Persist one meet's per-file record. Blocking (disk I/O) — call off the
+    loop. The metadata file is always written; the big blobs only when the event
+    that changed them asks (register -> images, schedule_snapshot -> schedule), so
+    an unchanged blob isn't rewritten on every reconnect."""
+    if not _ID_RE.match(meet_id or ''):
+        return
+    meta, schedule, icon, picker = _split_record(rec)
+    _atomic_write(_meet_file(meet_id, '.json'), json.dumps(meta, indent=2))
+    if write_schedule:
+        _write_blob(_meet_file(meet_id, '.schedule.json'),
+                    json.dumps(schedule) if schedule else '')
+    if write_images:
+        _write_blob(_meet_file(meet_id, '.icon'),   icon)
+        _write_blob(_meet_file(meet_id, '.picker'), picker)
+
+
+def _delete_meet_files(meet_id):
+    if not _ID_RE.match(meet_id or ''):
+        return
+    for suffix in ('.json', '.schedule.json', '.icon', '.picker'):
+        try:
+            os.remove(_meet_file(meet_id, suffix))
+        except OSError:
+            pass
+
+
+def _load_retained():
+    """Load every per-meet file back into one in-memory dict of full records."""
+    os.makedirs(RETAINED_DIR, exist_ok=True)
+    # One-time migration from the legacy single-file meets.json.
+    if os.path.exists(MEETS_FILE):
+        try:
+            with open(MEETS_FILE) as f:
+                legacy = json.load(f)
+            for mid, rec in legacy.items():
+                _write_meet_files(mid, rec, True, True)
+            os.replace(MEETS_FILE, MEETS_FILE + '.migrated')
+        except (json.JSONDecodeError, OSError):
+            pass
+    store = {}
+    for path in glob.glob(os.path.join(RETAINED_DIR, '*.json')):
+        if path.endswith('.schedule.json'):
+            continue
+        mid = os.path.basename(path)[:-len('.json')]
+        try:
+            with open(path) as f:
+                rec = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
+        sp = _meet_file(mid, '.schedule.json')
+        if os.path.exists(sp):
+            try:
+                with open(sp) as f:
+                    rec['schedule_data'] = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        settings = rec.setdefault('settings', {})
+        for suffix, field in (('.icon', 'home_icon_b64'), ('.picker', 'picker_image_b64')):
+            bp = _meet_file(mid, suffix)
+            if os.path.exists(bp):
+                try:
+                    with open(bp) as f:
+                        settings[field] = f.read()
+                except OSError:
+                    pass
+        store[mid] = rec
+    return store
 
 
 _retained = _load_retained()
 
 
-def _save_retained():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(MEETS_FILE, 'w') as f:
-        json.dump(_retained, f, indent=2)
-
-
-def _persist_meet(meet_id, meet):
-    """Write-through a live meet into the retained store. Caller holds _lock."""
+def _persist_meet_mem(meet_id, meet):
+    """In-memory write-through of a live meet into the retained store — no disk.
+    Caller holds _lock."""
     snap = _retained.get(meet_id, {})
     snap.update({k: meet.get(k) for k in _RETAINED_FIELDS})
     snap['last_seen']   = datetime.datetime.now().isoformat(timespec='seconds')
     snap['expires_at']  = None   # live — never expires while connected
     _retained[meet_id] = snap
-    _save_retained()
+
+
+def _record_copy_locked(meet_id):
+    """Shallow copy of a retained record, to serialize off the lock. Its big
+    fields (settings, schedule_data) are rebound wholesale, never mutated in
+    place, so sharing their references with the writer thread is safe."""
+    return dict(_retained[meet_id])
 
 
 def _compute_expiry(meet_date, when=None):
@@ -158,8 +384,9 @@ def _meet_id_for(key, meet_uid):
     return hashlib.sha256(f'{key}:{meet_uid}'.encode()).hexdigest()[:11]
 
 
-def _retire_locked(meet_id):
-    """Move a live meet into the retained store with an expiry. Caller holds _lock."""
+def _retire_mem(meet_id):
+    """Move a live meet into the retained store with an expiry, in memory only —
+    no disk. Caller holds _lock."""
     meet = _meets.pop(meet_id, None)
     if not meet:
         return
@@ -168,23 +395,22 @@ def _retire_locked(meet_id):
     snap['last_seen']  = datetime.datetime.now().isoformat(timespec='seconds')
     snap['expires_at'] = _compute_expiry(meet.get('meet_date', '')).isoformat(timespec='seconds')
     _retained[meet_id] = snap
-    _save_retained()
 
 
 def _sweep_expired():
     """Drop retained meets past their expiry. Live meets are never swept."""
-    now     = datetime.datetime.now()
-    removed = False
+    now = datetime.datetime.now()
     with _lock:
+        expired = []
         for meet_id in list(_retained):
             if meet_id in _meets:
                 continue  # still connected — keep visible regardless of expiry
             exp = _retained[meet_id].get('expires_at')
             if exp and datetime.datetime.fromisoformat(exp) <= now:
                 del _retained[meet_id]
-                removed = True
-        if removed:
-            _save_retained()
+                expired.append(meet_id)
+    for meet_id in expired:
+        _delete_meet_files(meet_id)
 
 
 def _get_meet(meet_id):
@@ -216,9 +442,7 @@ def _load_keys():
 
 
 def _save_keys(keys):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(KEYS_FILE, 'w') as f:
-        json.dump(keys, f, indent=2)
+    _atomic_write(KEYS_FILE, json.dumps(keys, indent=2))
 
 
 # ── Admin credentials ──────────────────────────────────────────────────────────
@@ -246,9 +470,7 @@ def _load_creds():
 
 
 def _save_creds(creds):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(CREDS_FILE, 'w') as f:
-        json.dump(creds, f, indent=2)
+    _atomic_write(CREDS_FILE, json.dumps(creds, indent=2))
 
 
 def _picker_appearance():
@@ -294,22 +516,45 @@ def _admin_meet_list():
     return out
 
 
-def _check_admin():
-    auth = flask.request.authorization
-    if not auth:
+def _check_admin(request):
+    hdr = request.headers.get('Authorization', '')
+    if not hdr.startswith('Basic '):
+        return False
+    try:
+        user, _, pw = base64.b64decode(hdr[6:]).decode().partition(':')
+    except Exception:
         return False
     creds = _load_creds()
-    if auth.username != creds['user']:
+    if user != creds['user']:
         return False
-    pw_hash, _ = _hash_password(auth.password, creds['salt'])
+    pw_hash, _ = _hash_password(pw, creds['salt'])
     return hmac.compare_digest(pw_hash, creds['password_hash'])
 
 
-def _require_admin():
-    if not _check_admin():
-        return flask.Response('Authentication required', 401,
-                              {'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
-    return None
+def require_admin(request: Request):
+    if not _check_admin(request):
+        raise HTTPException(status_code=401, detail='Authentication required',
+                            headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
+
+
+# ── API docs (admin-gated) ─────────────────────────────────────────────────────
+# 401 → the browser prompts for admin Basic-auth credentials, which it then also
+# resends when Swagger UI fetches /openapi.json from the same origin.
+
+@app.get('/openapi.json', include_in_schema=False,
+         dependencies=[Depends(require_admin)])
+async def route_openapi():
+    return app.openapi()
+
+
+@app.get('/docs', include_in_schema=False, dependencies=[Depends(require_admin)])
+async def route_docs():
+    return get_swagger_ui_html(openapi_url='/openapi.json', title='Tremplin Cloud API docs')
+
+
+@app.get('/redoc', include_in_schema=False, dependencies=[Depends(require_admin)])
+async def route_redoc():
+    return get_redoc_html(openapi_url='/openapi.json', title='Tremplin Cloud API docs')
 
 
 # ── Attendee analytics (opt-in) ────────────────────────────────────────────────
@@ -320,8 +565,10 @@ def _require_admin():
 # admin panel. Lives in its own SQLite file inside the existing /data volume.
 
 _ANALYTICS_RETENTION_DAYS = 120
-_analytics_lock = threading.Lock()
-_analytics_db   = None
+_ANALYTICS_FLUSH_SECS     = 5      # how often the background task drains the queue
+_analytics_lock  = threading.Lock()
+_analytics_db    = None
+_analytics_queue = queue.Queue()   # pending joins, flushed to the DB off the loop
 
 # window key -> timedelta; 'all' means since the beginning of time.
 _ANALYTICS_WINDOWS = {
@@ -353,16 +600,43 @@ def _analytics_enabled():
 
 
 def _log_connection(meet_id, visitor_id, namespace):
-    """Record one attendee join. No-op unless analytics is enabled."""
-    if not meet_id or not visitor_id or not _analytics_enabled():
+    """Queue one attendee join. Called from the WS connect handlers on the event
+    loop, so it does no I/O — just a non-blocking in-memory enqueue. The
+    background flush task batches these off the loop and drops them if analytics
+    is disabled (so a reconnect storm can't stall the loop with per-join commits)."""
+    if not meet_id or not visitor_id:
         return
-    visitor_id = str(visitor_id)[:64]
-    now = int(datetime.datetime.now().timestamp())
+    _analytics_queue.put((meet_id, str(visitor_id)[:64],
+                          int(datetime.datetime.now().timestamp()), namespace))
+
+
+def _flush_analytics():
+    """Drain queued joins into the DB in one transaction. Blocking (disk I/O) —
+    run off the loop. Rows are discarded when analytics is disabled."""
+    rows = []
+    try:
+        while True:
+            rows.append(_analytics_queue.get_nowait())
+    except queue.Empty:
+        pass
+    if not rows or not _analytics_enabled():
+        return
     with _analytics_lock:
         db = _get_analytics_db()
-        db.execute('INSERT INTO connections VALUES (?, ?, ?, ?)',
-                   (meet_id, visitor_id, now, namespace))
+        db.executemany('INSERT INTO connections VALUES (?, ?, ?, ?)', rows)
         db.commit()
+
+
+async def _analytics_flush_loop():
+    """Periodically flush queued analytics joins to the DB, off the event loop."""
+    while True:
+        await asyncio.sleep(_ANALYTICS_FLUSH_SECS)
+        try:
+            await run_in_threadpool(_flush_analytics)
+        except Exception as e:
+            # A transient DB error (locked, disk full) must not kill the loop —
+            # that would stop all future flushes and grow the queue unbounded.
+            print(f'[cloud] analytics flush failed: {e}', flush=True)
 
 
 def _attendee_count(meet_id, since_ts):
@@ -386,8 +660,8 @@ def _analytics_prune():
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
-@app.route('/')
-def route_index():
+@app.get('/', tags=['Public'])
+def route_index(request: Request):
     _sweep_expired()
     with _lock:
         meets = [{'id': mid, 'name': m['name'], 'location': m['location'],
@@ -399,7 +673,7 @@ def route_index():
     creds     = _load_creds()
     raw_title = creds.get('picker_title')
     raw_wt    = creds.get('picker_window_title')
-    return flask.render_template('picker.html', meets=meets, t=_strings(_picker_lang(), 'cloud'),
+    return render(request, 'picker.html', meets=meets, t=_strings(_picker_lang(request), 'cloud'),
         picker_title=('Tremplin' if raw_title is None else raw_title),
         picker_window_title=('Tremplin' if raw_wt is None else raw_wt),
         picker_logo=bool(creds.get('picker_logo_b64', '')),
@@ -407,31 +681,31 @@ def route_index():
         analytics_enabled=_analytics_enabled())
 
 
-@app.route('/mobile')
-def route_mobile():
-    meet_id = flask.request.args.get('meet', '')
+@app.get('/mobile', tags=['Public'])
+def route_mobile(request: Request):
+    meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        return flask.redirect(flask.url_for('route_index'))
-    return flask.render_template('mobile.html',
-                                 meet_id=meet_id,
-                                 name=meet['name'],
-                                 location=meet['location'],
-                                 sport=meet['sport'],
-                                 app_window_title=meet.get('app_window_title', ''),
-                                 t=_strings(_meet_lang(meet), 'mobile'))
+        return RedirectResponse('/', status_code=303)
+    return render(request, 'mobile.html',
+                  meet_id=meet_id,
+                  meet_name=meet['name'],
+                  location=meet['location'],
+                  sport=meet['sport'],
+                  app_window_title=meet.get('app_window_title', ''),
+                  t=_strings(_meet_lang(meet), 'mobile'))
 
 
-@app.route('/mobile/live')
-def route_live():
-    meet_id = flask.request.args.get('meet', '')
+@app.get('/mobile/live', tags=['Public'])
+def route_live(request: Request):
+    meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        return flask.render_template('offline.html')
+        return render(request, 'offline.html')
     s = meet.get('settings', {})
-    return flask.render_template('live.html',
+    return render(request, 'live.html',
         meet_id=meet_id,
         meet_title=meet['name'],
         num_lanes=s.get('num_lanes', 8),
@@ -451,15 +725,15 @@ def route_live():
     )
 
 
-@app.route('/mobile/results')
-def route_results():
-    meet_id = flask.request.args.get('meet', '')
+@app.get('/mobile/results', tags=['Public'])
+def route_results(request: Request):
+    meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        return flask.render_template('offline.html')
+        return render(request, 'offline.html')
     s = meet.get('settings', {})
-    return flask.render_template('results.html',
+    return render(request, 'results.html',
         meet_id=meet_id,
         num_lanes=s.get('num_lanes', 8),
         show_lane_header=s.get('show_lane_header', True),
@@ -510,17 +784,17 @@ def _build_heats_json(sched):
     return heats
 
 
-@app.route('/mobile/schedule')
-def route_schedule():
-    meet_id = flask.request.args.get('meet', '')
+@app.get('/mobile/schedule', tags=['Public'])
+def route_schedule(request: Request):
+    meet_id = request.query_params.get('meet', '')
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        return flask.render_template('offline.html')
+        return render(request, 'offline.html')
     s     = meet.get('settings', {})
     sched = meet.get('schedule_data', {})
     heats = _build_heats_json(sched)
-    return flask.render_template('schedule.html',
+    return render(request, 'schedule.html',
         meet_id=meet_id,
         heats_json=json.dumps(heats),
         has_meet=bool(heats),
@@ -532,20 +806,40 @@ def route_schedule():
     )
 
 
-@app.route('/search_suggestions')
-def route_search_suggestions():
+@app.get('/meet/{meet_id}/config', tags=['Public'])
+def route_meet_config(meet_id: str):
+    """A meet's display config as JSON — for native attendee clients (iOS/Android)
+    that render the board natively instead of loading the HTML page."""
+    with _lock:
+        meet = _get_meet(meet_id)
+        live = meet_id in _meets
+    if not meet:
+        raise HTTPException(404)
+    return {
+        'name':             meet.get('name', ''),
+        'location':         meet.get('location', ''),
+        'sport':            meet.get('sport', ''),
+        'app_window_title': meet.get('app_window_title', ''),
+        'meet_date':        meet.get('meet_date', ''),
+        'live':             live,
+        'settings':         meet.get('settings', {}),
+    }
+
+
+@app.get('/search_suggestions', tags=['Public'])
+def route_search_suggestions(request: Request):
     import unicodedata
     def fold(s):
         return unicodedata.normalize('NFD', s.lower()).encode('ascii', 'ignore').decode()
 
-    meet_id = flask.request.args.get('meet_id', '')
-    q       = fold(flask.request.args.get('q', '').strip())
+    meet_id = request.query_params.get('meet_id', '')
+    q       = fold(request.query_params.get('q', '').strip())
     if not q:
-        return flask.jsonify([])
+        return []
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        return flask.jsonify([])
+        return []
     start_list = meet.get('schedule_data', {}).get('start_list', {})
     swimmers, clubs = {}, set()
     for ev, heats in start_list.items():
@@ -565,28 +859,27 @@ def route_search_suggestions():
     for club in sorted(clubs):
         if q in fold(club):
             results.append({'type': 'club', 'name': club})
-    return flask.jsonify(results[:20])
+    return results[:20]
 
 
-@app.route('/logout')
+@app.get('/logout', tags=['Admin'])
 def route_logout():
-    return flask.Response(
-        'Logged out — <a href="/admin">sign in again</a>', 401,
-        {'WWW-Authenticate': 'Basic realm="Tremplin Admin"'}
-    )
+    return Response(
+        'Logged out — <a href="/admin">sign in again</a>', status_code=401,
+        headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
 
 
-@app.route('/ping')
+@app.get('/ping', tags=['Public'])
 def route_ping():
-    return 'ok'
+    return Response('ok', media_type='text/plain')
 
 
-@app.route('/manifest/<meet_id>')
-def route_manifest(meet_id):
+@app.get('/manifest/{meet_id}', tags=['Public'])
+def route_manifest(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        flask.abort(404)
+        raise HTTPException(404)
     has_icon = bool(meet.get('settings', {}).get('home_icon_b64'))
     icons = ([
         {'src': f'/icon/{meet_id}', 'sizes': '192x192', 'type': 'image/png'},
@@ -604,71 +897,70 @@ def route_manifest(meet_id):
         'theme_color':      '#000000',
         'icons':            icons,
     }
-    return flask.Response(json.dumps(manifest), mimetype='application/manifest+json')
+    return Response(json.dumps(manifest), media_type='application/manifest+json')
 
 
-@app.route('/icon/<meet_id>')
-def route_icon(meet_id):
+@app.get('/icon/{meet_id}', tags=['Public'])
+def route_icon(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        flask.abort(404)
+        raise HTTPException(404)
     icon_b64 = meet.get('settings', {}).get('home_icon_b64', '')
     if not icon_b64:
-        flask.abort(404)
+        raise HTTPException(404)
     data = base64.b64decode(icon_b64)
-    return flask.Response(data, mimetype='image/png',
-                          headers={'Cache-Control': 'public, max-age=3600'})
+    return Response(data, media_type='image/png',
+                    headers={'Cache-Control': 'public, max-age=3600'})
 
 
-@app.route('/picker_image/<meet_id>')
-def route_meet_picker_image(meet_id):
+@app.get('/picker_image/{meet_id}', tags=['Public'])
+def route_meet_picker_image(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
     if not meet:
-        flask.abort(404)
+        raise HTTPException(404)
     img_b64 = meet.get('settings', {}).get('picker_image_b64', '')
     if not img_b64:
-        flask.abort(404)
+        raise HTTPException(404)
     data = base64.b64decode(img_b64)
-    return flask.Response(data, mimetype='image/png',
-                          headers={'Cache-Control': 'public, max-age=60'})
+    return Response(data, media_type='image/png',
+                    headers={'Cache-Control': 'public, max-age=60'})
 
 
-@app.route('/picker_logo')
+@app.get('/picker_logo', tags=['Public'])
 def route_picker_logo():
     creds    = _load_creds()
     logo_b64 = creds.get('picker_logo_b64', '')
     if not logo_b64:
-        flask.abort(404)
+        raise HTTPException(404)
     data = base64.b64decode(logo_b64)
     mime = creds.get('picker_logo_mime', 'image/png')
-    return flask.Response(data, mimetype=mime,
-                          headers={'Cache-Control': 'public, max-age=300'})
+    return Response(data, media_type=mime,
+                    headers={'Cache-Control': 'public, max-age=300'})
 
 
-@app.route('/picker_icon')
+@app.get('/picker_icon', tags=['Public'])
 def route_picker_icon():
     icon_b64 = _load_creds().get('picker_icon_b64', '')
     if not icon_b64:
-        default = os.path.join(os.path.dirname(__file__), 'static', 'img', 'default_mobile_icon.png')
+        default = os.path.join(_HERE, 'static', 'img', 'default_mobile_icon.png')
         if not os.path.exists(default):
-            flask.abort(404)
-        return flask.send_file(default, mimetype='image/png')
+            raise HTTPException(404)
+        return FileResponse(default, media_type='image/png')
     data = base64.b64decode(icon_b64)
-    return flask.Response(data, mimetype='image/png',
-                          headers={'Cache-Control': 'public, max-age=300'})
+    return Response(data, media_type='image/png',
+                    headers={'Cache-Control': 'public, max-age=300'})
 
 
-@app.route('/favicon.ico')
+@app.get('/favicon.ico', tags=['Public'])
 def route_favicon():
     # Browsers auto-request this; serve a lean, scalable brand mark for the tab.
-    return flask.send_file(
-        os.path.join(os.path.dirname(__file__), 'static', 'img', 'favicon.svg'),
-        mimetype='image/svg+xml')
+    return FileResponse(os.path.join(_HERE, 'static', 'img', 'favicon.svg'),
+                        media_type='image/svg+xml')
 
 
-@app.route('/picker_manifest')
+@app.get('/picker_manifest', tags=['Public'])
 def route_picker_manifest():
     creds = _load_creds()
     raw_wt = creds.get('picker_window_title')
@@ -685,158 +977,151 @@ def route_picker_manifest():
             {'src': '/picker_icon', 'sizes': '512x512', 'type': 'image/png'},
         ],
     }
-    return flask.Response(json.dumps(manifest), mimetype='application/manifest+json')
+    return Response(json.dumps(manifest), media_type='application/manifest+json')
 
 
-@app.route('/admin/picker_appearance', methods=['POST'])
-def route_picker_appearance():
-    denied = _require_admin()
-    if denied:
-        return flask.jsonify({'error': 'auth'}), 401
+@app.post('/admin/picker_appearance', tags=['Admin'], response_model=ActionResult,
+          response_model_exclude_none=True, dependencies=[Depends(require_admin)])
+async def route_picker_appearance(request: Request):
+    form  = await request.form()
     creds = _load_creds()
-    if 'picker_title' in flask.request.form:
-        creds['picker_title']        = flask.request.form.get('picker_title', '').strip()
-        creds['picker_window_title'] = flask.request.form.get('picker_window_title', '').strip()
-        creds['picker_logo_above']   = flask.request.form.get('picker_logo_above') == '1'
-    if flask.request.form.get('picker_logo_clear') == '1':
+    if 'picker_title' in form:
+        creds['picker_title']        = form.get('picker_title', '').strip()
+        creds['picker_window_title'] = form.get('picker_window_title', '').strip()
+        creds['picker_logo_above']   = form.get('picker_logo_above') == '1'
+    if form.get('picker_logo_clear') == '1':
         creds['picker_logo_b64'] = ''
         creds.pop('picker_logo_mime', None)
     else:
-        logo = flask.request.files.get('picker_logo')
+        logo = form.get('picker_logo')
         if logo and logo.filename:
-            data = logo.read()
+            data = await logo.read()
             mime = logo.content_type or 'image/png'
             creds['picker_logo_b64']  = base64.b64encode(data).decode()
             creds['picker_logo_mime'] = mime
-    if flask.request.form.get('picker_icon_clear') == '1':
+    if form.get('picker_icon_clear') == '1':
         creds['picker_icon_b64'] = ''
     else:
-        icon = flask.request.files.get('picker_icon')
+        icon = form.get('picker_icon')
         if icon and icon.filename:
-            creds['picker_icon_b64'] = base64.b64encode(icon.read()).decode()
-    _save_creds(creds)
-    return flask.jsonify({'ok': True})
+            creds['picker_icon_b64'] = base64.b64encode(await icon.read()).decode()
+    await run_in_threadpool(_save_creds, creds)
+    return {'ok': True}
 
 
-@app.route('/admin/backup/keys')
-def route_backup_keys():
-    denied = _require_admin()
-    if denied:
-        return denied
+_LOGIN_FIELDS = ('user', 'password_hash', 'salt')
+
+
+@app.get('/admin/backup/keys', tags=['Admin'], dependencies=[Depends(require_admin)])
+def route_backup_keys(request: Request):
     try:
         with open(KEYS_FILE) as f:
             keys = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         keys = {}
-    creds  = _load_creds()
-    backup = {
-        'version': 1,
-        'keys': keys,
-        'appearance': {
-            'picker_title':        creds.get('picker_title'),
-            'picker_window_title': creds.get('picker_window_title'),
-            'picker_logo_b64':     creds.get('picker_logo_b64', ''),
-            'picker_logo_mime':    creds.get('picker_logo_mime', ''),
-            'picker_logo_above':   creds.get('picker_logo_above', False),
-            'picker_icon_b64':     creds.get('picker_icon_b64', ''),
-        },
-    }
-    return flask.Response(
+    # keys + credentials.json (picker appearance, analytics toggle, locale). By
+    # default the admin login is excluded, so a routine backup never carries the
+    # password hash. ?full=1 adds the login (marked 'full') for a bare-metal
+    # rebuild — that file contains the password hash + salt, so keep it private.
+    full  = request.query_params.get('full') == '1'
+    creds = _load_creds()
+    if not full:
+        creds = {k: v for k, v in creds.items() if k not in _LOGIN_FIELDS}
+    backup = {'version': 2, 'keys': keys, 'credentials': creds}
+    if full:
+        backup['full'] = True
+    name = 'tremplin-backup-full.json' if full else 'tremplin-backup.json'
+    return Response(
         json.dumps(backup, indent=2),
-        mimetype='application/json',
-        headers={'Content-Disposition': 'attachment; filename="tremplin-backup.json"'}
-    )
+        media_type='application/json',
+        headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
 
-@app.route('/admin/restore/keys', methods=['POST'])
-def route_restore_keys():
-    denied = _require_admin()
-    if denied:
-        return denied
-    uploaded = flask.request.files.get('keys_file')
+@app.post('/admin/restore/keys', tags=['Admin'], response_model=RestoreResult,
+          response_model_exclude_none=True, dependencies=[Depends(require_admin)])
+async def route_restore_keys(request: Request):
+    uploaded = (await request.form()).get('keys_file')
     if not uploaded:
-        return flask.jsonify({'error': 'No file provided'}), 400
+        return JSONResponse({'error': 'No file provided'}, status_code=400)
     try:
-        data = json.loads(uploaded.read())
-        if not isinstance(data, dict):
-            raise ValueError('expected a JSON object')
-        if 'keys' in data:
-            keys       = data['keys']
-            appearance = data.get('appearance', {})
-        else:
-            keys       = data
-            appearance = {}
-        if not isinstance(keys, dict):
-            raise ValueError('invalid keys section')
-        _save_keys(keys)
-        if appearance:
-            creds = _load_creds()
-            for field in ('picker_title', 'picker_window_title', 'picker_logo_b64', 'picker_logo_mime', 'picker_logo_above', 'picker_icon_b64'):
-                if field in appearance:
-                    creds[field] = appearance[field]
-            _save_creds(creds)
-        return flask.jsonify({'ok': True, 'count': len(keys)})
+        data = json.loads(await uploaded.read())
+        if not isinstance(data, dict) or not isinstance(data.get('keys'), dict):
+            raise ValueError('not a valid backup file')
+        keys = data['keys']
+        await run_in_threadpool(_save_keys, keys)
+        # Merge the backup's credentials (appearance, analytics, locale) onto the
+        # current ones so the backup wins but no required field goes missing. The
+        # admin login is only touched when the file is an explicit full backup —
+        # otherwise restoring a routine backup would silently reset the password.
+        creds_in = data.get('credentials')
+        if isinstance(creds_in, dict):
+            creds_in = dict(creds_in)
+            if not data.get('full'):
+                for f in _LOGIN_FIELDS:
+                    creds_in.pop(f, None)
+            await run_in_threadpool(_save_creds, {**_load_creds(), **creds_in})
+        return {'ok': True, 'count': len(keys)}
     except (json.JSONDecodeError, ValueError) as e:
-        return flask.jsonify({'error': f'Invalid file: {e}'}), 400
+        return JSONResponse({'error': f'Invalid file: {e}'}, status_code=400)
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@app.route('/admin/backup/meets')
+@app.get('/admin/backup/meets', tags=['Admin'], dependencies=[Depends(require_admin)])
 def route_backup_meets():
-    denied = _require_admin()
-    if denied:
-        return denied
     with _lock:
         meets = dict(_retained)
     backup = {'version': 1, 'meets': meets}
-    return flask.Response(
+    return Response(
         json.dumps(backup, indent=2),
-        mimetype='application/json',
-        headers={'Content-Disposition': 'attachment; filename="tremplin-meets.json"'}
-    )
+        media_type='application/json',
+        headers={'Content-Disposition': 'attachment; filename="tremplin-meets.json"'})
 
 
-@app.route('/admin/restore/meets', methods=['POST'])
-def route_restore_meets():
-    denied = _require_admin()
-    if denied:
-        return denied
-    uploaded = flask.request.files.get('meets_file')
+@app.post('/admin/restore/meets', tags=['Admin'], response_model=RestoreResult,
+          response_model_exclude_none=True, dependencies=[Depends(require_admin)])
+async def route_restore_meets(request: Request):
+    uploaded = (await request.form()).get('meets_file')
     if not uploaded:
-        return flask.jsonify({'error': 'No file provided'}), 400
+        return JSONResponse({'error': 'No file provided'}, status_code=400)
     try:
-        data = json.loads(uploaded.read())
+        data = json.loads(await uploaded.read())
         if not isinstance(data, dict):
             raise ValueError('expected a JSON object')
         meets = data['meets'] if 'meets' in data else data
         if not isinstance(meets, dict):
             raise ValueError('invalid meets section')
         with _lock:
-            # Replace retained snapshots. Live meets stay in _meets untouched and
-            # re-persist themselves on disconnect, so they're never lost.
-            _retained.clear()
-            _retained.update(meets)
-            _save_retained()
-        return flask.jsonify({'ok': True, 'count': len(meets)})
+            # Merge (upsert) the backup's meets into the store — never clear. A
+            # meet not in the backup is left alone, and a currently-live meet is
+            # skipped so its fresh state isn't overwritten by a stale backup. This
+            # is additive: retained meets auto-expire, and "Delete meet" removes
+            # one. Nothing is wiped, so a concurrent register can't be clobbered.
+            incoming = {mid: rec for mid, rec in meets.items() if mid not in _meets}
+            _retained.update(incoming)
+            recs = {mid: dict(_retained[mid]) for mid in incoming}
+        for mid, rec in recs.items():
+            await run_in_threadpool(_write_meet_files, mid, rec, True, True)
+        return {'ok': True, 'count': len(incoming)}
     except (json.JSONDecodeError, ValueError) as e:
-        return flask.jsonify({'error': f'Invalid file: {e}'}), 400
+        return JSONResponse({'error': f'Invalid file: {e}'}, status_code=400)
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 500
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@app.route('/admin/update', methods=['POST'])
-def route_update():
-    denied = _require_admin()
-    if denied:
-        return denied
+@app.post('/admin/update', tags=['Admin'], dependencies=[Depends(require_admin)])
+async def route_update(request: Request):
+    version = (await request.form()).get('version', 'latest')
+    # The webhook call is a blocking HTTP request — run it off the event loop
+    # so attendee broadcasts keep flowing.
+    return await run_in_threadpool(_trigger_update, version)
 
+
+def _trigger_update(version):
     url    = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not url or not secret:
-        return flask.jsonify({'error': 'Deploy webhook not configured'}), 503
-
-    version = flask.request.form.get('version', 'latest')
+        return JSONResponse({'error': 'Deploy webhook not configured'}, status_code=503)
     try:
         body = json.dumps({'version': version}).encode()
         req = urllib.request.Request(url, data=body, method='POST')
@@ -844,106 +1129,90 @@ def route_update():
         req.add_header('Content-Type', 'application/json')
         with urllib.request.urlopen(req, timeout=5) as resp:
             if resp.status == 200:
-                return flask.jsonify({'status': 'started'})
-            return flask.jsonify({'error': f'webhook {resp.status}'}), 502
+                return {'status': 'started'}
+            return JSONResponse({'error': f'webhook {resp.status}'}, status_code=502)
     except Exception as e:
-        return flask.jsonify({'error': str(e)}), 502
+        return JSONResponse({'error': str(e)}, status_code=502)
 
 
-@app.route('/admin/update_log')
+@app.get('/admin/update_log', tags=['Admin'], dependencies=[Depends(require_admin)])
 def route_update_log():
-    denied = _require_admin()
-    if denied:
-        return denied
-
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
-        return flask.jsonify({'lines': [], 'done': None})
+        return {'lines': [], 'done': None}
 
     log_url = webhook_url.rsplit('/', 1)[0] + '/log'
     try:
         req = urllib.request.Request(log_url, method='GET')
         req.add_header('X-Deploy-Token', secret)
         with urllib.request.urlopen(req, timeout=5) as resp:
-            return flask.Response(resp.read(), content_type='application/json')
+            return Response(resp.read(), media_type='application/json')
     except Exception:
-        return flask.jsonify({'lines': [], 'done': None})
+        return {'lines': [], 'done': None}
 
 
-@app.route('/admin/logs')
-def route_logs():
-    denied = _require_admin()
-    if denied:
-        return denied
-
+@app.get('/admin/logs', tags=['Admin'], dependencies=[Depends(require_admin)])
+def route_logs(request: Request):
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
-        return flask.jsonify({'ok': False, 'error': 'not configured'}), 503
+        return JSONResponse({'ok': False, 'error': 'not configured'}, status_code=503)
 
-    source = flask.request.args.get('source', 'app')
-    tail   = flask.request.args.get('tail', '300')
+    source = request.query_params.get('source', 'app')
+    tail   = request.query_params.get('tail', '300')
     logs_url = webhook_url.rsplit('/', 1)[0] + f'/logs?source={source}&tail={tail}'
     try:
         req = urllib.request.Request(logs_url, method='GET')
         req.add_header('X-Deploy-Token', secret)
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return flask.Response(resp.read(), content_type='application/json')
+            return Response(resp.read(), media_type='application/json')
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)}), 502
+        return JSONResponse({'ok': False, 'error': str(e)}, status_code=502)
 
 
-@app.route('/admin/versions')
+@app.get('/admin/versions', tags=['Admin'], dependencies=[Depends(require_admin)])
 def route_versions():
-    denied = _require_admin()
-    if denied:
-        return denied
-
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
     if not webhook_url or not secret:
-        return flask.jsonify({'ok': False, 'error': 'not configured'}), 503
+        return JSONResponse({'ok': False, 'error': 'not configured'}, status_code=503)
 
     versions_url = webhook_url.rsplit('/', 1)[0] + '/versions'
     try:
         req = urllib.request.Request(versions_url, method='GET')
         req.add_header('X-Deploy-Token', secret)
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return flask.Response(resp.read(), content_type='application/json')
+            return Response(resp.read(), media_type='application/json')
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)}), 502
+        return JSONResponse({'ok': False, 'error': str(e)}, status_code=502)
 
 
-@app.route('/admin/stats')
-def route_stats():
-    denied = _require_admin()
-    if denied:
-        return flask.jsonify({'error': 'auth'}), 401
+@app.get('/admin/stats', tags=['Admin'], response_model=StatsResult,
+         dependencies=[Depends(require_admin)])
+def route_stats(request: Request):
     if not _analytics_enabled():
-        return flask.jsonify({'enabled': False, 'count': None})
-    meet_id = flask.request.args.get('meet_id', '')
-    window  = flask.request.args.get('window', '24h')
+        return {'enabled': False, 'count': None}
+    meet_id = request.query_params.get('meet_id', '')
+    window  = request.query_params.get('window', '24h')
     if window == 'all':
         since = 0
     else:
         delta = _ANALYTICS_WINDOWS.get(window, _ANALYTICS_WINDOWS['24h'])
         since = int((datetime.datetime.now() - delta).timestamp())
-    return flask.jsonify({'enabled': True, 'count': _attendee_count(meet_id, since)})
+    return {'enabled': True, 'count': _attendee_count(meet_id, since)}
 
 
-@app.route('/admin', methods=['GET', 'POST'])
-def route_admin():
-    denied = _require_admin()
-    if denied:
-        return denied
-
+@app.get('/admin', tags=['Admin'], dependencies=[Depends(require_admin)])
+@app.post('/admin', tags=['Admin'], dependencies=[Depends(require_admin)])
+async def route_admin(request: Request):
     keys = _load_keys()
 
-    if flask.request.method == 'POST':
-        action = flask.request.form.get('action')
+    if request.method == 'POST':
+        form   = await request.form()
+        action = form.get('action')
         if action == 'add':
-            org = flask.request.form.get('organizer', '').strip()
+            org = form.get('organizer', '').strip()
             if org:
                 new_key = secrets.token_urlsafe(32)
                 keys[new_key] = {
@@ -951,53 +1220,58 @@ def route_admin():
                     'created':   datetime.date.today().isoformat(),
                     'active':    True,
                 }
-                _save_keys(keys)
+                await run_in_threadpool(_save_keys, keys)
         elif action == 'revoke':
-            key = flask.request.form.get('key', '')
+            key = form.get('key', '')
             if key in keys:
                 keys[key]['active'] = False
-                _save_keys(keys)
+                await run_in_threadpool(_save_keys, keys)
         elif action == 'delete':
-            key = flask.request.form.get('key', '')
+            key = form.get('key', '')
             if key in keys:
                 del keys[key]
-                _save_keys(keys)
+                await run_in_threadpool(_save_keys, keys)
         elif action == 'set_expiry':
-            meet_id = flask.request.form.get('meet_id', '')
-            raw     = flask.request.form.get('expires_at', '').strip()
+            meet_id = form.get('meet_id', '')
+            raw     = form.get('expires_at', '').strip()
             with _lock:
+                rec = None
                 if meet_id in _retained and meet_id not in _meets and raw:
                     try:
                         exp = datetime.datetime.fromisoformat(raw)
                         _retained[meet_id]['expires_at'] = exp.isoformat(timespec='seconds')
-                        _save_retained()
+                        rec = _record_copy_locked(meet_id)
                     except ValueError:
                         pass
+            if rec is not None:
+                await run_in_threadpool(_write_meet_files, meet_id, rec, False, False)  # metadata only
         elif action == 'delete_meet':
-            meet_id = flask.request.form.get('meet_id', '')
+            meet_id = form.get('meet_id', '')
             with _lock:
-                if meet_id in _retained and meet_id not in _meets:
+                gone = meet_id in _retained and meet_id not in _meets
+                if gone:
                     del _retained[meet_id]
-                    _save_retained()
+            if gone:
+                await run_in_threadpool(_delete_meet_files, meet_id)
         elif action == 'set_analytics':
             creds = _load_creds()
-            creds['analytics_enabled'] = flask.request.form.get('analytics_enabled') == '1'
-            _save_creds(creds)
-            return flask.redirect(flask.url_for('route_admin'))
+            creds['analytics_enabled'] = form.get('analytics_enabled') == '1'
+            await run_in_threadpool(_save_creds, creds)
+            return RedirectResponse('/admin', status_code=303)
         elif action == 'change_locale':
-            locale = flask.request.form.get('locale', '')
+            locale = form.get('locale', '')
             creds  = _load_creds()
             creds['locale'] = locale
-            _save_creds(creds)
+            await run_in_threadpool(_save_creds, creds)
             _locale_cache.clear()
-            return flask.redirect(flask.url_for('route_admin'))
+            return RedirectResponse('/admin', status_code=303)
         elif action == 'change_credentials':
-            t         = _load_cloud_strings()
+            t         = _load_cloud_strings(request)
             creds     = _load_creds()
-            cur_pw    = flask.request.form.get('current_password', '')
-            new_user  = flask.request.form.get('new_user', '').strip()
-            new_pw1   = flask.request.form.get('new_password', '')
-            new_pw2   = flask.request.form.get('new_password2', '')
+            cur_pw    = form.get('current_password', '')
+            new_user  = form.get('new_user', '').strip()
+            new_pw1   = form.get('new_password', '')
+            new_pw2   = form.get('new_password2', '')
             cur_hash, _ = _hash_password(cur_pw, creds['salt'])
             if not hmac.compare_digest(cur_hash, creds['password_hash']):
                 error = t.get('err_wrong_password', 'Incorrect current password.')
@@ -1008,47 +1282,40 @@ def route_admin():
             else:
                 creds['user'] = new_user or creds['user']
                 creds['password_hash'], creds['salt'] = _hash_password(new_pw1)
-                _save_creds(creds)
-                return flask.Response(
+                await run_in_threadpool(_save_creds, creds)
+                return Response(
                     'Credentials updated — <a href="/admin">sign in with new credentials</a>',
-                    401, {'WWW-Authenticate': 'Basic realm="Tremplin Admin"'}
-                )
-            return flask.render_template('admin.html', keys=keys,
-                                         active_meets=_admin_meet_list(),
-                                         t=t, creds_error=error,
-                                         locales=_available_locales(),
-                                         current_locale=_load_creds().get('locale', ''),
-                                         has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
-                                         analytics_enabled=_analytics_enabled(),
-                                         **_picker_appearance())
-        return flask.redirect(flask.url_for('route_admin'))
+                    status_code=401,
+                    headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
+            return render(request, 'admin.html', keys=keys,
+                          active_meets=_admin_meet_list(),
+                          t=t, creds_error=error,
+                          locales=_available_locales(),
+                          current_locale=_load_creds().get('locale', ''),
+                          has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
+                          analytics_enabled=_analytics_enabled(),
+                          **_picker_appearance())
+        return RedirectResponse('/admin', status_code=303)
 
-    _sweep_expired()
-    return flask.render_template('admin.html', keys=keys,
-                                 active_meets=_admin_meet_list(),
-                                 t=_load_cloud_strings(), creds_error=None,
-                                 locales=_available_locales(),
-                                 current_locale=_load_creds().get('locale', ''),
-                                 has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
-                                 analytics_enabled=_analytics_enabled(),
-                                 **_picker_appearance())
-
-
-# ── SocketIO — /relay namespace (Pi connections) ───────────────────────────────
-
-@socketio.on('connect', namespace='/relay')
-def on_relay_connect():
-    pass  # auth happens in 'register'
+    await run_in_threadpool(_sweep_expired)
+    return render(request, 'admin.html', keys=keys,
+                  active_meets=_admin_meet_list(),
+                  t=_load_cloud_strings(request), creds_error=None,
+                  locales=_available_locales(),
+                  current_locale=_load_creds().get('locale', ''),
+                  has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
+                  analytics_enabled=_analytics_enabled(),
+                  **_picker_appearance())
 
 
-@socketio.on('register', namespace='/relay')
-def on_relay_register(data):
+# ── WebSocket — /ws/relay (Pi connections) ─────────────────────────────────────
+
+async def _on_relay_register(ws, sid, data):
     key  = data.get('key', '')
     keys = _load_keys()
 
     if key not in keys or not keys[key].get('active', False):
-        socketio.emit('rejected', {'reason': 'invalid or inactive key'},
-                      namespace='/relay', to=flask.request.sid)
+        await manager.send(ws, 'rejected', {'reason': 'invalid or inactive key'})
         return
 
     # Meet id is stable per (key, meet_uid): one relay key can publish several
@@ -1062,15 +1329,16 @@ def on_relay_register(data):
         if not meet_id:
             meet_id = secrets.token_urlsafe(8)
             keys[key]['meet_id'] = meet_id
-            _save_keys(keys)
+            await run_in_threadpool(_save_keys, keys)
 
-    sid = flask.request.sid
-    with _lock:
+    with _lock:                                   # fast: in-memory only
         # If this socket was publishing a different meet (operator switched
         # LENEX files), retire it so it stays available as schedule-only.
-        prev_id = _relay_sids.get(sid)
+        prev_id  = _relay_sids.get(sid)
+        prev_rec = None
         if prev_id and prev_id != meet_id:
-            _retire_locked(prev_id)
+            _retire_mem(prev_id)
+            prev_rec = _record_copy_locked(prev_id) if prev_id in _retained else None
 
         prev = _meets.get(meet_id, {})          # already-live data (settings re-register)
         snap = _retained.get(meet_id, {})        # persisted snapshot (fresh reconnect)
@@ -1093,17 +1361,21 @@ def on_relay_register(data):
             'schedule_data':    prev.get('schedule_data') or snap.get('schedule_data', {}),
         }
         _relay_sids[sid] = meet_id
-        _persist_meet(meet_id, _meets[meet_id])
+        _persist_meet_mem(meet_id, _meets[meet_id])
+        rec = _record_copy_locked(meet_id)
+    # Off the loop: write this meet's files (metadata + schedule + images); and
+    # the retired meet's metadata, if this register displaced one.
+    await run_in_threadpool(_write_meet_files, meet_id, rec, True, True)
+    if prev_rec is not None:
+        await run_in_threadpool(_write_meet_files, prev_id, prev_rec, False, False)
 
-    socketio.emit('registered', {'meet_id': meet_id},
-                  namespace='/relay', to=sid)
-    _emit_meet_live(meet_id, True)
+    await manager.send(ws, 'registered', {'meet_id': meet_id})
+    await _emit_meet_live(meet_id, True)
     print(f'[cloud] {keys[key]["organizer"]} registered as meet {meet_id}', flush=True)
 
 
-@socketio.on('disconnect', namespace='/relay')
-def on_relay_disconnect():
-    sid = flask.request.sid
+async def _on_relay_disconnect(sid):
+    rec = None
     with _lock:
         meet_id = _relay_sids.pop(sid, None)
         meet    = _meets.get(meet_id) if meet_id else None
@@ -1111,16 +1383,18 @@ def on_relay_disconnect():
         # still the one bound to it (a newer socket may have re-registered).
         retired = bool(meet and meet.get('relay_sid') == sid)
         if retired:
-            _retire_locked(meet_id)
+            _retire_mem(meet_id)
+            rec = _record_copy_locked(meet_id) if meet_id in _retained else None
+    if rec is not None:
+        await run_in_threadpool(_write_meet_files, meet_id, rec, False, False)  # metadata only
     if retired:
-        _emit_meet_live(meet_id, False)
+        await _emit_meet_live(meet_id, False)
     if meet_id:
         print(f'[cloud] meet {meet_id} disconnected', flush=True)
 
 
-def _forward(event, data):
+async def _forward(sid, event, data):
     """Cache and broadcast a relay event to all attendees of the sending meet."""
-    sid = flask.request.sid
     with _lock:
         meet_id = _relay_sids.get(sid)
         meet    = _meets.get(meet_id)
@@ -1130,122 +1404,151 @@ def _forward(event, data):
     if event == 'update_scoreboard':
         data.pop('running_time', None)
         meet['last_scoreboard'].update(data)
-        socketio.emit(event, data, room=f'meet:{meet_id}', namespace='/scoreboard')
+        await manager.broadcast(_ch('scoreboard', meet_id), event, data)
     elif event == 'results_snapshot':
         meet['last_results'] = data
-        socketio.emit(event, data, room=f'meet:{meet_id}', namespace='/results')
+        await manager.broadcast(_ch('results', meet_id), event, data)
     elif event == 'next_heats':
         meet['last_next_heats'] = data
-        socketio.emit(event, data, room=f'meet:{meet_id}', namespace='/results')
+        await manager.broadcast(_ch('results', meet_id), event, data)
     elif event == 'schedule_snapshot':
         meet['schedule_data'] = data
-        with _lock:
-            _persist_meet(meet_id, meet)
-        socketio.emit('schedule_update', room=f'meet:{meet_id}', namespace='/schedule')
+        with _lock:                               # fast: in-memory only
+            _persist_meet_mem(meet_id, meet)
+            rec = _record_copy_locked(meet_id)
+        # Off the loop: metadata + the (changed) schedule; images are untouched.
+        await run_in_threadpool(_write_meet_files, meet_id, rec, True, False)
+        await manager.broadcast(_ch('schedule', meet_id), 'schedule_update')
 
 
-@socketio.on('update_scoreboard', namespace='/relay')
-def on_relay_scoreboard(d):  _forward('update_scoreboard', d)
-
-@socketio.on('results_snapshot',  namespace='/relay')
-def on_relay_results(d):     _forward('results_snapshot', d)
-
-@socketio.on('next_heats',        namespace='/relay')
-def on_relay_next_heats(d):  _forward('next_heats', d)
-
-@socketio.on('schedule_snapshot', namespace='/relay')
-def on_relay_schedule(d):    _forward('schedule_snapshot', d)
-
-@socketio.on('reload', namespace='/relay')
-def on_relay_reload(d):
-    sid = flask.request.sid
+async def _on_relay_reload(sid):
     with _lock:
         meet_id = _relay_sids.get(sid)
     if not meet_id:
         return
-    socketio.emit('reload', room=f'meet:{meet_id}', namespace='/scoreboard')
-    socketio.emit('reload', room=f'meet:{meet_id}', namespace='/results')
+    await manager.broadcast(_ch('scoreboard', meet_id), 'reload')
+    await manager.broadcast(_ch('results', meet_id), 'reload')
 
 
-# ── SocketIO — /scoreboard namespace (attendees) ───────────────────────────────
+@app.websocket('/ws/relay')
+async def ws_relay(ws: WebSocket):
+    await ws.accept()
+    sid = id(ws)
+    try:
+        while True:
+            msg = await ws.receive_json()
+            event, data = msg.get('event'), msg.get('data') or {}
+            if event == 'register':
+                await _on_relay_register(ws, sid, data)
+            elif event in ('update_scoreboard', 'results_snapshot',
+                           'next_heats', 'schedule_snapshot'):
+                await _forward(sid, event, data)
+            elif event == 'reload':
+                await _on_relay_reload(sid)
+            elif event == 'ping':
+                await manager.send(ws, 'pong')
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await _on_relay_disconnect(sid)
 
-def _emit_meet_live(meet_id, live):
+
+# ── WebSocket — attendee namespaces ────────────────────────────────────────────
+
+async def _emit_meet_live(meet_id, live):
     """Tell scoreboard/results attendees whether a relay is currently feeding this
     meet, so live-only UI (the running-lane glow, the results board) reverts to its
     idle state when no console is connected."""
-    for ns in ('/scoreboard', '/results'):
-        socketio.emit('meet_live', {'live': live},
-                      room=f'meet:{meet_id}', namespace=ns)
+    for ns in ('scoreboard', 'results'):
+        await manager.broadcast(_ch(ns, meet_id), 'meet_live', {'live': live})
 
 
-@socketio.on('connect', namespace='/scoreboard')
-def on_scoreboard_connect():
-    pass
+@app.websocket('/ws/scoreboard')
+async def ws_scoreboard(ws: WebSocket):
+    await ws.accept()
+    try:
+        while True:
+            msg = await ws.receive_json()
+            if msg.get('event') == 'ping':
+                await manager.send(ws, 'pong')
+                continue
+            if msg.get('event') != 'join_meet':
+                continue
+            data = msg.get('data') or {}
+            meet_id = data.get('meet_id', '')
+            with _lock:
+                meet = _get_meet(meet_id)
+                live = meet_id in _meets
+            if not meet:
+                continue
+            manager.join(ws, _ch('scoreboard', meet_id))
+            _log_connection(meet_id, data.get('vid', ''), 'scoreboard')
+            # Send live status first so the page knows whether to animate before
+            # the cached scoreboard snapshot is applied.
+            await manager.send(ws, 'meet_live', {'live': live})
+            if meet.get('last_scoreboard'):
+                await manager.send(ws, 'update_scoreboard', meet['last_scoreboard'])
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.leave_all(ws)
 
 
-@socketio.on('join_meet', namespace='/scoreboard')
-def on_scoreboard_join(data):
-    meet_id = data.get('meet_id', '')
-    with _lock:
-        meet = _get_meet(meet_id)
-        live = meet_id in _meets
-    if not meet:
-        return
-    flask_socketio.join_room(f'meet:{meet_id}')
-    _log_connection(meet_id, data.get('vid', ''), 'scoreboard')
-    # Send live status first so the page knows whether to animate before the
-    # cached scoreboard snapshot is applied.
-    socketio.emit('meet_live', {'live': live},
-                  namespace='/scoreboard', to=flask.request.sid)
-    if meet.get('last_scoreboard'):
-        socketio.emit('update_scoreboard', meet['last_scoreboard'],
-                      namespace='/scoreboard', to=flask.request.sid)
+@app.websocket('/ws/results')
+async def ws_results(ws: WebSocket):
+    await ws.accept()
+    try:
+        while True:
+            msg = await ws.receive_json()
+            if msg.get('event') == 'ping':
+                await manager.send(ws, 'pong')
+                continue
+            if msg.get('event') != 'join_meet':
+                continue
+            data = msg.get('data') or {}
+            meet_id = data.get('meet_id', '')
+            with _lock:
+                meet = _get_meet(meet_id)
+                live = meet_id in _meets
+            if not meet:
+                continue
+            manager.join(ws, _ch('results', meet_id))
+            _log_connection(meet_id, data.get('vid', ''), 'results')
+            # Live status first, so the page reverts to "Waiting…" when no relay is feeding.
+            await manager.send(ws, 'meet_live', {'live': live})
+            if meet.get('last_results'):
+                await manager.send(ws, 'results_snapshot', meet['last_results'])
+            if meet.get('last_next_heats'):
+                await manager.send(ws, 'next_heats', meet['last_next_heats'])
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.leave_all(ws)
 
 
-# ── SocketIO — /results namespace (attendees) ──────────────────────────────────
-
-@socketio.on('connect', namespace='/results')
-def on_results_connect():
-    pass
-
-
-@socketio.on('join_meet', namespace='/results')
-def on_results_join(data):
-    meet_id = data.get('meet_id', '')
-    with _lock:
-        meet = _get_meet(meet_id)
-        live = meet_id in _meets
-    if not meet:
-        return
-    flask_socketio.join_room(f'meet:{meet_id}')
-    _log_connection(meet_id, data.get('vid', ''), 'results')
-    # Live status first, so the page reverts to "Waiting…" when no relay is feeding.
-    socketio.emit('meet_live', {'live': live},
-                  namespace='/results', to=flask.request.sid)
-    if meet.get('last_results'):
-        socketio.emit('results_snapshot', meet['last_results'],
-                      namespace='/results', to=flask.request.sid)
-    if meet.get('last_next_heats'):
-        socketio.emit('next_heats', meet['last_next_heats'],
-                      namespace='/results', to=flask.request.sid)
-
-
-# ── SocketIO — /schedule namespace (attendees) ────────────────────────────────
-
-@socketio.on('connect', namespace='/schedule')
-def on_schedule_connect():
-    pass
-
-
-@socketio.on('join_meet', namespace='/schedule')
-def on_schedule_join(data):
-    meet_id = data.get('meet_id', '')
-    with _lock:
-        meet = _get_meet(meet_id)
-    if not meet:
-        return
-    flask_socketio.join_room(f'meet:{meet_id}')
-    _log_connection(meet_id, data.get('vid', ''), 'schedule')
+@app.websocket('/ws/schedule')
+async def ws_schedule(ws: WebSocket):
+    await ws.accept()
+    try:
+        while True:
+            msg = await ws.receive_json()
+            if msg.get('event') == 'ping':
+                await manager.send(ws, 'pong')
+                continue
+            if msg.get('event') != 'join_meet':
+                continue
+            data = msg.get('data') or {}
+            meet_id = data.get('meet_id', '')
+            with _lock:
+                meet = _get_meet(meet_id)
+            if not meet:
+                continue
+            manager.join(ws, _ch('schedule', meet_id))
+            _log_connection(meet_id, data.get('vid', ''), 'schedule')
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.leave_all(ws)
 
 
 # ── Theme defaults (fallback when Pi hasn't sent settings yet) ─────────────────
@@ -1266,6 +1569,5 @@ _DEFAULT_FONTS = {
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    os.makedirs(DATA_DIR, exist_ok=True)
-    _analytics_prune()
-    socketio.run(app, host='0.0.0.0', port=5000)
+    import uvicorn
+    uvicorn.run(app, host='0.0.0.0', port=5000)

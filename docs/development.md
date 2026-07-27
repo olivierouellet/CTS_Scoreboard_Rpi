@@ -31,9 +31,9 @@ Timing console
 Pi #1 /dev/ttyUSB0
   │  console_decoders/ — parses raw bytes into lane/place/time events
   │
-  ├── extensions.py (Flask-SocketIO)
-  │     emit → /scoreboard namespace → all connected browsers
-  │     emit → /results namespace    → results pages
+  ├── bus.py (plain-WebSocket message bus)
+  │     emit → /scoreboard channel → all connected browsers
+  │     emit → /results channel    → results pages
   │
   ├── meet_data.py
   │     Lenex / Hytek lookup → swimmer name + club per lane
@@ -96,7 +96,7 @@ The decoder appears in **Settings → Timing → Console type** immediately afte
 
 ## Bundled assets
 
-All frontend assets are served locally — no internet is required at the pool. xterm.js and socket.io are downloaded during `install.sh`.
+All frontend assets are served locally — no internet is required at the pool. The realtime client (`static/js/ws.js`) ships with the repo; xterm.js is downloaded during `install.sh`.
 
 | Asset | Licence |
 | --- | --- |
@@ -107,6 +107,5 @@ All frontend assets are served locally — no internet is required at the pool. 
 | Orbitron | SIL OFL 1.1 |
 | Roboto Mono | SIL OFL 1.1 |
 | xterm.js 5.3.0 | MIT |
-| socket.io 4.7.5 | MIT |
 | Tabler Icons | MIT |
 | jQuery 1.12.4 | MIT |

@@ -5,6 +5,32 @@ from collections import namedtuple
 LenexData = namedtuple('LenexData', ['event_names', 'start_list', 'heat_times', 'meet_info', 'event_distances'])
 
 
+def _open_lenex_xml(path):
+    """Return the parsed XML tree for a Lenex file at *path*.
+
+    A .lxf file is a zip that, per the spec, holds a single .lef XML. Real-world
+    exporters vary, so be forgiving: match the inner file case-insensitively, and
+    if none ends in .lef fall back to a .xml member or the only file present. A
+    plain (unzipped) .lef XML file is also accepted.
+    """
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as z:
+            names = [n for n in z.namelist() if not n.endswith('/')]
+            xml_name = (
+                next((n for n in names if n.lower().endswith('.lef')), None)
+                or next((n for n in names if n.lower().endswith('.xml')), None)
+                or (names[0] if len(names) == 1 else None)
+            )
+            if xml_name is None:
+                raise ValueError(
+                    f'No Lenex XML (.lef) found inside {path}; '
+                    f'archive contains: {", ".join(names) or "(empty)"}'
+                )
+            return ET.parse(z.open(xml_name))
+    # Not a zip — assume a raw .lef/.xml Lenex document.
+    return ET.parse(path)
+
+
 def load_lenex(path):
     """
     Parse a Lenex .lxf file (zip containing a .lef XML).
@@ -13,9 +39,7 @@ def load_lenex(path):
         event_names  — {event_number: str}
         start_list   — {event_number: {heat_number: {lane: {'name': str, 'club': str}}}}
     """
-    with zipfile.ZipFile(path) as z:
-        xml_name = next(n for n in z.namelist() if n.endswith('.lef'))
-        tree = ET.parse(z.open(xml_name))
+    tree = _open_lenex_xml(path)
 
     root = tree.getroot()
 
@@ -167,12 +191,15 @@ def load_lenex(path):
     # Structure C — ENTRY under ATHLETE (Splash Meet Manager):
     #   CLUB > ATHLETES > ATHLETE (athleteid) > ENTRIES > ENTRY (has eventid/heatid, lane)
 
-    any_entry_in_heat = any(find(heat, 'ENTRY')
-                            for event in find(root, 'EVENT')
-                            for heat in find(event, 'HEAT'))
+    any_entry_in_heat  = any(find(heat, 'ENTRY')
+                             for event in find(root, 'EVENT')
+                             for heat in find(event, 'HEAT'))
+    any_entry_in_event = any(find_direct(entries_el, 'ENTRY')
+                             for event in find(root, 'EVENT')
+                             for entries_el in find_direct(event, 'ENTRIES'))
 
+    # Structure A — ENTRY nested inside HEAT.
     if any_entry_in_heat:
-        # Structure A
         for event in find(root, 'EVENT'):
             ev_num = int(event.get('number'))
             for heat in find(event, 'HEAT'):
@@ -180,22 +207,24 @@ def load_lenex(path):
                 for entry in find(heat, 'ENTRY'):
                     _add_entry(entry, ev_num, h_num)
 
-        # Also handle Structure B (ENTRIES directly under EVENT, not inside HEAT)
+    # Structure B — ENTRIES directly under EVENT, linked to a heat by heatid.
+    # Real Lenex 3.0 files leave the HEATs empty and list every entry here, so
+    # this runs independently of Structure A (not only alongside it).
+    if any_entry_in_event:
         for event in find(root, 'EVENT'):
             ev_num = int(event.get('number'))
-            heats_el = find_first(event, 'HEATS')
             heatid_to_num = {h.get('heatid', ''): int(h.get('number'))
                              for h in find(event, 'HEAT') if h.get('heatid')}
             for entries_el in find_direct(event, 'ENTRIES'):
-                if heats_el is not None and entries_el in list(heats_el.iter()):
-                    continue
                 for entry in find_direct(entries_el, 'ENTRY'):
                     hid   = entry.get('heatid', '')
                     h_num = heatid_to_num.get(hid) or int(entry.get('heat', 0) or 0)
                     if h_num:
                         _add_entry(entry, ev_num, h_num)
-    else:
-        # Structure C (Splash): entries live under ATHLETE or RELAY, linked by eventid+heatid.
+
+    # Structure C (Splash) — entries under ATHLETE / RELAY, keyed by eventid+heatid.
+    # Only when entries aren't already at the heat or event level.
+    if not any_entry_in_heat and not any_entry_in_event:
 
         def _resolve_heat(entry):
             hid = entry.get('heatid', '')

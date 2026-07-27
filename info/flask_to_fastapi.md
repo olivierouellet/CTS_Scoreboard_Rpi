@@ -6,6 +6,26 @@ decision must be made first.
 
 ---
 
+## Outcome (migration complete)
+
+> **This migration is done.** The app now runs on FastAPI + uvicorn with plain
+> WebSockets; no Flask, `flask-socketio`, or `flask-login` remains. The sections
+> below are kept as a record of the options that were weighed. Where the shipped
+> code diverged from the recommendation written here, it is noted inline — read
+> those notes before trusting a "recommended" label.
+>
+> Key decisions as actually built:
+>
+> | Area | Guide recommended | Shipped | Note |
+> | ---- | ----------------- | ------- | ---- |
+> | Real-time transport (§1) | Option B — `python-socketio` ASGI | **Option A — native plain WebSockets** | Client JS was rewritten to `static/js/ws.js`; server fan-out lives in `bus.py` (local) and `cloud_server.py` (cloud). `python-socketio` is not a dependency. |
+> | Authentication (§2) | Option B — `SessionMiddleware` | Option B — `SessionMiddleware` | As recommended (`Tremplin.py`). Cloud uses hashed credentials + `hmac.compare_digest`. |
+> | Template context (§3) | Option B — `Depends(base_context)` | **`render()` helper** (DRY Option C) | A single `web.render()` wrapper merges `_globals()` per call — less boilerplate than a per-route `Depends`, and no "forgot the dependency" footgun. |
+> | Form handling (§4) | Option B — split typed endpoints | Mixed — `await request.form()` dispatch + JS auto-save | |
+> | Entry point (§6) | `uvicorn` | `uvicorn Tremplin:app` via systemd | As recommended. |
+
+---
+
 ## What Stays the Same
 
 | Item | Why unchanged |

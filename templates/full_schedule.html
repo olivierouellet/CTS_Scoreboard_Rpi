@@ -191,10 +191,10 @@
 </div>
 {% endif %}
 
-<script src="/static/js/socket.io.min.js"></script>
+<script src="/static/js/ws.js"></script>
 <script>
-var sockResults    = io('/results');
-var sockScoreboard = io('/scoreboard');
+var sockResults    = tremplinSocket('/ws/results');
+var sockScoreboard = tremplinSocket('/ws/scoreboard');
 var currentEvent = null, currentHeat = null;
 var needsScroll = true;
 

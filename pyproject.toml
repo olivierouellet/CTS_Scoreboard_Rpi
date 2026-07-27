@@ -3,13 +3,12 @@ name = "tremplin"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "flask",
-    "flask-login",
-    "flask-socketio",
-    "gevent",
-    "gevent-websocket",
+    "fastapi",
+    "uvicorn[standard]",
+    "jinja2",
+    "python-multipart",
+    "itsdangerous",
     "pyserial",
-    "python-socketio[client]",
     "websocket-client",
     "pillow",
 ]

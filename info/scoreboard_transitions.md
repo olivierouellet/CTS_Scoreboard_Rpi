@@ -105,7 +105,7 @@ Set to `true` during Results and the Results → Intro transition to prevent liv
 ## Splash Image
 
 - Stored at `~/Scoreboard/images/` on the host machine.
-- Served via Flask route `/images/<filename>`.
+- Served via the FastAPI route `/images/<filename>`.
 - Rendered as a `position: fixed` full-screen element (`z-index: 150`) — above the scoreboard content but below nothing else.
 - Positioned to start **below the header** (measured at show time via `getBoundingClientRect`).
 - `object-fit: contain` — scales proportionally, no cropping.

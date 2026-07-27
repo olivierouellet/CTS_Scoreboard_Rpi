@@ -4,16 +4,79 @@ import os
 import re
 import subprocess
 import tarfile
+import time
 import tomllib
 
-import flask
-import flask_login
-from flask import Blueprint
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 
+import bus
 import state
-from extensions import socketio
+from web import ActionResult, require_login
 
-bp = Blueprint('system', __name__)
+router = APIRouter(tags=['System'])
+
+
+class UpdateStart(BaseModel):
+    target: str | None = None
+
+
+class TimeSet(BaseModel):
+    # The pattern is advertised in the schema for /docs; enforcement is done in
+    # the validator so a bad value yields the app's friendly single-line error
+    # rather than Pydantic's regex-echoing default.
+    date: str = Field(json_schema_extra={'pattern': r'^\d{4}-\d{2}-\d{2}$'})
+    time: str = Field(json_schema_extra={'pattern': r'^\d{2}:\d{2}(:\d{2})?$'})
+
+    @field_validator('date')
+    @classmethod
+    def _check_date(cls, v):
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', v):
+            raise ValueError('Invalid date or time format')
+        return v
+
+    @field_validator('time')
+    @classmethod
+    def _check_time(cls, v):
+        if not re.match(r'^\d{2}:\d{2}(:\d{2})?$', v):
+            raise ValueError('Invalid date or time format')
+        return v
+
+
+class TimeStatus(BaseModel):
+    date: str
+    time: str
+    timezone: str
+    ntp_active: bool
+    synchronized: bool
+
+
+class VersionList(BaseModel):
+    # Success returns current/versions/branches; failure returns error. All
+    # non-``ok`` fields are optional so both dict shapes validate.
+    ok: bool
+    current: str = ''
+    versions: list[str] = Field(default_factory=list)
+    branches: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class LogLine(BaseModel):
+    text: str
+    error: bool
+
+
+class LogTail(BaseModel):
+    lines: list[LogLine]
+    done: bool | None = None
+
+
+class RtcStatus(BaseModel):
+    configured: bool
+    active: bool
+
 
 _VERSION_RE = re.compile(r'^v\d{4}\.\d{2}\.\d+$')
 
@@ -50,8 +113,8 @@ _UV = _find_uv()
 
 # ── Time ───────────────────────────────────────────────────────────────────────
 
-@bp.route('/time_status')
-@flask_login.login_required
+@router.get('/time_status', response_model=TimeStatus,
+            dependencies=[Depends(require_login)])
 def route_time_status():
     now          = datetime.datetime.now()
     ntp_active   = False
@@ -71,44 +134,43 @@ def route_time_status():
                     timezone = m.group(1)
     except Exception:
         pass
-    return flask.jsonify({
+    return {
         'date':         now.strftime('%Y-%m-%d'),
         'time':         now.strftime('%H:%M:%S'),
         'timezone':     timezone,
         'ntp_active':   ntp_active,
         'synchronized': synchronized,
-    })
+    }
 
 
-@bp.route('/time_sync', methods=['POST'])
-@flask_login.login_required
+@router.post('/time_sync', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_time_sync():
     try:
         subprocess.run(['sudo', 'timedatectl', 'set-ntp', 'true'], timeout=5, check=True)
         subprocess.run(['sudo', 'systemctl', 'restart', 'systemd-timesyncd'], timeout=5)
-        return flask.jsonify({'ok': True})
+        return {'ok': True}
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)})
+        return {'ok': False, 'error': str(e)}
 
 
-@bp.route('/time_set', methods=['POST'])
-@flask_login.login_required
-def route_time_set():
-    data     = flask.request.get_json()
-    date_str = data.get('date', '')
-    time_str = data.get('time', '')
-    if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str) or \
-       not re.match(r'^\d{2}:\d{2}(:\d{2})?$', time_str):
-        return flask.jsonify({'ok': False, 'error': 'Invalid date or time format'})
+@router.post('/time_set', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+async def route_time_set(body: TimeSet):
+    return await run_in_threadpool(_time_set, body.date, body.time)
+
+
+def _time_set(date_str, time_str):
+    # date/time formats are already validated by the TimeSet model.
     if len(time_str) == 5:
         time_str += ':00'
     try:
         subprocess.run(['sudo', 'timedatectl', 'set-ntp', 'false'], timeout=5, check=True)
         subprocess.run(['sudo', 'timedatectl', 'set-time', f'{date_str} {time_str}'],
                        timeout=5, check=True)
-        return flask.jsonify({'ok': True})
+        return {'ok': True}
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)})
+        return {'ok': False, 'error': str(e)}
 
 
 # ── App / OS update ────────────────────────────────────────────────────────────
@@ -168,7 +230,7 @@ def _run_update(target=None):
 
         emit(f'\n{label}. Restarting service…\n')
         state._update_log_done = True
-        socketio.sleep(2)
+        time.sleep(2)
         subprocess.run(['sudo', 'systemctl', 'restart', 'tremplin'])
     except Exception as e:
         emit(f'\nError: {e}\n', error=True)
@@ -204,8 +266,8 @@ def _run_os_update():
         state._os_update_in_progress = False
 
 
-@bp.route('/version_list')
-@flask_login.login_required
+@router.get('/version_list', response_model=VersionList,
+            dependencies=[Depends(require_login)])
 def route_version_list():
     try:
         r = subprocess.run(['git', 'describe', '--tags', '--exact-match', 'HEAD'],
@@ -227,44 +289,42 @@ def route_version_list():
                                  capture_output=True, cwd=state.app_dir, timeout=8)
             if chk.returncode == 0:
                 branches.append(ref)
-        return flask.jsonify({'ok': True, 'current': current,
-                              'versions': tags, 'branches': branches})
+        return {'ok': True, 'current': current, 'versions': tags, 'branches': branches}
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)})
+        return {'ok': False, 'error': str(e)}
 
 
-@bp.route('/update_start', methods=['POST'])
-@flask_login.login_required
-def route_update_start():
+@router.post('/update_start', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+async def route_update_start(body: UpdateStart | None = None):
     if state._update_in_progress:
-        return flask.jsonify({'error': 'Update already in progress'}), 409
+        return JSONResponse({'error': 'Update already in progress'}, status_code=409)
     state._update_in_progress = True
-    data   = flask.request.get_json(force=True, silent=True) or {}
-    target = data.get('target') or None
-    socketio.start_background_task(_run_update, target)
-    return flask.jsonify({'ok': True})
+    target = (body.target if body else None) or None
+    bus.run_bg(_run_update, target)
+    return {'ok': True}
 
 
-@bp.route('/os_update_start', methods=['POST'])
-@flask_login.login_required
+@router.post('/os_update_start', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_os_update_start():
     if state._os_update_in_progress:
-        return flask.jsonify({'error': 'OS update already in progress'}), 409
+        return JSONResponse({'error': 'OS update already in progress'}, status_code=409)
     state._os_update_in_progress = True
-    socketio.start_background_task(_run_os_update)
-    return flask.jsonify({'ok': True})
+    bus.run_bg(_run_os_update)
+    return {'ok': True}
 
 
-@bp.route('/update_log')
-@flask_login.login_required
+@router.get('/update_log', response_model=LogTail,
+            dependencies=[Depends(require_login)])
 def route_update_log():
-    return flask.jsonify({'lines': state._update_log_lines, 'done': state._update_log_done})
+    return {'lines': state._update_log_lines, 'done': state._update_log_done}
 
 
-@bp.route('/os_update_log')
-@flask_login.login_required
+@router.get('/os_update_log', response_model=LogTail,
+            dependencies=[Depends(require_login)])
 def route_os_update_log():
-    return flask.jsonify({'lines': state._os_update_log_lines, 'done': state._os_update_log_done})
+    return {'lines': state._os_update_log_lines, 'done': state._os_update_log_done}
 
 
 # ── RTC (Adafruit PiRTC DS3231) ──────────────────────────────────────────────────
@@ -272,8 +332,8 @@ def route_os_update_log():
 _RTC_SCRIPT = os.path.join(state.app_dir, 'scripts', 'rtc_setup.sh')
 
 
-@bp.route('/rtc_status')
-@flask_login.login_required
+@router.get('/rtc_status', response_model=RtcStatus,
+            dependencies=[Depends(require_login)])
 def route_rtc_status():
     configured = False
     active     = False
@@ -295,7 +355,7 @@ def route_rtc_status():
     except OSError:
         pass
 
-    return flask.jsonify({'configured': configured, 'active': active})
+    return {'configured': configured, 'active': active}
 
 
 def _run_rtc(action):
@@ -322,44 +382,42 @@ def _run_rtc(action):
         state._rtc_in_progress = False
 
 
-@bp.route('/rtc_install_start', methods=['POST'])
-@flask_login.login_required
+@router.post('/rtc_install_start', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_rtc_install_start():
     if state._rtc_in_progress:
-        return flask.jsonify({'error': 'RTC setup already in progress'}), 409
+        return JSONResponse({'error': 'RTC setup already in progress'}, status_code=409)
     state._rtc_in_progress = True
-    socketio.start_background_task(_run_rtc, 'enable')
-    return flask.jsonify({'ok': True})
+    bus.run_bg(_run_rtc, 'enable')
+    return {'ok': True}
 
 
-@bp.route('/rtc_remove_start', methods=['POST'])
-@flask_login.login_required
+@router.post('/rtc_remove_start', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_rtc_remove_start():
     if state._rtc_in_progress:
-        return flask.jsonify({'error': 'RTC setup already in progress'}), 409
+        return JSONResponse({'error': 'RTC setup already in progress'}, status_code=409)
     state._rtc_in_progress = True
-    socketio.start_background_task(_run_rtc, 'disable')
-    return flask.jsonify({'ok': True})
+    bus.run_bg(_run_rtc, 'disable')
+    return {'ok': True}
 
 
-@bp.route('/rtc_log')
-@flask_login.login_required
+@router.get('/rtc_log', response_model=LogTail,
+            dependencies=[Depends(require_login)])
 def route_rtc_log():
-    return flask.jsonify({'lines': state._rtc_log_lines, 'done': state._rtc_log_done})
+    return {'lines': state._rtc_log_lines, 'done': state._rtc_log_done}
 
 
-@bp.route('/logs_download')
-@flask_login.login_required
+@router.get('/logs_download', dependencies=[Depends(require_login)])
 def route_logs_download():
     text = '\n'.join(state._log_ring) + '\n'
     ts   = datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')
-    return flask.Response(
-        text, mimetype='text/plain',
+    return Response(
+        content=text, media_type='text/plain',
         headers={'Content-Disposition': f'attachment; filename="tremplin-log-{ts}.log"'})
 
 
-@bp.route('/logs_save', methods=['POST'])
-@flask_login.login_required
+@router.post('/logs_save', dependencies=[Depends(require_login)])
 def route_logs_save():
     try:
         os.makedirs(state.LOGS_DIR, exist_ok=True)
@@ -367,52 +425,59 @@ def route_logs_save():
         path = os.path.join(state.LOGS_DIR, name)
         with open(path, 'w') as f:
             f.write('\n'.join(state._log_ring) + '\n')
-        return flask.jsonify({'ok': True, 'path': path})
+        return {'ok': True, 'path': path}
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)}), 500
+        return JSONResponse({'ok': False, 'error': str(e)}, status_code=500)
 
 
-@bp.route('/system_reboot', methods=['POST'])
-@flask_login.login_required
+@router.post('/system_reboot', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_system_reboot():
     def _reboot():
-        socketio.sleep(1)
+        time.sleep(1)
         subprocess.run(['sudo', 'reboot'])
-    socketio.start_background_task(_reboot)
-    return flask.jsonify({'ok': True})
+    bus.run_bg(_reboot)
+    return {'ok': True}
 
 
-@bp.route('/system_shutdown', methods=['POST'])
-@flask_login.login_required
+@router.post('/system_shutdown', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_system_shutdown():
     def _shutdown():
-        socketio.sleep(1)
+        time.sleep(1)
         subprocess.run(['sudo', 'poweroff'])
-    socketio.start_background_task(_shutdown)
-    return flask.jsonify({'ok': True})
+    bus.run_bg(_shutdown)
+    return {'ok': True}
 
 
-@bp.route('/backup_download')
-@flask_login.login_required
+@router.get('/backup_download', dependencies=[Depends(require_login)])
 def route_backup_download():
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode='w:gz') as tar:
         tar.add(state.SCOREBOARD_DIR, arcname='Tremplin')
-    buf.seek(0)
     date_str = datetime.datetime.now().strftime('%Y-%m-%d')
-    return flask.send_file(buf, as_attachment=True,
-                           download_name=f'tremplin_backup_{date_str}.tar.gz',
-                           mimetype='application/gzip')
+    return Response(
+        content=buf.getvalue(), media_type='application/gzip',
+        headers={'Content-Disposition':
+                 f'attachment; filename="tremplin_backup_{date_str}.tar.gz"'})
 
 
-@bp.route('/backup_restore', methods=['POST'])
-@flask_login.login_required
-def route_backup_restore():
-    f = flask.request.files.get('backup_file')
-    if not f or not f.filename.endswith('.tar.gz'):
-        return flask.jsonify({'ok': False, 'error': 'Please upload a .tar.gz backup file'}), 400
+@router.post('/backup_restore', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+async def route_backup_restore(request: Request):
+    form = await request.form()
+    f = form.get('backup_file')
+    if not f or not getattr(f, 'filename', '').endswith('.tar.gz'):
+        return JSONResponse({'ok': False, 'error': 'Please upload a .tar.gz backup file'},
+                            status_code=400)
+    data = await f.read()
+    # Extracting the tarball is blocking; run it off the event loop.
+    return await run_in_threadpool(_restore_backup, data)
+
+
+def _restore_backup(data):
     try:
-        buf = io.BytesIO(f.read())
+        buf = io.BytesIO(data)
         with tarfile.open(fileobj=buf, mode='r:gz') as tar:
             members = tar.getmembers()
             # Validate all paths stay within home dir (no path traversal)
@@ -420,13 +485,14 @@ def route_backup_restore():
             for m in members:
                 dest = os.path.normpath(os.path.join(home, m.name))
                 if not dest.startswith(home):
-                    return flask.jsonify({'ok': False, 'error': 'Invalid archive path'}), 400
+                    return JSONResponse({'ok': False, 'error': 'Invalid archive path'},
+                                        status_code=400)
             tar.extractall(path=home)
     except Exception as e:
-        return flask.jsonify({'ok': False, 'error': str(e)}), 500
+        return JSONResponse({'ok': False, 'error': str(e)}, status_code=500)
     # Restart after a short delay so the response can be sent first
     def _restart():
-        socketio.sleep(1)
+        time.sleep(1)
         subprocess.run(['sudo', 'systemctl', 'restart', 'tremplin'])
-    socketio.start_background_task(_restart)
-    return flask.jsonify({'ok': True})
+    bus.run_bg(_restart)
+    return {'ok': True}

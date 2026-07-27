@@ -208,10 +208,14 @@ class CTSGen6Decoder(ConsoleDecoder):
                 heat_str  = ''.join(self._eh_buf[-3:])
                 # Only emit non-blank values: split packets (e.g. event-only or
                 # heat-only) should not overwrite the other field in the browser.
+                # Strip the console's blank left-pad so the value matches the
+                # unpadded str(int) form the other decoders and send_event_info
+                # emit — otherwise "  3" vs "3" reads as a heat change and flips
+                # the board to intro every time send_event_info broadcasts.
                 if event_str.strip():
-                    updates['current_event'] = event_str
+                    updates['current_event'] = event_str.strip()
                 if heat_str.strip():
-                    updates['current_heat']  = heat_str
+                    updates['current_heat']  = heat_str.strip()
 
                 try:
                     ev_heat = (int(event_str), int(heat_str))

@@ -564,11 +564,11 @@ mode_to_splash = function() { mode_to_running(); };
 <img id="splash_img" src="{{ url_for('appearance.serve_image', filename=splash_url) }}" style="display:none;"/>
 {% endif %}
 
-<script src="/static/js/socket.io.min.js"></script>
+<script src="/static/js/ws.js"></script>
 <script>
     var s = {};
 
-    var socket = io.connect('http://' + document.domain + ':' + location.port + '/scoreboard');
+    var socket = tremplinSocket('/ws/scoreboard');
     socket.on('connect', function() { start_splash_hold(); });
     socket.on('reload', function() { location.reload(); });
     socket.on('race_finished', function() {

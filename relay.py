@@ -1,20 +1,46 @@
-"""Outbound relay client — forwards scoreboard events to a cloud server."""
+"""Outbound relay client — forwards scoreboard events to a cloud server.
+
+Uses a plain WebSocket (the sync ``websocket-client`` library) instead of
+Socket.IO. It runs a reconnect loop in its own daemon thread; scoreboard events
+from the worker thread are forwarded via :func:`relay_emit`. Every message is a
+JSON frame ``{"event", "data"}`` — the same contract the cloud relay speaks.
+"""
 import base64
+import json
 import os
 import threading
+import time
 
 import state
 
 _client    = None
 _connected = False
+_meet_id   = None   # cloud meet id assigned on 'registered', for diagnostics
 _lock      = threading.Lock()
 _stop      = threading.Event()
 _thread    = None
 
 
+def _ws_url(url):
+    """Turn a cloud_relay_url (http(s)://host or ws(s)://host) into the /ws/relay endpoint."""
+    url = url.strip().rstrip('/')
+    if url.startswith('https://'):
+        url = 'wss://' + url[len('https://'):]
+    elif url.startswith('http://'):
+        url = 'ws://' + url[len('http://'):]
+    elif not url.startswith(('ws://', 'wss://')):
+        url = 'wss://' + url
+    return url + '/ws/relay'
+
+
+def _send_raw(ws, event, data):
+    ws.send(json.dumps({'event': event, 'data': data}))
+
+
 # ── Meet metadata ──────────────────────────────────────────────────────────────
 
 def _get_metadata():
+    meet_info = state.meet.meet_info
     flat_labels = dict(state.load_locale(style=state.settings.get('cloud_label_style', 'short')))
     # Add UI strings the cloud templates need
     for key in ('waiting_results', 'no_upcoming', 'no_schedule'):
@@ -23,8 +49,8 @@ def _get_metadata():
             flat_labels[key] = val
 
     meta = {
-        'name':     state.settings.get('cloud_meet_title') or state.settings.get('meet_title') or state.lenex_meet_info.get('name', ''),
-        'location': state.lenex_meet_info.get('city')  or state.settings.get('meet_location', ''),
+        'name':     state.settings.get('cloud_meet_title') or state.settings.get('meet_title') or meet_info.get('name', ''),
+        'location': meet_info.get('city')  or state.settings.get('meet_location', ''),
         'sport':    state.settings.get('meet_sport', ''),
         'app_window_title': state.settings.get('app_window_title', ''),
         'meet_date': _last_session_date(),
@@ -65,7 +91,7 @@ def _last_session_date():
     LENEX dates are ISO-formatted, so a lexical max is also the chronological max.
     The cloud uses this to expire a retained meet the day after its final session.
     """
-    dates = [s.get('date', '') for s in state.lenex_meet_info.get('sessions', [])]
+    dates = [s.get('date', '') for s in state.meet.meet_info.get('sessions', [])]
     dates = [d for d in dates if d]
     return max(dates) if dates else ''
 
@@ -101,7 +127,7 @@ def relay_emit(event, data):
         c, ok = _client, _connected
     if c and ok:
         try:
-            c.emit(event, data, namespace='/relay')
+            _send_raw(c, event, data)
         except Exception:
             pass
 
@@ -113,7 +139,7 @@ def update_metadata():
     if c and ok:
         key = state.settings.get('cloud_relay_key', '').strip()
         try:
-            c.emit('register', {**_get_metadata(), 'key': key}, namespace='/relay')
+            _send_raw(c, 'register', {**_get_metadata(), 'key': key})
         except Exception:
             pass
 
@@ -125,7 +151,8 @@ def send_schedule(client=None):
     _client is not yet assigned at that point and relay_emit would silently drop.
     """
     from meet_data import _build_meet_data
-    if not (state.lenex_start_list or state.event_info.events):
+    m = state.meet
+    if not (m.start_list or m.event_info.events):
         return
     try:
         md = _build_meet_data()
@@ -137,7 +164,7 @@ def send_schedule(client=None):
             'start_list': _serialise_start_list(md['start_list']),
         }
         if client is not None:
-            client.emit('schedule_snapshot', data, namespace='/relay')
+            _send_raw(client, 'schedule_snapshot', data)
         else:
             relay_emit('schedule_snapshot', data)
     except Exception:
@@ -162,62 +189,81 @@ def _serialise_start_list(sl):
 
 # ── Background thread ──────────────────────────────────────────────────────────
 
+_PING_EVERY = 20   # recv() timeout: heartbeat cadence when the link is idle
+_STALE      = 50   # no inbound (incl. pong) for this long => dead link, reconnect
+
+
 def _run():
-    global _client, _connected
-    import socketio as _sio
+    global _client, _connected, _meet_id
+    from websocket import WebSocketTimeoutException, create_connection
 
     while not _stop.is_set():
-        url = state.settings.get('cloud_relay_url', '').strip().rstrip('/')
+        url = state.settings.get('cloud_relay_url', '').strip()
         key = state.settings.get('cloud_relay_key', '').strip()
         if not url or not key:
             _stop.wait(10)
             continue
 
-        c = _sio.Client(reconnection=False, logger=False, engineio_logger=False)
+        ws = None
+        try:
+            ws = create_connection(_ws_url(url), timeout=15)
+            ws.settimeout(_PING_EVERY)       # recv() unblocks so we can heartbeat
+            ws.enable_multithreading = True  # guard concurrent send() from worker threads
 
-        @c.event(namespace='/relay')
-        def connect():
-            global _connected
-            meta = {**_get_metadata(), 'key': key}
-            c.emit('register', meta, namespace='/relay')
+            _send_raw(ws, 'register', {**_get_metadata(), 'key': key})
             with _lock:
+                _client    = ws
                 _connected = True
-            send_schedule(client=c)
+            send_schedule(client=ws)
             if state._last_results_snapshot:
-                try:
-                    c.emit('results_snapshot', state._last_results_snapshot, namespace='/relay')
-                except Exception:
-                    pass
+                _send_raw(ws, 'results_snapshot', state._last_results_snapshot)
             print('[relay] connected to cloud', flush=True)
 
-        @c.event(namespace='/relay')
-        def disconnect():
-            global _connected
-            with _lock:
-                _connected = False
-            print('[relay] disconnected from cloud', flush=True)
-
-        @c.on('rejected', namespace='/relay')
-        def rejected(data):
-            print(f'[relay] rejected: {data.get("reason")}', flush=True)
-            c.disconnect()
-
-        try:
-            c.connect(url, namespaces=['/relay'], transports=['websocket'])
-            with _lock:
-                _client = c
-            c.wait()
+            # Receive loop: the relay is mostly outbound, but recv() keeps the
+            # thread alive, detects a server-side close, and handles 'rejected'.
+            # A heartbeat detects a silently-dead cloud link (mobile/proxy half-open)
+            # and reconnects instead of blocking forever with no updates flowing.
+            last_rx = time.time()
+            while not _stop.is_set():
+                try:
+                    raw = ws.recv()
+                except WebSocketTimeoutException:
+                    if time.time() - last_rx > _STALE:
+                        print('[relay] no response from cloud — reconnecting', flush=True)
+                        break
+                    try:
+                        _send_raw(ws, 'ping', {})   # cloud replies 'pong'
+                    except Exception:
+                        break                        # send failed => link is dead
+                    continue
+                if not raw:
+                    break
+                last_rx = time.time()
+                try:
+                    obj = json.loads(raw)
+                except Exception:
+                    continue
+                ev = obj.get('event')
+                if ev == 'pong':
+                    continue
+                elif ev == 'registered':
+                    _meet_id = (obj.get('data') or {}).get('meet_id')
+                elif ev == 'rejected':
+                    print(f'[relay] rejected: {obj.get("data", {}).get("reason")}', flush=True)
+                    break
         except Exception as e:
             print(f'[relay] error: {e}', flush=True)
         finally:
             with _lock:
                 _connected = False
-                if _client is c:
+                if _client is ws:
                     _client = None
             try:
-                c.disconnect()
+                if ws:
+                    ws.close()
             except Exception:
                 pass
+            print('[relay] disconnected from cloud', flush=True)
 
         if not _stop.is_set():
             _stop.wait(5)
@@ -247,6 +293,6 @@ def stop():
         c = _client
     if c:
         try:
-            c.disconnect()
+            c.close()   # unblocks the recv loop so the thread exits promptly
         except Exception:
             pass

@@ -4,20 +4,21 @@ import os
 import re
 import traceback
 
-import flask
-import flask_login
 import serial.tools.list_ports
-from flask import Blueprint
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, PlainTextResponse, Response
+from starlette.concurrency import run_in_threadpool
 
+import bus
 import relay
 import state
 from console_decoders import CONSOLE_OPTIONS, load_custom_decoders, make_decoder
-from extensions import socketio
 from meet_data import send_event_info
 from parsers.lenex_parser import load_lenex
+from web import render, require_login, save_upload
 from worker import _restart_worker
 
-bp = Blueprint('settings_bp', __name__)
+router = APIRouter(tags=['Settings'])
 
 
 def _render_home_icon(name):
@@ -42,26 +43,17 @@ def _render_home_icon(name):
 
 def _load_meet_file(path):
     """Clear current meet state and load *path* (Lenex or Hytek). Returns error string or None."""
-    state.event_info.clear()
-    state.lenex_event_names.clear()
-    state.lenex_start_list.clear()
-    state.lenex_heat_times.clear()
-    state.lenex_meet_info.clear()
-    state.lenex_event_distances.clear()
+    state.clear_meet()
     state._last_results_snapshot      = {}
     state._results_prev_race_finished = False
     state._finish_timer_gen          += 1
     try:
         if path.endswith('.csv'):
-            state.event_info.load(path)
+            state.load_event_info(path)
         else:
-            data = load_lenex(path)
-            state.lenex_event_names.update(data.event_names)
-            state.lenex_start_list.update(data.start_list)
-            state.lenex_heat_times.update(data.heat_times)
-            state.lenex_meet_info.update(data.meet_info)
-            state.lenex_event_distances.update(data.event_distances)
+            state.set_lenex(load_lenex(path))
     except Exception:
+        state.clear_meet()
         return traceback.format_exc()
     state._active_meet_file = os.path.basename(path)
     state.settings['last_meet_file'] = state._active_meet_file
@@ -69,8 +61,7 @@ def _load_meet_file(path):
     # the Meet tab and the cloud publish reflect the loaded meet, not the last one.
     state._active_meet_uid = state.meet_uid()
     _render_home_icon(state.apply_meet_profile(state._active_meet_uid))
-    with open(state.settings_file, 'wt') as f:
-        json.dump(state.settings, f, sort_keys=True, indent=4)
+    state.save_settings()
     send_event_info()
     relay.update_metadata()   # re-register under the new meet_uid before the schedule
     relay.send_schedule()
@@ -91,9 +82,8 @@ def _candidate_meet_uid(path, name):
     return state.uid_from_meet_info(data.meet_info, base)
 
 
-@bp.route('/meet_update_file', methods=['POST'])
-@flask_login.login_required
-def route_meet_update_file():
+@router.post('/meet_update_file', dependencies=[Depends(require_login)])
+async def route_meet_update_file(request: Request):
     """Replace the loaded meet's file in place, keeping its cloud link.
 
     Only a file that is the *same* meet (matching meet_uid — same name and
@@ -101,98 +91,105 @@ def route_meet_update_file():
     are never orphaned onto a new picker card. The new file overwrites the
     current meet file in place, then is reloaded and republished.
     """
+    file = (await request.form()).get('meet_file')
+    # Saving + LENEX parsing + reload is blocking — run it off the event loop.
+    return await run_in_threadpool(_meet_update_file, file)
+
+
+def _meet_update_file(file):
     if state._test_session is not None:
-        return flask.jsonify(ok=False, error='A test session is running.')
+        return {'ok': False, 'error': 'A test session is running.'}
     if not state._active_meet_file:
-        return flask.jsonify(ok=False, error='No meet is loaded to update.')
-    file = flask.request.files.get('meet_file')
+        return {'ok': False, 'error': 'No meet is loaded to update.'}
     if not file or not file.filename:
-        return flask.jsonify(ok=False, error='No file selected.')
+        return {'ok': False, 'error': 'No file selected.'}
     ext = os.path.splitext(file.filename)[1].lower()
     active_ext = os.path.splitext(state._active_meet_file)[1].lower()
     if ext != active_ext:
-        return flask.jsonify(ok=False, error=f'The new file must be a {active_ext} file, like the current meet.')
+        return {'ok': False, 'error': f'The new file must be a {active_ext} file, like the current meet.'}
 
     tmp = os.path.join(state.MEET_FOLDER, '.update_candidate' + ext)
-    file.save(tmp)
+    save_upload(file, tmp)
     try:
         new_uid = _candidate_meet_uid(tmp, file.filename)
     except Exception:
         os.remove(tmp)
-        return flask.jsonify(ok=False, error='Could not read that file.')
+        return {'ok': False, 'error': 'Could not read that file.'}
 
     if new_uid != state._active_meet_uid:
         os.remove(tmp)
-        return flask.jsonify(ok=False, error=(
+        return {'ok': False, 'error': (
             'This file is a different meet — its name or session dates differ, '
             'so it would create a separate cloud meet. Use “Add Meet File” to '
-            'load it as a new meet.'))
+            'load it as a new meet.')}
 
     # Same meet: overwrite the current file in place and reload it.
     dest = os.path.join(state.MEET_FOLDER, state._active_meet_file)
     os.replace(tmp, dest)
     err = _load_meet_file(dest)
     if err:
-        return flask.jsonify(ok=False, error='Failed to load the updated file.')
-    return flask.jsonify(ok=True)
+        return {'ok': False, 'error': 'Failed to load the updated file.'}
+    return {'ok': True}
 
 
-@bp.route('/settings', methods=['GET', 'POST'])
-@flask_login.login_required
-def route_settings():
-    if flask.request.method == 'POST':
+@router.get('/settings', dependencies=[Depends(require_login)])
+@router.post('/settings', dependencies=[Depends(require_login)])
+async def route_settings(request: Request):
+    form = await request.form() if request.method == 'POST' else None
+    # POST parses uploads (PIL resize), enumerates serial ports and writes files;
+    # the GET view also enumerates ports — all blocking, so run off the loop.
+    return await run_in_threadpool(_settings_view, request, form)
+
+
+def _settings_view(request, form):
+    if request.method == 'POST':
         modified = False
         icon_error = None
 
-        if 'meet_file' in flask.request.files and state._test_session is None:
-            file = flask.request.files['meet_file']
+        if 'meet_file' in form and state._test_session is None:
+            file = form['meet_file']
             if file and file.filename:
                 ext = os.path.splitext(file.filename)[1].lower()
                 if ext in ('.csv', '.lxf'):
                     # Keep other meet files (e.g. each day of a split meet); only
                     # the uploaded name is overwritten. Manage the rest via Delete.
                     dest = os.path.join(state.MEET_FOLDER, os.path.basename(file.filename))
-                    file.save(dest)
+                    save_upload(file, dest)
                     err = _load_meet_file(dest)
                     if err:
-                        return err
+                        return PlainTextResponse(err)
                     modified = True
 
-        if 'meet_file_load_submit' in flask.request.form and state._test_session is None:
-            selected = flask.request.form.get('meet_file_select', '').strip()
+        if 'meet_file_load_submit' in form and state._test_session is None:
+            selected = form.get('meet_file_select', '').strip()
             if selected:
                 dest = os.path.join(state.MEET_FOLDER, os.path.basename(selected))
                 if os.path.isfile(dest):
                     err = _load_meet_file(dest)
                     if err:
-                        return err
+                        return PlainTextResponse(err)
                     modified = True
             elif state._active_meet_file:
-                state.event_info.clear()
-                state.lenex_event_names.clear()
-                state.lenex_start_list.clear()
-                state.lenex_heat_times.clear()
-                state.lenex_meet_info.clear()
-                state.lenex_event_distances.clear()
+                state.clear_meet()
                 state._active_meet_file = ''
                 state.settings['last_meet_file'] = ''
                 send_event_info()
                 modified = True
 
-        if 'pool_setup_submit' in flask.request.form:
+        if 'pool_setup_submit' in form:
             for key, default in (('num_lanes', 8), ('pool_length', 25), ('touchpad_sides', 1)):
                 try:
-                    val = int(flask.request.form.get(key, default))
+                    val = int(form.get(key, default))
                     if val != int(state.settings.get(key, default)):
                         state.settings[key] = val
                         modified = True
                 except (ValueError, TypeError):
                     pass
 
-        if 'timing_settings_submit' in flask.request.form:
+        if 'timing_settings_submit' in form:
             changed = False
             for key in ('serial_port', 'console_type'):
-                val = flask.request.form.get(key, '').strip()
+                val = form.get(key, '').strip()
                 if val and val != state.settings.get(key):
                     state.settings[key] = val
                     changed = True
@@ -202,80 +199,80 @@ def route_settings():
                                               state.settings)
                 _restart_worker()
 
-        if 'flow_settings_submit' in flask.request.form:
+        if 'flow_settings_submit' in form:
             for key, default in (('intro_timeout', 300), ('results_timeout', 300),
                                   ('server_update_timeout', 300)):
                 try:
-                    val = max(5, int(flask.request.form.get(key, default)))
+                    val = max(5, int(form.get(key, default)))
                     if val != state.settings.get(key, default):
                         state.settings[key] = val
                         modified = True
                 except (ValueError, TypeError):
                     pass
             try:
-                val = round(max(0.5, float(flask.request.form.get('finish_debounce', 3.0))), 1)
+                val = round(max(0.5, float(form.get('finish_debounce', 3.0))), 1)
                 if val != state.settings.get('finish_debounce', 3.0):
                     state.settings['finish_debounce'] = val
                     modified = True
             except (ValueError, TypeError):
                 pass
             try:
-                val = round(max(0.5, float(flask.request.form.get('split_min_duration', 1.0))), 1)
+                val = round(max(0.5, float(form.get('split_min_duration', 1.0))), 1)
                 if val != state.settings.get('split_min_duration', 1.0):
                     state.settings['split_min_duration'] = val
                     modified = True
             except (ValueError, TypeError):
                 pass
 
-        if 'display_settings_submit' in flask.request.form:
+        if 'display_settings_submit' in form:
             for key in ('show_lane_header', 'show_name_header', 'show_club_header',
                         'show_time_header', 'show_delta_header', 'show_position_header',
                         'show_name', 'show_club', 'show_delta', 'show_position', 'show_podium'):
-                val = key in flask.request.form
+                val = key in form
                 if val != state.settings.get(key, True):
                     state.settings[key] = val
                     modified = True
-            sort_val = flask.request.form.get('results_sort', 'lane')
+            sort_val = form.get('results_sort', 'lane')
             if sort_val in ('lane', 'place') and sort_val != state.settings.get('results_sort', 'lane'):
                 state.settings['results_sort'] = sort_val
                 modified = True
             for key in ('meet_title', 'locale', 'label_style'):
-                if key in flask.request.form and state.settings.get(key) != flask.request.form.get(key):
-                    state.settings[key] = flask.request.form.get(key)
+                if key in form and state.settings.get(key) != form.get(key):
+                    state.settings[key] = form.get(key)
                     modified = True
-            if 'locale_file' in flask.request.files:
-                file = flask.request.files['locale_file']
+            if 'locale_file' in form:
+                file = form['locale_file']
                 if file and file.filename and file.filename.endswith('.toml'):
                     filename = os.path.basename(file.filename)
-                    file.save(os.path.join(state.CUSTOM_LOCALE_FOLDER, filename))
+                    save_upload(file, os.path.join(state.CUSTOM_LOCALE_FOLDER, filename))
                     state.settings['locale'] = os.path.splitext(filename)[0]
                     modified = True
 
-        if 'splash_settings_submit' in flask.request.form:
-            splash_file = flask.request.files.get('splash_file')
+        if 'splash_settings_submit' in form:
+            splash_file = form.get('splash_file')
             if splash_file and splash_file.filename:
                 filename = os.path.basename(splash_file.filename)
-                splash_file.save(os.path.join(state.IMAGES_DIR, filename))
+                save_upload(splash_file, os.path.join(state.IMAGES_DIR, filename))
                 state.settings['splash_url'] = filename
                 modified = True
-            elif 'splash_url' in flask.request.form:
-                val = flask.request.form.get('splash_url', '')
+            elif 'splash_url' in form:
+                val = form.get('splash_url', '')
                 if val != state.settings.get('splash_url', ''):
                     state.settings['splash_url'] = val
                     modified = True
             try:
-                ci = max(3, int(flask.request.form.get('carousel_interval', 10)))
+                ci = max(3, int(form.get('carousel_interval', 10)))
                 if ci != int(state.settings.get('carousel_interval', 10)):
                     state.settings['carousel_interval'] = ci
                     modified = True
             except (ValueError, TypeError):
                 pass
 
-        elif 'theme_update_submit' in flask.request.form:
-            file = flask.request.files.get('theme_file')
+        elif 'theme_update_submit' in form:
+            file = form.get('theme_file')
             if file and file.filename and file.filename.endswith('.toml'):
                 filename = os.path.basename(file.filename)
-                file.save(os.path.join(state.CUSTOM_THEME_FOLDER, filename))
+                save_upload(file, os.path.join(state.CUSTOM_THEME_FOLDER, filename))
                 code = os.path.splitext(filename)[0]
                 colors, fonts = state.load_theme(code)
                 state.settings['active_theme'] = code
@@ -283,8 +280,8 @@ def route_settings():
                 state.settings['theme_fonts']  = fonts
                 modified = True
             else:
-                code = flask.request.form.get('theme_select',
-                                              state.settings.get('active_theme', 'default'))
+                code = form.get('theme_select',
+                                state.settings.get('active_theme', 'default'))
                 if code != state.settings.get('active_theme', 'default'):
                     colors, fonts = state.load_theme(code)
                     state.settings['active_theme'] = code
@@ -295,24 +292,24 @@ def route_settings():
                     colors = {}
                     for key in state.DEFAULT_THEME_COLORS:
                         form_key = 'color_' + key
-                        if form_key in flask.request.form:
-                            colors[key] = flask.request.form[form_key]
+                        if form_key in form:
+                            colors[key] = form[form_key]
                     fonts = {}
-                    val = flask.request.form.get('font_family', '').strip()
+                    val = form.get('font_family', '').strip()
                     if val:
                         fonts['family'] = val
-                    val = flask.request.form.get('font_digits', '').strip()
+                    val = form.get('font_digits', '').strip()
                     if val:
                         fonts['digits'] = val
-                    val = flask.request.form.get('font_timing', '').strip()
+                    val = form.get('font_timing', '').strip()
                     if val:
                         fonts['timing'] = val
                     state.settings['theme_colors'] = {**state.DEFAULT_THEME_COLORS, **colors}
                     state.settings['theme_fonts']  = {**state.DEFAULT_THEME_FONTS,  **fonts}
                     modified = True
 
-        elif 'theme_save_submit' in flask.request.form:
-            name = flask.request.form.get('theme_name', '').strip()
+        elif 'theme_save_submit' in form:
+            name = form.get('theme_name', '').strip()
             if name:
                 code   = re.sub(r'[^a-z0-9_-]', '_', name.lower())
                 colors = {**state.DEFAULT_THEME_COLORS, **state.settings.get('theme_colors', {})}
@@ -328,10 +325,10 @@ def route_settings():
                 state.settings['active_theme'] = code
                 modified = True
 
-        if 'cloud_settings_submit' in flask.request.form:
+        if 'cloud_settings_submit' in form:
             # Pi-global cloud connection (one relay key per box).
             for key in ('cloud_relay_url', 'cloud_relay_key'):
-                val = flask.request.form.get(key, '').strip()
+                val = form.get(key, '').strip()
                 if val != state.settings.get(key, ''):
                     state.settings[key] = val
                     modified = True
@@ -339,23 +336,23 @@ def route_settings():
                 import relay as _relay
                 _relay.update_metadata()
 
-        if 'meet_appearance_submit' in flask.request.form:
+        if 'meet_appearance_submit' in form:
             # Per-meet cloud appearance — saved to the loaded meet's profile so
             # each meet (e.g. each day of a split meet) keeps its own.
             for key in ('meet_location', 'meet_sport', 'cloud_label_style',
                         'app_window_title', 'cloud_meet_title'):
-                val = flask.request.form.get(key, '').strip()
+                val = form.get(key, '').strip()
                 if val != state.settings.get(key, ''):
                     state.settings[key] = val
                     modified = True
 
             # ── Picker image ──────────────────────────────────────────────────
             picker_image_error = None
-            picker_image_file  = flask.request.files.get('picker_image')
+            picker_image_file  = form.get('picker_image')
             if picker_image_file and picker_image_file.filename:
                 try:
                     from PIL import Image
-                    img      = Image.open(picker_image_file.stream)
+                    img      = Image.open(picker_image_file.file)
                     orig_name = os.path.basename(picker_image_file.filename)
                     img.save(os.path.join(state.PICKER_DIR, orig_name), optimize=True)
                     state.settings['active_picker_image'] = orig_name
@@ -363,21 +360,21 @@ def route_settings():
                 except Exception as e:
                     picker_image_error = f'Could not process image: {e}'
             else:
-                selected_pi = flask.request.form.get('selected_picker_image', '').strip()
+                selected_pi = form.get('selected_picker_image', '').strip()
                 if selected_pi != state.settings.get('active_picker_image', ''):
                     state.settings['active_picker_image'] = selected_pi
                     modified = True
 
             # ── Home screen icon ──────────────────────────────────────────────
-            if flask.request.form.get('remove_home_icon'):
+            if form.get('remove_home_icon'):
                 _render_home_icon('')
                 state.settings['active_home_icon'] = ''
                 modified = True
-            icon_file = flask.request.files.get('home_icon')
+            icon_file = form.get('home_icon')
             if icon_file and icon_file.filename:
                 try:
                     from PIL import Image
-                    img = Image.open(icon_file.stream)
+                    img = Image.open(icon_file.file)
                     if img.size not in [(512, 512), (1024, 1024)]:
                         icon_error = f'Icon must be 512×512 or 1024×1024 px (uploaded: {img.size[0]}×{img.size[1]}).'
                     else:
@@ -389,7 +386,7 @@ def route_settings():
                 except Exception as e:
                     icon_error = f'Could not process image: {e}'
             else:
-                selected = flask.request.form.get('selected_home_icon', '').strip()
+                selected = form.get('selected_home_icon', '').strip()
                 if selected != state.settings.get('active_home_icon', ''):
                     _render_home_icon(selected)
                     state.settings['active_home_icon'] = selected
@@ -400,29 +397,27 @@ def route_settings():
                 import relay as _relay
                 _relay.update_metadata()
 
-        elif 'cloud_settings_submit' not in flask.request.form:
-            new_name = flask.request.form.get('user_name', '').strip()
+        elif 'cloud_settings_submit' not in form:
+            new_name = form.get('user_name', '').strip()
             if new_name and new_name != state.settings.get('username'):
                 state.settings['username'] = new_name
                 modified = True
-            new_pass = flask.request.form.get('password', '').strip()
+            new_pass = form.get('password', '').strip()
             if new_pass and new_pass != state.settings.get('password'):
                 state.settings['password'] = new_pass
                 modified = True
             for k in state.settings.keys():
                 if k in ('username', 'password'):
                     continue
-                if k in flask.request.form and state.settings[k] != flask.request.form.get(k):
-                    state.settings[k] = flask.request.form.get(k)
+                if k in form and state.settings[k] != form.get(k):
+                    state.settings[k] = form.get(k)
                     modified = True
 
         if modified:
-            with open(state.settings_file, 'wt') as f:
-                json.dump(state.settings, f, sort_keys=True, indent=4)
-            if 'display_settings_submit' in flask.request.form or \
-               'theme_update_submit' in flask.request.form:
-                socketio.emit('reload', namespace='/scoreboard')
-                socketio.emit('reload', namespace='/results')
+            state.save_settings()
+            if 'display_settings_submit' in form or 'theme_update_submit' in form:
+                bus.emit('/scoreboard', 'reload')
+                bus.emit('/results', 'reload')
                 relay.relay_emit('reload', {})
 
     load_custom_decoders(state.CUSTOM_DECODERS_FOLDER)
@@ -446,7 +441,8 @@ def route_settings():
     custom_locale_list  = state.list_custom_locales()
     custom_locale_codes = [c for c, _ in custom_locale_list]
 
-    return flask.render_template(
+    return render(
+        request,
         'settings.html',
         meet_file_list=meet_file_list,
         active_meet_file=state._active_meet_file,
@@ -490,7 +486,7 @@ def route_settings():
         app_window_title=state.settings.get('app_window_title', ''),
         cloud_meet_title=state.settings.get('cloud_meet_title', ''),
         has_home_icon=os.path.exists(state.HOME_ICON_PATH),
-        icon_error=locals().get('icon_error'),
+        icon_error=icon_error if request.method == 'POST' else None,
         active_home_icon=state.settings.get('active_home_icon', ''),
         icon_list=sorted(
             f for f in (os.listdir(state.ICONS_DIR) if os.path.isdir(state.ICONS_DIR) else [])
@@ -498,7 +494,8 @@ def route_settings():
             and os.path.isfile(os.path.join(state.ICONS_DIR, f))
         ),
         active_picker_image=state.settings.get('active_picker_image', ''),
-        picker_image_error=locals().get('picker_image_error'),
+        picker_image_error=(locals().get('picker_image_error')
+                            if request.method == 'POST' else None),
         picker_image_list=sorted(
             f for f in (os.listdir(state.PICKER_DIR) if os.path.isdir(state.PICKER_DIR) else [])
             if os.path.isfile(os.path.join(state.PICKER_DIR, f))
@@ -506,38 +503,37 @@ def route_settings():
     )
 
 
-@bp.route('/home_icon')
+@router.get('/home_icon')
 def route_home_icon():
     if not os.path.exists(state.HOME_ICON_PATH):
-        flask.abort(404)
-    return flask.send_file(state.HOME_ICON_PATH, mimetype='image/png',
-                           max_age=0, conditional=True)
+        raise HTTPException(404)
+    return FileResponse(state.HOME_ICON_PATH, media_type='image/png',
+                        headers={'Cache-Control': 'no-cache'})
 
 
-@bp.route('/home_icon_512')
+@router.get('/home_icon_512')
 def route_home_icon_512():
     path = state.HOME_ICON_512_PATH if os.path.exists(state.HOME_ICON_512_PATH) else state.HOME_ICON_PATH
     if not os.path.exists(path):
-        flask.abort(404)
-    return flask.send_file(path, mimetype='image/png', max_age=0, conditional=True)
+        raise HTTPException(404)
+    return FileResponse(path, media_type='image/png', headers={'Cache-Control': 'no-cache'})
 
 
-@bp.route('/picker_image')
+@router.get('/picker_image')
 def route_picker_image():
     active = state.settings.get('active_picker_image', '')
     if not active:
-        flask.abort(404)
+        raise HTTPException(404)
     path = os.path.join(state.PICKER_DIR, active)
     if not os.path.isfile(path):
-        flask.abort(404)
-    return flask.send_file(path, max_age=0, conditional=True)
+        raise HTTPException(404)
+    return FileResponse(path, headers={'Cache-Control': 'no-cache'})
 
 
-@bp.route('/manifest.json')
+@router.get('/manifest.json')
 def route_manifest():
-    import json as _json
     app_title = (state.settings.get('app_window_title') or
-                 state.lenex_meet_info.get('name') or
+                 state.meet.meet_info.get('name') or
                  state.settings.get('meet_title') or 'Tremplin')
     icons = ([
         {'src': '/home_icon',     'sizes': '192x192', 'type': 'image/png'},
@@ -554,8 +550,4 @@ def route_manifest():
         'theme_color':      '#000000',
         'icons':            icons,
     }
-    return flask.Response(_json.dumps(manifest),
-                          mimetype='application/manifest+json')
-
-
-
+    return Response(json.dumps(manifest), media_type='application/manifest+json')

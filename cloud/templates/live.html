@@ -55,7 +55,7 @@ function apply_state() {
     last_state = current_state;
 }
 
-var socket = io('/scoreboard');
+var socket = tremplinSocket('/ws/scoreboard');
 socket.on('connect', function() {
     reset_state();
     socket.emit('join_meet', { meet_id: MEET_ID, vid: tremplinVid() });
