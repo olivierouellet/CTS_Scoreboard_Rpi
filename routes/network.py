@@ -59,6 +59,31 @@ def _nmcli(*args, timeout=8):
                           capture_output=True, text=True, timeout=timeout)
 
 
+def _split_terse(line, count):
+    """Split an nmcli terse ('-t') line into `count` fields.
+
+    nmcli escapes ':' and '\\' inside values, so we split on unescaped ':'
+    only, then unescape. The last requested field absorbs any trailing
+    unescaped ':' (there shouldn't be any given the field order)."""
+    fields, buf, i = [], [], 0
+    while i < len(line):
+        c = line[i]
+        if c == '\\' and i + 1 < len(line):
+            buf.append(line[i + 1])
+            i += 2
+        elif c == ':' and len(fields) < count - 1:
+            fields.append(''.join(buf))
+            buf = []
+            i += 1
+        else:
+            buf.append(c)
+            i += 1
+    fields.append(''.join(buf))
+    while len(fields) < count:
+        fields.append('')
+    return fields
+
+
 @router.get('/wifi_status', response_model=WifiStatus,
             dependencies=[Depends(require_login)])
 def route_wifi_status():
@@ -111,21 +136,18 @@ def route_wifi_status():
             dependencies=[Depends(require_login)])
 def route_wifi_scan():
     try:
-        r     = _nmcli('--color', 'no', '-f', 'ACTIVE,SSID,SIGNAL,SECURITY',
-                       'dev', 'wifi', 'list', timeout=20)
-        lines = r.stdout.splitlines()
-        if len(lines) < 2:
-            return {'networks': []}
-        hdr = lines[0]
-        col = {name: hdr.index(name) for name in ('ACTIVE', 'SSID', 'SIGNAL', 'SECURITY')}
+        # Terse (-t) output is one AP per line with ':'-separated fields, far
+        # more robust than parsing the fixed-width table (whose column offsets
+        # shift with content and silently drop most rows). SSID is requested
+        # last because it can contain ':' — nmcli escapes those as '\:', which
+        # _split_terse() honours so the SSID stays intact.
+        r     = _nmcli('-t', '-f', 'IN-USE,SIGNAL,SECURITY,SSID',
+                       'dev', 'wifi', 'list', '--rescan', 'auto', timeout=30)
         networks, seen = [], set()
-        for line in lines[1:]:
-            if len(line) <= col['SECURITY']:
+        for line in r.stdout.splitlines():
+            if not line:
                 continue
-            ssid     = line[col['SSID']   : col['SIGNAL']  ].strip()
-            signal   = line[col['SIGNAL'] : col['SECURITY']].strip()
-            security = line[col['SECURITY']:               ].strip()
-            active   = line[col['ACTIVE'] : col['SSID']   ].strip()
+            active, signal, security, ssid = _split_terse(line, 4)
             if not ssid or ssid in seen:
                 continue
             seen.add(ssid)
