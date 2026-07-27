@@ -9,6 +9,7 @@ import subprocess
 
 from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 import bus
@@ -19,6 +20,14 @@ from web import redirect, require_login, save_upload
 from worker import _cleanup_test_meet, _list_sessions, _restart_worker
 
 router = APIRouter(tags=['Debug'])
+
+
+class SpeedBody(BaseModel):
+    speed: float = 1.0
+
+
+class TerminalStart(BaseModel):
+    cmd: str = 'bash'
 
 _TERMINAL_ALLOWED_CMDS = {
     'bash':         ['bash'],
@@ -131,12 +140,8 @@ def _test_meet_upload(file):
 
 
 @router.post('/test_set_speed', dependencies=[Depends(require_login)])
-async def route_test_set_speed(request: Request):
-    try:
-        state.in_speed = float((await request.json()).get('speed', 1.0))
-        state.in_speed = max(0.1, min(state.in_speed, 100.0))
-    except (TypeError, ValueError):
-        pass
+def route_test_set_speed(body: SpeedBody):
+    state.in_speed = max(0.1, min(body.speed, 100.0))
     return {'speed': state.in_speed}
 
 
@@ -233,7 +238,7 @@ def _pty_reader():
 
 
 @router.post('/terminal_start', dependencies=[Depends(require_login)])
-async def route_terminal_start(request: Request):
+async def route_terminal_start(body: TerminalStart):
     if not state._PTY_AVAILABLE:
         return {'ok': False, 'error': 'PTY not available on this platform'}
     if state._pty_fd is not None:
@@ -242,11 +247,9 @@ async def route_terminal_start(request: Request):
         import fcntl
         import pty
         import termios
-        data    = await request.json()
-        cmd_key = (data or {}).get('cmd', 'bash')
-        cmd     = _TERMINAL_ALLOWED_CMDS.get(cmd_key)
+        cmd = _TERMINAL_ALLOWED_CMDS.get(body.cmd)
         if cmd is None:
-            return {'ok': False, 'error': f'Unknown command: {cmd_key}'}
+            return {'ok': False, 'error': f'Unknown command: {body.cmd}'}
         master_fd, slave_fd = pty.openpty()
         winsize = struct.pack('HHHH', 24, 80, 0, 0)
         fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)

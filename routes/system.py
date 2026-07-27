@@ -9,6 +9,7 @@ import tomllib
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 import bus
@@ -16,6 +17,11 @@ import state
 from web import require_login
 
 router = APIRouter(tags=['System'])
+
+
+class TimeSet(BaseModel):
+    date: str = ''
+    time: str = ''
 
 _VERSION_RE = re.compile(r'^v\d{4}\.\d{2}\.\d+$')
 
@@ -92,9 +98,8 @@ def route_time_sync():
 
 
 @router.post('/time_set', dependencies=[Depends(require_login)])
-async def route_time_set(request: Request):
-    data = await request.json()
-    return await run_in_threadpool(_time_set, data.get('date', ''), data.get('time', ''))
+async def route_time_set(body: TimeSet):
+    return await run_in_threadpool(_time_set, body.date, body.time)
 
 
 def _time_set(date_str, time_str):

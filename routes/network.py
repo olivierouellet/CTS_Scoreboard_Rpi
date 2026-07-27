@@ -3,12 +3,18 @@ import subprocess
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 import state
 from web import require_login
 
 router = APIRouter(tags=['Network'])
+
+
+class EthIP(BaseModel):
+    ip: str = ''
+    prefix: str = '24'
 
 
 def _nmcli(*args, timeout=8):
@@ -174,10 +180,8 @@ def route_eth_dhcp_set():
 
 
 @router.post('/eth_ip_set', dependencies=[Depends(require_login)])
-async def route_eth_ip_set(request: Request):
-    data = await request.json()
-    return await run_in_threadpool(_eth_ip_set, data.get('ip', '').strip(),
-                                    data.get('prefix', '24').strip())
+async def route_eth_ip_set(body: EthIP):
+    return await run_in_threadpool(_eth_ip_set, body.ip.strip(), body.prefix.strip())
 
 
 def _eth_ip_set(ip_str, prefix_str):
