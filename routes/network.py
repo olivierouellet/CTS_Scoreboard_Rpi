@@ -141,8 +141,12 @@ def route_wifi_scan():
         # connecting that cache often holds only the associated AP, which is
         # why the list showed a single network. Trigger an explicit rescan and
         # give the driver a moment to report neighbours before listing.
-        # (rescan exits non-zero if a scan is already running — that's fine.)
-        _nmcli('dev', 'wifi', 'rescan', timeout=20)
+        # rescan needs root: unprivileged callers get a polkit "not authorized"
+        # error and the cache is never refreshed, so run it through sudo like
+        # the other privileged nmcli calls here. It also exits non-zero if a
+        # scan is already in progress — both cases are harmless, so ignore.
+        subprocess.run(['sudo', 'nmcli', 'dev', 'wifi', 'rescan'],
+                       capture_output=True, text=True, timeout=20)
         time.sleep(4)
         # Terse (-t) output is one AP per line with ':'-separated fields, far
         # more robust than parsing the fixed-width table (whose column offsets
