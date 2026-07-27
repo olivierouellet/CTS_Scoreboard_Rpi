@@ -44,6 +44,40 @@ class TimeSet(BaseModel):
             raise ValueError('Invalid date or time format')
         return v
 
+
+class TimeStatus(BaseModel):
+    date: str
+    time: str
+    timezone: str
+    ntp_active: bool
+    synchronized: bool
+
+
+class VersionList(BaseModel):
+    # Success returns current/versions/branches; failure returns error. All
+    # non-``ok`` fields are optional so both dict shapes validate.
+    ok: bool
+    current: str = ''
+    versions: list[str] = Field(default_factory=list)
+    branches: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class LogLine(BaseModel):
+    text: str
+    error: bool
+
+
+class LogTail(BaseModel):
+    lines: list[LogLine]
+    done: bool | None = None
+
+
+class RtcStatus(BaseModel):
+    configured: bool
+    active: bool
+
+
 _VERSION_RE = re.compile(r'^v\d{4}\.\d{2}\.\d+$')
 
 
@@ -79,7 +113,8 @@ _UV = _find_uv()
 
 # ── Time ───────────────────────────────────────────────────────────────────────
 
-@router.get('/time_status', dependencies=[Depends(require_login)])
+@router.get('/time_status', response_model=TimeStatus,
+            dependencies=[Depends(require_login)])
 def route_time_status():
     now          = datetime.datetime.now()
     ntp_active   = False
@@ -231,7 +266,8 @@ def _run_os_update():
         state._os_update_in_progress = False
 
 
-@router.get('/version_list', dependencies=[Depends(require_login)])
+@router.get('/version_list', response_model=VersionList,
+            dependencies=[Depends(require_login)])
 def route_version_list():
     try:
         r = subprocess.run(['git', 'describe', '--tags', '--exact-match', 'HEAD'],
@@ -279,12 +315,14 @@ def route_os_update_start():
     return {'ok': True}
 
 
-@router.get('/update_log', dependencies=[Depends(require_login)])
+@router.get('/update_log', response_model=LogTail,
+            dependencies=[Depends(require_login)])
 def route_update_log():
     return {'lines': state._update_log_lines, 'done': state._update_log_done}
 
 
-@router.get('/os_update_log', dependencies=[Depends(require_login)])
+@router.get('/os_update_log', response_model=LogTail,
+            dependencies=[Depends(require_login)])
 def route_os_update_log():
     return {'lines': state._os_update_log_lines, 'done': state._os_update_log_done}
 
@@ -294,7 +332,8 @@ def route_os_update_log():
 _RTC_SCRIPT = os.path.join(state.app_dir, 'scripts', 'rtc_setup.sh')
 
 
-@router.get('/rtc_status', dependencies=[Depends(require_login)])
+@router.get('/rtc_status', response_model=RtcStatus,
+            dependencies=[Depends(require_login)])
 def route_rtc_status():
     configured = False
     active     = False
@@ -363,7 +402,8 @@ def route_rtc_remove_start():
     return {'ok': True}
 
 
-@router.get('/rtc_log', dependencies=[Depends(require_login)])
+@router.get('/rtc_log', response_model=LogTail,
+            dependencies=[Depends(require_login)])
 def route_rtc_log():
     return {'lines': state._rtc_log_lines, 'done': state._rtc_log_done}
 

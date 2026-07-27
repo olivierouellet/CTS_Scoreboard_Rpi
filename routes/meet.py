@@ -3,12 +3,20 @@ import json
 import os
 
 from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel
 
 import state
 from meet_data import _build_meet_data, send_event_info
 from web import redirect, render, require_login
 
 router = APIRouter(tags=['Meet'])
+
+
+class MeetStatus(BaseModel):
+    file_list: list[str]
+    active: str
+    preview_url: str
+    playing: bool
 
 
 @router.get('/meet')
@@ -127,7 +135,8 @@ def route_lenex_preview(request: Request):
     return redirect('/meet' + ('?kiosk' if 'kiosk' in request.query_params else ''))
 
 
-@router.get('/meet_status', dependencies=[Depends(require_login)])
+@router.get('/meet_status', response_model=MeetStatus,
+            dependencies=[Depends(require_login)])
 def route_meet_status():
     file_list = sorted(
         os.path.basename(f)

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, IPvAnyAddress
 from starlette.concurrency import run_in_threadpool
 
 import state
-from web import ActionResult, require_login
+from web import ActionResult, EnabledFlag, require_login
 
 router = APIRouter(tags=['Network'])
 
@@ -21,12 +21,46 @@ class WifiConnect(BaseModel):
     password: str = ''
 
 
+class WifiStatus(BaseModel):
+    enabled: bool
+    ssid: str
+    wifi_ip: str
+    eth_ip: str
+
+
+class WifiNetwork(BaseModel):
+    ssid: str
+    signal: int
+    security: str
+    active: bool
+
+
+class WifiScan(BaseModel):
+    networks: list[WifiNetwork]
+
+
+class CloudStatus(BaseModel):
+    connected: bool
+    running: bool
+    url: str
+
+
+class ScoreboardClient(BaseModel):
+    ip: str
+    at: str
+
+
+class Clients(BaseModel):
+    clients: list[ScoreboardClient]
+
+
 def _nmcli(*args, timeout=8):
     return subprocess.run(['nmcli'] + list(args),
                           capture_output=True, text=True, timeout=timeout)
 
 
-@router.get('/wifi_status', dependencies=[Depends(require_login)])
+@router.get('/wifi_status', response_model=WifiStatus,
+            dependencies=[Depends(require_login)])
 def route_wifi_status():
     try:
         r       = _nmcli('radio', 'wifi')
@@ -73,7 +107,8 @@ def route_wifi_status():
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@router.get('/wifi_scan', dependencies=[Depends(require_login)])
+@router.get('/wifi_scan', response_model=WifiScan,
+            dependencies=[Depends(require_login)])
 def route_wifi_scan():
     try:
         r     = _nmcli('--color', 'no', '-f', 'ACTIVE,SSID,SIGNAL,SECURITY',
@@ -108,7 +143,8 @@ def route_wifi_scan():
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@router.post('/wifi_toggle', dependencies=[Depends(require_login)])
+@router.post('/wifi_toggle', response_model=EnabledFlag,
+             dependencies=[Depends(require_login)])
 def route_wifi_toggle():
     try:
         r            = _nmcli('radio', 'wifi')
@@ -121,13 +157,15 @@ def route_wifi_toggle():
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@router.get('/cloud_status', dependencies=[Depends(require_login)])
+@router.get('/cloud_status', response_model=CloudStatus,
+            dependencies=[Depends(require_login)])
 def route_cloud_status():
     import relay
     return relay.status()
 
 
-@router.post('/cloud_toggle', dependencies=[Depends(require_login)])
+@router.post('/cloud_toggle', response_model=CloudStatus,
+             dependencies=[Depends(require_login)])
 def route_cloud_toggle():
     import relay
     if relay.status()['running']:
@@ -206,7 +244,8 @@ def _eth_ip_set(ip_str, prefix):
         return {'ok': False, 'error': str(e)}
 
 
-@router.get('/clients', dependencies=[Depends(require_login)])
+@router.get('/clients', response_model=Clients,
+            dependencies=[Depends(require_login)])
 async def route_clients():
     # Browser tabs connected to the scoreboard WebSocket, shown in the Network tab.
     # async so it runs on the event loop — the same context that mutates

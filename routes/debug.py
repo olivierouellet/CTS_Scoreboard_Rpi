@@ -17,7 +17,7 @@ import bus
 import state
 from meet_data import send_event_info
 from parsers.lenex_parser import load_lenex
-from web import ActionResult, redirect, require_login, save_upload
+from web import ActionResult, EnabledFlag, redirect, require_login, save_upload
 from worker import _cleanup_test_meet, _list_sessions, _restart_worker
 
 router = APIRouter(tags=['Debug'])
@@ -29,6 +29,34 @@ class NameBody(BaseModel):
 
 class SpeedBody(BaseModel):
     speed: float = 1.0
+
+
+class Session(BaseModel):
+    name: str
+    source: str
+    path: str
+
+
+class TestStatus(BaseModel):
+    playing: bool
+    session: str
+    recording: bool
+    sessions: list[Session]
+    speed: float
+    has_meet: bool
+    test_meet: bool
+    test_meet_name: str
+
+
+class SerialStatus(BaseModel):
+    state: str
+    msg: str
+
+
+class SeedTimes(BaseModel):
+    lane_seed_times: dict[int, str]
+    last_event_sent: tuple[int, int]
+    lenex_loaded: bool
 
 
 class TerminalStart(BaseModel):
@@ -45,7 +73,8 @@ _TERMINAL_ALLOWED_CMDS = {
 }
 
 
-@router.get('/test_status', dependencies=[Depends(require_login)])
+@router.get('/test_status', response_model=TestStatus,
+            dependencies=[Depends(require_login)])
 def route_test_status():
     return {
         'playing':        state._test_session is not None,
@@ -199,23 +228,26 @@ async def route_test_session_upload(request: Request):
     return redirect('/settings')
 
 
-@router.get('/serial_status', dependencies=[Depends(require_login)])
+@router.get('/serial_status', response_model=SerialStatus,
+            dependencies=[Depends(require_login)])
 def route_serial_status():
     return state._serial_status
 
 
-@router.get('/debug_status', dependencies=[Depends(require_login)])
+@router.get('/debug_status', response_model=EnabledFlag,
+            dependencies=[Depends(require_login)])
 def route_debug_status():
     return {'enabled': state._debug_serial}
 
 
-@router.post('/debug_toggle', dependencies=[Depends(require_login)])
+@router.post('/debug_toggle', response_model=EnabledFlag,
+             dependencies=[Depends(require_login)])
 def route_debug_toggle():
     state._debug_serial = not state._debug_serial
     return {'enabled': state._debug_serial}
 
 
-@router.get('/debug/seed_times')
+@router.get('/debug/seed_times', response_model=SeedTimes)
 def route_debug_seed_times():
     return {
         'lane_seed_times': state._decoder.lane_seed_times,

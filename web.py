@@ -27,6 +27,11 @@ class ActionResult(BaseModel):
     error: str | None = None
 
 
+class EnabledFlag(BaseModel):
+    """Standard body for endpoints reporting / toggling a single on-off flag."""
+    enabled: bool
+
+
 class NotAuthenticated(Exception):
     """Raised by :func:`require_login` when no session user is set.
 
