@@ -32,7 +32,27 @@ from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
+
+
+class ActionResult(BaseModel):
+    """Success/failure body for admin actions (error only present on failure)."""
+    ok: bool
+    error: str | None = None
+
+
+class RestoreResult(BaseModel):
+    """Result of a backup restore: how many records were merged in."""
+    ok: bool
+    count: int = 0
+    error: str | None = None
+
+
+class StatsResult(BaseModel):
+    """Attendee count for a meet/window; count is null when analytics are off."""
+    enabled: bool
+    count: int | None = None
 
 DATA_DIR    = os.environ.get('DATA_DIR', '/data')
 KEYS_FILE   = os.path.join(DATA_DIR, 'keys.json')
@@ -960,7 +980,8 @@ def route_picker_manifest():
     return Response(json.dumps(manifest), media_type='application/manifest+json')
 
 
-@app.post('/admin/picker_appearance', tags=['Admin'], dependencies=[Depends(require_admin)])
+@app.post('/admin/picker_appearance', tags=['Admin'], response_model=ActionResult,
+          response_model_exclude_none=True, dependencies=[Depends(require_admin)])
 async def route_picker_appearance(request: Request):
     form  = await request.form()
     creds = _load_creds()
@@ -1016,7 +1037,8 @@ def route_backup_keys(request: Request):
         headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
 
-@app.post('/admin/restore/keys', tags=['Admin'], dependencies=[Depends(require_admin)])
+@app.post('/admin/restore/keys', tags=['Admin'], response_model=RestoreResult,
+          response_model_exclude_none=True, dependencies=[Depends(require_admin)])
 async def route_restore_keys(request: Request):
     uploaded = (await request.form()).get('keys_file')
     if not uploaded:
@@ -1056,7 +1078,8 @@ def route_backup_meets():
         headers={'Content-Disposition': 'attachment; filename="tremplin-meets.json"'})
 
 
-@app.post('/admin/restore/meets', tags=['Admin'], dependencies=[Depends(require_admin)])
+@app.post('/admin/restore/meets', tags=['Admin'], response_model=RestoreResult,
+          response_model_exclude_none=True, dependencies=[Depends(require_admin)])
 async def route_restore_meets(request: Request):
     uploaded = (await request.form()).get('meets_file')
     if not uploaded:
@@ -1165,7 +1188,8 @@ def route_versions():
         return JSONResponse({'ok': False, 'error': str(e)}, status_code=502)
 
 
-@app.get('/admin/stats', tags=['Admin'], dependencies=[Depends(require_admin)])
+@app.get('/admin/stats', tags=['Admin'], response_model=StatsResult,
+         dependencies=[Depends(require_admin)])
 def route_stats(request: Request):
     if not _analytics_enabled():
         return {'enabled': False, 'count': None}
