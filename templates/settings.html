@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tremplin — Settings</title>
-<link rel="stylesheet" href="/static/css/bootstrap.min.css">
+<link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
 <style>
 :root {
     --color-bg:         {{ theme_colors.bg }};
@@ -147,6 +147,27 @@ input:-webkit-autofill:focus {
 @font-face { font-family:'Share Tech Mono';src:url('/static/fonts/ShareTechMono-Regular.woff2')  format('woff2'); }
 @font-face { font-family:'Orbitron';       src:url('/static/fonts/Orbitron-Regular.woff2')        format('woff2'); }
 @font-face { font-family:'Roboto Mono';    src:url('/static/fonts/RobotoMono-Regular.woff2')      format('woff2'); }
+
+/* ── BS5 responsive sidebar shell (modernization Increment 1) ───────────────
+   The old horizontal .nav-tabs bars (top + nested) are replaced by a sidebar.
+   They are hidden rather than deleted so pane markup/IDs stay untouched while
+   panes are reskinned tab-by-tab. The bridge overrides above keep not-yet-
+   reskinned panes looking like today. */
+ul.nav-tabs { display: none !important; }
+.tab-content { padding-top: 0; }
+#app-sidebar { width: 240px; }
+#app-sidebar .offcanvas-body { padding: 10px; }
+.app-nav .nav-link { color: #bbb; border-radius: 6px; padding: 6px 12px; font-size: 0.9em; cursor: pointer; }
+.app-nav .nav-link:hover { background: #1e1e1e; color: #fff; }
+.app-nav .nav-link.active { background: #2563eb; color: #fff; }
+.app-nav .nav-link.sub { padding-left: 28px; font-size: 0.86em; }
+.app-nav .group-toggle { display: flex; align-items: center; justify-content: space-between; }
+.app-nav .group-toggle .caret { transition: transform 0.15s; font-size: 0.8em; }
+.app-nav .group-toggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
+.app-quicklinks .btn { --bs-btn-padding-y: 2px; --bs-btn-padding-x: 8px; --bs-btn-font-size: 0.78em; }
+@media (min-width: 992px) {
+    #app-sidebar { min-height: calc(100vh - 57px); flex: 0 0 auto; }
+}
 </style>
 <script>
 function onPasswordInput(form) {
@@ -156,10 +177,11 @@ function onPasswordInput(form) {
 </script>
 </head>
 <body>
-<div class="container">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <h2 style="margin:0;">Tremplin — Settings</h2>
-        <div style="display:flex; gap:8px; align-items:center;">
+<div class="container-fluid px-0">
+    <nav class="navbar border-bottom px-3 py-2">
+        <button class="btn btn-secondary btn-sm d-lg-none me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#app-sidebar" aria-controls="app-sidebar">☰</button>
+        <span class="navbar-brand mb-0 h5">Tremplin — Settings</span>
+        <div class="d-flex gap-2 align-items-center flex-wrap ms-auto">
             <span id="system-power-status" style="font-size:0.85em; color:#888;"></span>
             <span style="position:relative; display:inline-block;">
                 <button type="button" class="btn btn-default btn-sm" onclick="toggleLogMenu(event)">Save Logs ▾</button>
@@ -172,44 +194,66 @@ function onPasswordInput(form) {
             <button type="button" class="btn btn-danger btn-sm" onclick="systemShutdown()">Shutdown</button>
             <a href="/help" class="btn btn-default btn-sm">Help</a>
             <a href="/info" class="btn btn-default btn-sm">Info</a>
-            <form action="/logout" style="margin:0;">
-                <input type="submit" value="Log Out" class="btn btn-default btn-sm"/>
+            <form action="/logout" class="m-0">
+                <input type="submit" value="Log Out" class="btn btn-secondary btn-sm"/>
             </form>
         </div>
-    </div>
+    </nav>
 
-    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; padding:7px 12px; background:#141414; border:1px solid #2a2a2a; border-radius:6px;">
-        <span style="color:#555; font-size:0.8em; margin-right:4px; text-transform:uppercase; letter-spacing:0.05em;">Open</span>
-        <div class="btn-group">
-            <a href="/live"          target="_blank" class="btn btn-default btn-xs">Live</a>
-            <a href="/operator"      target="_blank" class="btn btn-default btn-xs">Operator</a>
-            <a href="/mobile"        target="_blank" class="btn btn-default btn-xs">Mobile</a>
-        </div>
-        <div class="btn-group">
-            <a href="/live-mobile"   target="_blank" class="btn btn-default btn-xs">Live Mobile</a>
-            <a href="/results"       target="_blank" class="btn btn-default btn-xs">Results</a>
-            <a href="/schedule"      target="_blank" class="btn btn-default btn-xs">Schedule</a>
-        </div>
-        <div class="btn-group">
-            <a href="/meet"          target="_blank" class="btn btn-default btn-xs">Meet</a>
-        </div>
-        <div class="btn-group">
-            <a href="/console"       target="_blank" class="btn btn-default btn-xs">Console</a>
-        </div>
-    </div>
+    <div class="d-flex">
+        <div class="offcanvas-lg offcanvas-start border-end" tabindex="-1" id="app-sidebar" aria-labelledby="app-sidebar-label">
+            <div class="offcanvas-header d-lg-none">
+                <h5 class="offcanvas-title" id="app-sidebar-label">Menu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#app-sidebar" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body d-block">
+                <nav class="nav flex-column app-nav">
+                    <a class="nav-link" data-target="#tab-meet">Meet Setup</a>
+                    <a class="nav-link" data-target="#tab-debug">Timing</a>
+                    <a class="nav-link" data-target="#tab-time">Clock</a>
 
-    <ul class="nav nav-tabs" style="margin-bottom:16px;">
-        <li class="active"><a href="#tab-meet" data-toggle="tab">Meet Setup</a></li>
-        <li><a href="#tab-debug" data-toggle="tab">Timing</a></li>
-        <li><a href="#tab-time" data-toggle="tab">Clock</a></li>
-        <li><a href="#tab-appearance" data-toggle="tab">Appearance</a></li>
-        <li><a href="#tab-netgroup" data-toggle="tab">Network</a></li>
-        <li><a href="#tab-update" data-toggle="tab">Update &amp; Backup</a></li>
-        <li><a href="#tab-devtools" data-toggle="tab">Debug</a></li>
-        <li><a href="#tab-account" data-toggle="tab">Account</a></li>
-    </ul>
+                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-appearance" role="button" aria-expanded="false" aria-controls="grp-appearance"><span>Appearance</span><span class="caret">▸</span></a>
+                    <div class="collapse" id="grp-appearance">
+                        <a class="nav-link sub" data-target="#tab-flow">Flow</a>
+                        <a class="nav-link sub" data-target="#tab-display">Display</a>
+                        <a class="nav-link sub" data-target="#tab-theme">Theme</a>
+                    </div>
 
-    <div class="tab-content">
+                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-network" role="button" aria-expanded="false" aria-controls="grp-network"><span>Network</span><span class="caret">▸</span></a>
+                    <div class="collapse" id="grp-network">
+                        <a class="nav-link sub" data-target="#tab-network">Local</a>
+                        <a class="nav-link sub" data-target="#tab-cloud">Cloud</a>
+                    </div>
+
+                    <a class="nav-link" data-target="#tab-update">Update &amp; Backup</a>
+
+                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-debug" role="button" aria-expanded="false" aria-controls="grp-debug"><span>Debug</span><span class="caret">▸</span></a>
+                    <div class="collapse" id="grp-debug">
+                        <a class="nav-link sub" data-target="#tab-test">Test</a>
+                        <a class="nav-link sub" data-target="#tab-terminal">Terminal</a>
+                    </div>
+
+                    <a class="nav-link" data-target="#tab-account">Account</a>
+                </nav>
+                <hr>
+                <div class="app-quicklinks">
+                    <div class="text-secondary text-uppercase small mb-1" style="letter-spacing:0.05em;">Open</div>
+                    <div class="d-flex flex-wrap gap-1">
+                        <a href="/live"        target="_blank" class="btn btn-secondary">Live</a>
+                        <a href="/operator"    target="_blank" class="btn btn-secondary">Operator</a>
+                        <a href="/mobile"      target="_blank" class="btn btn-secondary">Mobile</a>
+                        <a href="/live-mobile" target="_blank" class="btn btn-secondary">Live Mobile</a>
+                        <a href="/results"     target="_blank" class="btn btn-secondary">Results</a>
+                        <a href="/schedule"    target="_blank" class="btn btn-secondary">Schedule</a>
+                        <a href="/meet"        target="_blank" class="btn btn-secondary">Meet</a>
+                        <a href="/console"     target="_blank" class="btn btn-secondary">Console</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <main class="flex-fill p-3" style="min-width:0;">
+            <div class="tab-content">
 
         <!-- ── Meet Setup ──────────────────────────────────────────── -->
         <div class="tab-pane active" id="tab-meet">
@@ -1153,10 +1197,12 @@ function onPasswordInput(form) {
             </div>
         </div>
 
-    </div><!-- tab-content -->
-</div>
-    <script src="/static/js/jquery-1.12.4.min.js"></script>
-    <script src="/static/js/bootstrap.min.js"></script>
+            </div><!-- tab-content -->
+        </main>
+    </div><!-- d-flex -->
+</div><!-- container-fluid -->
+    <script src="/static/js/bootstrap.bundle-5.3.3.min.js"></script>
+    <script src="/static/js/htmx-2.0.4.min.js"></script>
     <script src="/static/js/ws.js"></script>
     <script>
     // ── Restore tab + flash button after form submit ──────────────────────────
@@ -1212,74 +1258,76 @@ function onPasswordInput(form) {
         if (fns[tabHref]) fns[tabHref]();
     }
 
-    function _switchTab(tabHref) {
-        var pane = document.querySelector(tabHref);
-        var link = document.querySelector('[href="' + tabHref + '"]');
-        if (!pane || !link) return;
-        var container = pane.parentElement;
-        var nav = link.closest('.nav-tabs');
-        container.querySelectorAll(':scope > .tab-pane').forEach(function(p) { p.classList.remove('active'); });
-        nav.querySelectorAll(':scope > li').forEach(function(li) { li.classList.remove('active'); });
-        pane.classList.add('active');
-        link.parentElement.classList.add('active');
+    // Sidebar navigation: show the target pane and every .tab-pane ancestor
+    // (nested panes stay nested in the DOM), mark the sidebar link active, and
+    // expand the collapse group that contains it.
+    function _switchTab(target) {
+        var pane = document.querySelector(target);
+        if (!pane) return;
+        document.querySelectorAll('.tab-content .tab-pane').forEach(function(p) { p.classList.remove('active'); });
+        var el = pane;
+        while (el) {
+            if (el.classList && el.classList.contains('tab-pane')) el.classList.add('active');
+            el = el.parentElement;
+        }
+        document.querySelectorAll('.app-nav .nav-link').forEach(function(a) { a.classList.remove('active'); });
+        var link = document.querySelector('.app-nav .nav-link[data-target="' + target + '"]');
+        if (link) {
+            link.classList.add('active');
+            var grp = link.closest('.collapse');
+            if (grp && window.bootstrap) bootstrap.Collapse.getOrCreateInstance(grp, { toggle: false }).show();
+        }
     }
+
+    document.querySelectorAll('.app-nav .nav-link[data-target]').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            var target = link.getAttribute('data-target');
+            _switchTab(target);
+            var oc = document.getElementById('app-sidebar');
+            if (window.bootstrap && oc) {
+                var inst = bootstrap.Offcanvas.getInstance(oc);
+                if (inst) inst.hide();
+            }
+        });
+    });
 
     (function() {
         var state = JSON.parse(localStorage.getItem('cts_tab_restore') || 'null');
-        if (!state) return;
-        localStorage.removeItem('cts_tab_restore');
-        if (state.tab) {
-            _switchTab(state.tab);
-            setTimeout(function(){ _tabInitFor(state.tab); }, 0);
-        }
-        if (state.nested) {
-            _switchTab(state.nested);
-            setTimeout(function(){ _tabInitFor(state.nested); }, 0);
-        }
-        if (state.btn) {
-            var btn = document.getElementById(state.btn);
-            if (btn) {
-                btn.classList.remove('btn-default', 'btn-warning');
-                btn.classList.add('btn-success');
-                setTimeout(function() {
-                    btn.classList.remove('btn-success');
-                    btn.classList.add('btn-default');
-                }, 2500);
+        if (state) {
+            localStorage.removeItem('cts_tab_restore');
+            var target = state.nested || state.tab;
+            if (target) {
+                _switchTab(target);
+                setTimeout(function(){ _tabInitFor(target); }, 0);
             }
+            if (state.btn) {
+                var btn = document.getElementById(state.btn);
+                if (btn) {
+                    btn.classList.remove('btn-default', 'btn-secondary', 'btn-warning');
+                    btn.classList.add('btn-success');
+                    setTimeout(function() {
+                        btn.classList.remove('btn-success');
+                        btn.classList.add('btn-secondary');
+                    }, 2500);
+                }
+            }
+        } else {
+            // Fresh load: activate the default section (Meet Setup) in the sidebar.
+            _switchTab('#tab-meet');
         }
     })();
-
-    document.querySelectorAll('.nav-tabs a').forEach(function(link) {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            var pane = document.querySelector(link.getAttribute('href'));
-            var nav = link.closest('.nav-tabs');
-            var container = pane.parentElement;
-            container.querySelectorAll(':scope > .tab-pane').forEach(function(p) { p.classList.remove('active'); });
-            nav.querySelectorAll(':scope > li').forEach(function(li) { li.classList.remove('active'); });
-            pane.classList.add('active');
-            link.parentElement.classList.add('active');
-        });
-    });
 
     // Save active tab + button ID before any settings form submits
     document.querySelectorAll('form[action="/settings"]').forEach(function(form) {
         form.addEventListener('submit', function() {
-            var activeLink = document.querySelector('.nav-tabs li.active a');
-            var nestedLink = null;
-            if (activeLink) {
-                var activePane = document.querySelector(activeLink.getAttribute('href'));
-                if (activePane) {
-                    var nl = activePane.querySelector('.nav-tabs li.active a');
-                    if (nl) nestedLink = nl;
-                }
-            }
+            var activeLink = document.querySelector('.app-nav .nav-link.active');
             var btn = form.querySelector('[type="submit"]');
             if (!btn && form.id)
                 btn = document.querySelector('[form="' + form.id + '"][type="submit"]');
             localStorage.setItem('cts_tab_restore', JSON.stringify({
-                tab:    activeLink  ? activeLink.getAttribute('href')  : null,
-                nested: nestedLink  ? nestedLink.getAttribute('href')  : null,
+                tab:    activeLink ? activeLink.getAttribute('data-target') : null,
+                nested: null,
                 btn:    btn ? btn.id : null
             }));
         });
@@ -1477,20 +1525,20 @@ function onPasswordInput(form) {
         });
     }
 
-    document.querySelectorAll('.nav-tabs a').forEach(function(link) {
-        if (link.getAttribute('href') === '#tab-test')
+    document.querySelectorAll('.app-nav .nav-link').forEach(function(link) {
+        if (link.getAttribute('data-target') === '#tab-test')
             link.addEventListener('click', function() {
                 _ensureUpdateSock();
                 _updateSock.off('test_status').on('test_status', _loadTestStatus);
                 _loadTestStatus();
             });
-        if (link.getAttribute('href') === '#tab-devtools')
+        if (link.getAttribute('data-target') === '#tab-devtools')
             link.addEventListener('click', function() {
                 _ensureUpdateSock();
                 _updateSock.off('test_status').on('test_status', _loadTestStatus);
                 _loadTestStatus();
             });
-        if (link.getAttribute('href') === '#tab-meet')
+        if (link.getAttribute('data-target') === '#tab-meet')
             link.addEventListener('click', _refreshMeetTab);
     });
 
@@ -1660,8 +1708,8 @@ function onPasswordInput(form) {
     }
 
     // Load network status when the Network tab is clicked
-    document.querySelectorAll('.nav-tabs a').forEach(function(link) {
-        if (link.getAttribute('href') === '#tab-network' || link.getAttribute('href') === '#tab-netgroup')
+    document.querySelectorAll('.app-nav .nav-link').forEach(function(link) {
+        if (link.getAttribute('data-target') === '#tab-network' || link.getAttribute('data-target') === '#tab-netgroup')
             link.addEventListener('click', function() { _netTabActive(); loadClients(); });
     });
 
@@ -1845,8 +1893,8 @@ function onPasswordInput(form) {
         });
     }
 
-    document.querySelectorAll('.nav-tabs a').forEach(function(link) {
-        if (link.getAttribute('href') === '#tab-update')
+    document.querySelectorAll('.app-nav .nav-link').forEach(function(link) {
+        if (link.getAttribute('data-target') === '#tab-update')
             link.addEventListener('click', loadVersions);
     });
 
@@ -1960,8 +2008,8 @@ function onPasswordInput(form) {
             });
     }
 
-    document.querySelectorAll('.nav-tabs a').forEach(function(link) {
-        if (link.getAttribute('href') === '#tab-time')
+    document.querySelectorAll('.app-nav .nav-link').forEach(function(link) {
+        if (link.getAttribute('data-target') === '#tab-time')
             link.addEventListener('click', function() { _loadTimeStatus(); _loadRtcStatus(); });
     });
 
@@ -2160,8 +2208,8 @@ function onPasswordInput(form) {
         });
     }
 
-    document.querySelectorAll('.nav-tabs a').forEach(function(link) {
-        if (link.getAttribute('href') === '#tab-terminal')
+    document.querySelectorAll('.app-nav .nav-link').forEach(function(link) {
+        if (link.getAttribute('data-target') === '#tab-terminal')
             link.addEventListener('click', function() { _loadXterm(function(){}); });
     });
 
@@ -2225,8 +2273,8 @@ function onPasswordInput(form) {
         });
     }
 
-    document.querySelectorAll('.nav-tabs a').forEach(function(link) {
-        if (link.getAttribute('href') === '#tab-debug') {
+    document.querySelectorAll('.app-nav .nav-link').forEach(function(link) {
+        if (link.getAttribute('data-target') === '#tab-debug') {
             link.addEventListener('click', function() {
                 _initDebugSock();
                 fetch('/debug_status').then(function(r){ return r.json(); }).then(function(d){
