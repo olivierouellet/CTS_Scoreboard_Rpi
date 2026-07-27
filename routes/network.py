@@ -8,7 +8,7 @@ from starlette.concurrency import run_in_threadpool
 import state
 from web import require_login
 
-router = APIRouter()
+router = APIRouter(tags=['Network'])
 
 
 def _nmcli(*args, timeout=8):

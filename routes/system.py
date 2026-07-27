@@ -15,7 +15,7 @@ import bus
 import state
 from web import require_login
 
-router = APIRouter()
+router = APIRouter(tags=['System'])
 
 _VERSION_RE = re.compile(r'^v\d{4}\.\d{2}\.\d+$')
 

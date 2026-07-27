@@ -18,7 +18,7 @@ from parsers.lenex_parser import load_lenex
 from web import render, require_login, save_upload
 from worker import _restart_worker
 
-router = APIRouter()
+router = APIRouter(tags=['Settings'])
 
 
 def _render_home_icon(name):

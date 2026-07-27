@@ -8,7 +8,7 @@ import state
 from meet_data import _build_meet_data, send_event_info
 from web import redirect, render, require_login
 
-router = APIRouter()
+router = APIRouter(tags=['Meet'])
 
 
 @router.get('/meet')

@@ -9,7 +9,7 @@ import relay
 import state
 from web import redirect, require_login
 
-router = APIRouter()
+router = APIRouter(tags=['Appearance'])
 
 
 @router.get('/images/{filename:path}')

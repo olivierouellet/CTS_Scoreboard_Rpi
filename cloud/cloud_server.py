@@ -640,7 +640,7 @@ def _analytics_prune():
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
-@app.get('/')
+@app.get('/', tags=['Public'])
 def route_index(request: Request):
     _sweep_expired()
     with _lock:
@@ -661,7 +661,7 @@ def route_index(request: Request):
         analytics_enabled=_analytics_enabled())
 
 
-@app.get('/mobile')
+@app.get('/mobile', tags=['Public'])
 def route_mobile(request: Request):
     meet_id = request.query_params.get('meet', '')
     with _lock:
@@ -677,7 +677,7 @@ def route_mobile(request: Request):
                   t=_strings(_meet_lang(meet), 'mobile'))
 
 
-@app.get('/mobile/live')
+@app.get('/mobile/live', tags=['Public'])
 def route_live(request: Request):
     meet_id = request.query_params.get('meet', '')
     with _lock:
@@ -705,7 +705,7 @@ def route_live(request: Request):
     )
 
 
-@app.get('/mobile/results')
+@app.get('/mobile/results', tags=['Public'])
 def route_results(request: Request):
     meet_id = request.query_params.get('meet', '')
     with _lock:
@@ -764,7 +764,7 @@ def _build_heats_json(sched):
     return heats
 
 
-@app.get('/mobile/schedule')
+@app.get('/mobile/schedule', tags=['Public'])
 def route_schedule(request: Request):
     meet_id = request.query_params.get('meet', '')
     with _lock:
@@ -786,7 +786,7 @@ def route_schedule(request: Request):
     )
 
 
-@app.get('/meet/{meet_id}/config')
+@app.get('/meet/{meet_id}/config', tags=['Public'])
 def route_meet_config(meet_id: str):
     """A meet's display config as JSON — for native attendee clients (iOS/Android)
     that render the board natively instead of loading the HTML page."""
@@ -806,7 +806,7 @@ def route_meet_config(meet_id: str):
     }
 
 
-@app.get('/search_suggestions')
+@app.get('/search_suggestions', tags=['Public'])
 def route_search_suggestions(request: Request):
     import unicodedata
     def fold(s):
@@ -842,19 +842,19 @@ def route_search_suggestions(request: Request):
     return results[:20]
 
 
-@app.get('/logout')
+@app.get('/logout', tags=['Admin'])
 def route_logout():
     return Response(
         'Logged out — <a href="/admin">sign in again</a>', status_code=401,
         headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
 
 
-@app.get('/ping')
+@app.get('/ping', tags=['Public'])
 def route_ping():
     return Response('ok', media_type='text/plain')
 
 
-@app.get('/manifest/{meet_id}')
+@app.get('/manifest/{meet_id}', tags=['Public'])
 def route_manifest(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
@@ -880,7 +880,7 @@ def route_manifest(meet_id: str):
     return Response(json.dumps(manifest), media_type='application/manifest+json')
 
 
-@app.get('/icon/{meet_id}')
+@app.get('/icon/{meet_id}', tags=['Public'])
 def route_icon(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
@@ -894,7 +894,7 @@ def route_icon(meet_id: str):
                     headers={'Cache-Control': 'public, max-age=3600'})
 
 
-@app.get('/picker_image/{meet_id}')
+@app.get('/picker_image/{meet_id}', tags=['Public'])
 def route_meet_picker_image(meet_id: str):
     with _lock:
         meet = _get_meet(meet_id)
@@ -908,7 +908,7 @@ def route_meet_picker_image(meet_id: str):
                     headers={'Cache-Control': 'public, max-age=60'})
 
 
-@app.get('/picker_logo')
+@app.get('/picker_logo', tags=['Public'])
 def route_picker_logo():
     creds    = _load_creds()
     logo_b64 = creds.get('picker_logo_b64', '')
@@ -920,7 +920,7 @@ def route_picker_logo():
                     headers={'Cache-Control': 'public, max-age=300'})
 
 
-@app.get('/picker_icon')
+@app.get('/picker_icon', tags=['Public'])
 def route_picker_icon():
     icon_b64 = _load_creds().get('picker_icon_b64', '')
     if not icon_b64:
@@ -933,14 +933,14 @@ def route_picker_icon():
                     headers={'Cache-Control': 'public, max-age=300'})
 
 
-@app.get('/favicon.ico')
+@app.get('/favicon.ico', tags=['Public'])
 def route_favicon():
     # Browsers auto-request this; serve a lean, scalable brand mark for the tab.
     return FileResponse(os.path.join(_HERE, 'static', 'img', 'favicon.svg'),
                         media_type='image/svg+xml')
 
 
-@app.get('/picker_manifest')
+@app.get('/picker_manifest', tags=['Public'])
 def route_picker_manifest():
     creds = _load_creds()
     raw_wt = creds.get('picker_window_title')
@@ -960,7 +960,7 @@ def route_picker_manifest():
     return Response(json.dumps(manifest), media_type='application/manifest+json')
 
 
-@app.post('/admin/picker_appearance', dependencies=[Depends(require_admin)])
+@app.post('/admin/picker_appearance', tags=['Admin'], dependencies=[Depends(require_admin)])
 async def route_picker_appearance(request: Request):
     form  = await request.form()
     creds = _load_creds()
@@ -991,7 +991,7 @@ async def route_picker_appearance(request: Request):
 _LOGIN_FIELDS = ('user', 'password_hash', 'salt')
 
 
-@app.get('/admin/backup/keys', dependencies=[Depends(require_admin)])
+@app.get('/admin/backup/keys', tags=['Admin'], dependencies=[Depends(require_admin)])
 def route_backup_keys(request: Request):
     try:
         with open(KEYS_FILE) as f:
@@ -1016,7 +1016,7 @@ def route_backup_keys(request: Request):
         headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
 
-@app.post('/admin/restore/keys', dependencies=[Depends(require_admin)])
+@app.post('/admin/restore/keys', tags=['Admin'], dependencies=[Depends(require_admin)])
 async def route_restore_keys(request: Request):
     uploaded = (await request.form()).get('keys_file')
     if not uploaded:
@@ -1045,7 +1045,7 @@ async def route_restore_keys(request: Request):
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@app.get('/admin/backup/meets', dependencies=[Depends(require_admin)])
+@app.get('/admin/backup/meets', tags=['Admin'], dependencies=[Depends(require_admin)])
 def route_backup_meets():
     with _lock:
         meets = dict(_retained)
@@ -1056,7 +1056,7 @@ def route_backup_meets():
         headers={'Content-Disposition': 'attachment; filename="tremplin-meets.json"'})
 
 
-@app.post('/admin/restore/meets', dependencies=[Depends(require_admin)])
+@app.post('/admin/restore/meets', tags=['Admin'], dependencies=[Depends(require_admin)])
 async def route_restore_meets(request: Request):
     uploaded = (await request.form()).get('meets_file')
     if not uploaded:
@@ -1086,7 +1086,7 @@ async def route_restore_meets(request: Request):
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@app.post('/admin/update', dependencies=[Depends(require_admin)])
+@app.post('/admin/update', tags=['Admin'], dependencies=[Depends(require_admin)])
 async def route_update(request: Request):
     version = (await request.form()).get('version', 'latest')
     # The webhook call is a blocking HTTP request — run it off the event loop
@@ -1112,7 +1112,7 @@ def _trigger_update(version):
         return JSONResponse({'error': str(e)}, status_code=502)
 
 
-@app.get('/admin/update_log', dependencies=[Depends(require_admin)])
+@app.get('/admin/update_log', tags=['Admin'], dependencies=[Depends(require_admin)])
 def route_update_log():
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
@@ -1129,7 +1129,7 @@ def route_update_log():
         return {'lines': [], 'done': None}
 
 
-@app.get('/admin/logs', dependencies=[Depends(require_admin)])
+@app.get('/admin/logs', tags=['Admin'], dependencies=[Depends(require_admin)])
 def route_logs(request: Request):
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
@@ -1148,7 +1148,7 @@ def route_logs(request: Request):
         return JSONResponse({'ok': False, 'error': str(e)}, status_code=502)
 
 
-@app.get('/admin/versions', dependencies=[Depends(require_admin)])
+@app.get('/admin/versions', tags=['Admin'], dependencies=[Depends(require_admin)])
 def route_versions():
     webhook_url = os.environ.get('DEPLOY_WEBHOOK_URL', '')
     secret      = os.environ.get('DEPLOY_WEBHOOK_SECRET', '')
@@ -1165,7 +1165,7 @@ def route_versions():
         return JSONResponse({'ok': False, 'error': str(e)}, status_code=502)
 
 
-@app.get('/admin/stats', dependencies=[Depends(require_admin)])
+@app.get('/admin/stats', tags=['Admin'], dependencies=[Depends(require_admin)])
 def route_stats(request: Request):
     if not _analytics_enabled():
         return {'enabled': False, 'count': None}
@@ -1179,7 +1179,7 @@ def route_stats(request: Request):
     return {'enabled': True, 'count': _attendee_count(meet_id, since)}
 
 
-@app.api_route('/admin', methods=['GET', 'POST'], dependencies=[Depends(require_admin)])
+@app.api_route('/admin', methods=['GET', 'POST'], tags=['Admin'], dependencies=[Depends(require_admin)])
 async def route_admin(request: Request):
     keys = _load_keys()
 

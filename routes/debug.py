@@ -18,7 +18,7 @@ from parsers.lenex_parser import load_lenex
 from web import redirect, require_login, save_upload
 from worker import _cleanup_test_meet, _list_sessions, _restart_worker
 
-router = APIRouter()
+router = APIRouter(tags=['Debug'])
 
 _TERMINAL_ALLOWED_CMDS = {
     'bash':         ['bash'],

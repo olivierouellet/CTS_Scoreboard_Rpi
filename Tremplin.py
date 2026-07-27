@@ -91,12 +91,12 @@ async def route_redoc():
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
-@app.get('/login')
+@app.get('/login', tags=['Auth'])
 async def route_login_form(request: Request):
     return templates.TemplateResponse(request, 'login.html', {})
 
 
-@app.post('/login')
+@app.post('/login', tags=['Auth'])
 async def route_login(request: Request,
                       username: str = Form(''), password: str = Form('')):
     if (username == state.settings['username'] and
@@ -107,7 +107,7 @@ async def route_login(request: Request,
                                       status_code=401)
 
 
-@app.get('/logout')
+@app.get('/logout', tags=['Auth'])
 async def route_logout(request: Request):
     request.session.pop('user', None)
     return RedirectResponse('/', status_code=303)

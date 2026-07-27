@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request
 import state
 from web import display_config, redirect, render
 
-router = APIRouter()
+router = APIRouter(tags=['Scoreboard'])
 
 
 @router.get('/config')
