@@ -1,9 +1,8 @@
-import ipaddress
 import subprocess
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, IPvAnyAddress
 from starlette.concurrency import run_in_threadpool
 
 import state
@@ -13,8 +12,8 @@ router = APIRouter(tags=['Network'])
 
 
 class EthIP(BaseModel):
-    ip: str = ''
-    prefix: str = '24'
+    ip: IPvAnyAddress
+    prefix: int = Field(24, ge=1, le=32)
 
 
 def _nmcli(*args, timeout=8):
@@ -181,17 +180,11 @@ def route_eth_dhcp_set():
 
 @router.post('/eth_ip_set', dependencies=[Depends(require_login)])
 async def route_eth_ip_set(body: EthIP):
-    return await run_in_threadpool(_eth_ip_set, body.ip.strip(), body.prefix.strip())
+    # ip/prefix are already validated by the EthIP model.
+    return await run_in_threadpool(_eth_ip_set, str(body.ip), body.prefix)
 
 
-def _eth_ip_set(ip_str, prefix_str):
-    try:
-        ipaddress.IPv4Address(ip_str)
-        prefix = int(prefix_str)
-        if not (1 <= prefix <= 32):
-            raise ValueError
-    except Exception:
-        return {'ok': False, 'error': 'Invalid IP address or prefix length'}
+def _eth_ip_set(ip_str, prefix):
     cidr = f'{ip_str}/{prefix}'
     try:
         r = subprocess.run(

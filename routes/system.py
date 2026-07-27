@@ -9,7 +9,7 @@ import tomllib
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 
 import bus
@@ -20,8 +20,25 @@ router = APIRouter(tags=['System'])
 
 
 class TimeSet(BaseModel):
-    date: str = ''
-    time: str = ''
+    # The pattern is advertised in the schema for /docs; enforcement is done in
+    # the validator so a bad value yields the app's friendly single-line error
+    # rather than Pydantic's regex-echoing default.
+    date: str = Field(json_schema_extra={'pattern': r'^\d{4}-\d{2}-\d{2}$'})
+    time: str = Field(json_schema_extra={'pattern': r'^\d{2}:\d{2}(:\d{2})?$'})
+
+    @field_validator('date')
+    @classmethod
+    def _check_date(cls, v):
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', v):
+            raise ValueError('Invalid date or time format')
+        return v
+
+    @field_validator('time')
+    @classmethod
+    def _check_time(cls, v):
+        if not re.match(r'^\d{2}:\d{2}(:\d{2})?$', v):
+            raise ValueError('Invalid date or time format')
+        return v
 
 _VERSION_RE = re.compile(r'^v\d{4}\.\d{2}\.\d+$')
 
@@ -103,9 +120,7 @@ async def route_time_set(body: TimeSet):
 
 
 def _time_set(date_str, time_str):
-    if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str) or \
-       not re.match(r'^\d{2}:\d{2}(:\d{2})?$', time_str):
-        return {'ok': False, 'error': 'Invalid date or time format'}
+    # date/time formats are already validated by the TimeSet model.
     if len(time_str) == 5:
         time_str += ':00'
     try:

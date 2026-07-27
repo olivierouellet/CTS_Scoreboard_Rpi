@@ -6,6 +6,7 @@ import shutil
 import signal
 import struct
 import subprocess
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -27,7 +28,9 @@ class SpeedBody(BaseModel):
 
 
 class TerminalStart(BaseModel):
-    cmd: str = 'bash'
+    # Keys must mirror _TERMINAL_ALLOWED_CMDS below; an unknown value is rejected
+    # by validation before the handler runs.
+    cmd: Literal['bash', 'raspi-config', 'logs', 'dmesg-tty', 'serial-ports'] = 'bash'
 
 _TERMINAL_ALLOWED_CMDS = {
     'bash':         ['bash'],
@@ -247,9 +250,8 @@ async def route_terminal_start(body: TerminalStart):
         import fcntl
         import pty
         import termios
-        cmd = _TERMINAL_ALLOWED_CMDS.get(body.cmd)
-        if cmd is None:
-            return {'ok': False, 'error': f'Unknown command: {body.cmd}'}
+        # body.cmd is constrained to _TERMINAL_ALLOWED_CMDS keys by the model.
+        cmd = _TERMINAL_ALLOWED_CMDS[body.cmd]
         master_fd, slave_fd = pty.openpty()
         winsize = struct.pack('HHHH', 24, 80, 0, 0)
         fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)

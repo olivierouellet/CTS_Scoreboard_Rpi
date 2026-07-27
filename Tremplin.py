@@ -7,8 +7,9 @@ import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Form, Request, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -67,6 +68,36 @@ app.include_router(appearance_router)
 @app.exception_handler(NotAuthenticated)
 async def _redirect_to_login(request: Request, exc: NotAuthenticated):
     return RedirectResponse('/login', status_code=303)
+
+
+@app.exception_handler(RequestValidationError)
+async def _on_validation_error(request: Request, exc: RequestValidationError):
+    """Return request-body validation failures in the app's ``{ok, error}`` shape.
+
+    The JSON front-end reads ``d.ok`` / ``d.error`` off a parsed body and never
+    inspects the HTTP status, so reshaping FastAPI's default ``{detail: [...]}``
+    here lets endpoints push validation into their Pydantic models while the
+    friendly single-line error the UI shows stays intact. ``detail`` is kept for
+    API/`/docs` consumers.
+    """
+    errors = exc.errors()
+    error  = 'Invalid request.'
+    if errors:
+        e   = errors[0]
+        msg = e.get('msg', 'Invalid input')
+        # A field_validator raising ValueError('X') surfaces as 'Value error, X'.
+        if msg.startswith('Value error, '):
+            error = msg[len('Value error, '):]
+        else:
+            loc   = [str(x) for x in e.get('loc', ()) if x != 'body']
+            field = '.'.join(loc)
+            error = f'{field}: {msg}' if field else msg
+    # A field_validator's ValueError lands in each error's ``ctx`` as a live
+    # exception object, which JSONResponse can't serialize — keep only the
+    # JSON-safe fields so ``detail`` never breaks the response.
+    detail = [{k: e[k] for k in ('type', 'loc', 'msg', 'input') if k in e}
+              for e in errors]
+    return JSONResponse({'ok': False, 'error': error, 'detail': detail}, status_code=422)
 
 
 # ── API docs (login-gated) ───────────────────────────────────────────────────
