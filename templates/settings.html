@@ -605,7 +605,7 @@ function onPasswordInput(form) {
             <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px; margin-bottom:10px;">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                     <span style="font-size:0.9em; font-weight:bold; flex:1;">Connection</span>
-                    <span id="serial-status-badge" style="font-size:0.8em; padding:2px 8px; border-radius:10px; background:#ccc; color:#333;">—</span>
+                    <span id="serial-status-badge" class="badge rounded-pill text-bg-secondary">—</span>
                 </div>
                 <pre id="serial-log" style="background:#1a1a1a; color:#ccc; font-size:0.78em; height:90px; overflow-y:auto; margin:0; padding:6px 10px; border-radius:4px; white-space:pre-wrap; word-break:break-all;"></pre>
             </div>
@@ -1338,7 +1338,7 @@ function onPasswordInput(form) {
         if (!file) return;
         var msg = document.getElementById('meet-update-msg');
         msg.style.display = 'block';
-        msg.style.color = '#888';
+        _statusColor(msg, 'muted');
         msg.textContent = 'Checking…';
         var fd = new FormData();
         fd.append('meet_file', file);
@@ -1346,19 +1346,31 @@ function onPasswordInput(form) {
             .then(function(r) { return r.json(); })
             .then(function(d) {
                 if (d.ok) {
-                    msg.style.color = '#3a7d3a';
+                    _statusColor(msg, 'ok');
                     msg.textContent = 'Updated — reloading…';
                     setTimeout(function() { location.reload(); }, 3000);
                 } else {
-                    msg.style.color = '#c0392b';
+                    _statusColor(msg, 'err');
                     msg.textContent = d.error || 'Update failed.';
                 }
             })
             .catch(function() {
-                msg.style.color = '#c0392b';
+                _statusColor(msg, 'err');
                 msg.textContent = 'Update failed.';
             });
         input.value = '';
+    }
+
+    // ── Status colours ─────────────────────────────────────────────────────────
+    // Toggle Bootstrap's semantic (theme-aware) text colours instead of inline hex,
+    // so "OK" greens / errors stay legible in BS5 dark mode.
+    function _statusColor(el, kind) {
+        if (!el) return;
+        el.classList.remove('text-success', 'text-danger', 'text-warning', 'text-secondary', 'text-body-secondary');
+        el.classList.add(kind === 'ok'   ? 'text-success'
+                       : kind === 'err'  ? 'text-danger'
+                       : kind === 'warn' ? 'text-warning'
+                       :                    'text-body-secondary');
     }
 
     function markDirty(tabId, btnId) {
@@ -1415,14 +1427,14 @@ function onPasswordInput(form) {
                 if (d.test_meet) {
                     meetSection.style.display = '';
                     meetStatus.textContent = '● Test meet loaded: ' + d.test_meet_name;
-                    meetStatus.style.color = '#5a5';
+                    _statusColor(meetStatus, 'ok');
                     meetUploadBtn.style.display = 'none';
                 } else {
                     // Only show manual upload for custom sessions (built-ins auto-load their companion)
                     var isBuiltin = d.sessions.some(function(s){ return s.name === d.session && s.source === 'builtin'; });
                     meetSection.style.display = isBuiltin ? 'none' : '';
                     meetStatus.textContent = 'No meet file loaded — load one to show swimmer names during the test.';
-                    meetStatus.style.color = '#888';
+                    _statusColor(meetStatus, 'muted');
                     meetUploadBtn.style.display = '';
                 }
             } else {
@@ -1511,13 +1523,13 @@ function onPasswordInput(form) {
         var fd = new FormData();
         fd.append('meet_file', input.files[0]);
         var status = document.getElementById('test-meet-status');
-        status.style.color = '#888';
+        _statusColor(status, 'muted');
         status.textContent = 'Loading…';
         fetch('/test_meet_upload', {method:'POST', body:fd}).then(function(r){ return r.json(); }).then(function(d){
             if (d.ok) {
                 setTimeout(_loadTestStatus, 300);
             } else {
-                status.style.color = '#c55';
+                _statusColor(status, 'err');
                 status.textContent = d.error || 'Upload failed.';
             }
         });
@@ -1550,23 +1562,23 @@ function onPasswordInput(form) {
         btn.disabled = false;
         btn.textContent = d.enabled ? 'Disable WiFi' : 'Enable WiFi';
         if (!d.enabled) {
-            wtext.style.color = '#888';
+            _statusColor(wtext, 'muted');
             wtext.textContent = 'Disabled';
         } else if (d.wifi_ip) {
-            wtext.style.color = '#3a7a3a';
+            _statusColor(wtext, 'ok');
             wtext.textContent = d.ssid ? d.ssid + ' · ' + d.wifi_ip : d.wifi_ip;
         } else if (d.ssid) {
-            wtext.style.color = '#888';
+            _statusColor(wtext, 'muted');
             wtext.textContent = d.ssid + ' · no IP';
         } else {
-            wtext.style.color = '#888';
+            _statusColor(wtext, 'muted');
             wtext.textContent = 'Not connected';
         }
         if (d.eth_ip) {
-            eip.style.color = '#3a7a3a';
+            _statusColor(eip, 'ok');
             eip.textContent = d.eth_ip;
         } else {
-            eip.style.color = '#888';
+            _statusColor(eip, 'muted');
             eip.textContent = 'Not connected';
         }
         if (d.eth_ip) {
@@ -1577,14 +1589,14 @@ function onPasswordInput(form) {
     function setEthDhcp() {
         var status = document.getElementById('eth-ip-status');
         if (!confirm('Switch Ethernet to DHCP?\n\nThe IP address will change and your current session will disconnect.')) return;
-        status.style.color = '#888';
+        _statusColor(status, 'muted');
         status.textContent = 'Applying…';
         fetch('/eth_dhcp_set', {method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
             if (d.ok) {
-                status.style.color = '#5a5';
+                _statusColor(status, 'ok');
                 status.textContent = 'Switched to DHCP. Check your router for the new IP.';
             } else {
-                status.style.color = '#c55';
+                _statusColor(status, 'err');
                 status.textContent = d.error || 'Failed.';
             }
         });
@@ -1594,18 +1606,18 @@ function onPasswordInput(form) {
         var ip     = document.getElementById('eth-ip-input').value.trim();
         var prefix = document.getElementById('eth-prefix-input').value.trim();
         var status = document.getElementById('eth-ip-status');
-        if (!ip) { status.style.color = '#c55'; status.textContent = 'Enter an IP address.'; return; }
+        if (!ip) { _statusColor(status, 'err'); status.textContent = 'Enter an IP address.'; return; }
         if (!confirm('Change Ethernet IP to ' + ip + '/' + prefix + '?\n\nThis will disconnect your current session.')) return;
-        status.style.color = '#888';
+        _statusColor(status, 'muted');
         status.textContent = 'Applying…';
         fetch('/eth_ip_set', {method:'POST', headers:{'Content-Type':'application/json'},
                               body:JSON.stringify({ip:ip, prefix:prefix})})
             .then(function(r){ return r.json(); }).then(function(d){
                 if (d.ok) {
-                    status.style.color = '#5a5';
+                    _statusColor(status, 'ok');
                     status.textContent = 'Applied. Reconnect at http://' + ip + ':5000/settings';
                 } else {
-                    status.style.color = '#c55';
+                    _statusColor(status, 'err');
                     status.textContent = d.error || 'Failed.';
                 }
             });
@@ -1672,7 +1684,7 @@ function onPasswordInput(form) {
     function connectWifi() {
         var pw     = document.getElementById('wifi-join-pw').value;
         var status = document.getElementById('wifi-join-status');
-        status.style.color = '#888';
+        _statusColor(status, 'muted');
         status.textContent = 'Connecting…';
         fetch('/wifi_connect', {
             method: 'POST',
@@ -1680,14 +1692,14 @@ function onPasswordInput(form) {
             body: JSON.stringify({ssid: _joinSsid, password: pw})
         }).then(function(r){ return r.json(); }).then(function(d){
             if (d.ok) {
-                status.style.color = '#5a5';
+                _statusColor(status, 'ok');
                 status.textContent = 'Connected!';
                 setTimeout(function(){ cancelJoin(); _netTabActive(); scanWifi(); }, 1500);
             } else {
-                status.style.color = '#c55';
+                _statusColor(status, 'err');
                 status.textContent = d.error || 'Connection failed.';
             }
-        }).catch(function(){ status.style.color = '#c55'; status.textContent = 'Request failed.'; });
+        }).catch(function(){ _statusColor(status, 'err'); status.textContent = 'Request failed.'; });
     }
 
     function loadClients() {
@@ -1761,7 +1773,7 @@ function onPasswordInput(form) {
         document.getElementById('btn-os-update').disabled = true;
         out.innerHTML = '';
         out.style.display = 'block';
-        status.style.color = '#888';
+        _statusColor(status, 'muted');
         status.textContent = 'Running…';
         var seen = 0;
         var poll = setInterval(function() {
@@ -1769,7 +1781,7 @@ function onPasswordInput(form) {
                 for (var i = seen; i < d.lines.length; i++) {
                     var span = document.createElement('span');
                     span.textContent = d.lines[i].text;
-                    if (d.lines[i].error) span.style.color = '#f88';
+                    if (d.lines[i].error) _statusColor(span, 'err');
                     out.appendChild(span);
                 }
                 seen = d.lines.length;
@@ -1778,11 +1790,11 @@ function onPasswordInput(form) {
                     clearInterval(poll);
                     document.getElementById('btn-os-update').disabled = false;
                     if (d.done) {
-                        status.style.color = '#5a5';
+                        _statusColor(status, 'ok');
                         status.textContent = 'Done — restarting, page will reload…';
                         setTimeout(function() { location.reload(); }, 6000);
                     } else {
-                        status.style.color = '#c55';
+                        _statusColor(status, 'err');
                         status.textContent = 'Failed — see output above.';
                         btn.disabled = false;
                     }
@@ -1793,14 +1805,14 @@ function onPasswordInput(form) {
                                 body: JSON.stringify({target: target})}).then(function(r) {
             if (!r.ok) {
                 clearInterval(poll);
-                status.style.color = '#c55';
+                _statusColor(status, 'err');
                 status.textContent = 'Could not start update.';
                 btn.disabled = false;
                 document.getElementById('btn-os-update').disabled = false;
             }
         }).catch(function(e) {
             clearInterval(poll);
-            status.style.color = '#c55';
+            _statusColor(status, 'err');
             status.textContent = 'Request failed: ' + e;
             btn.disabled = false;
             document.getElementById('btn-os-update').disabled = false;
@@ -1815,7 +1827,7 @@ function onPasswordInput(form) {
         document.getElementById('btn-run-update').disabled = true;
         out.innerHTML = '';
         out.style.display = 'block';
-        status.style.color = '#888';
+        _statusColor(status, 'muted');
         status.textContent = 'Running…';
         var seen = 0;
         var poll = setInterval(function() {
@@ -1823,7 +1835,7 @@ function onPasswordInput(form) {
                 for (var i = seen; i < d.lines.length; i++) {
                     var span = document.createElement('span');
                     span.textContent = d.lines[i].text;
-                    if (d.lines[i].error) span.style.color = '#f88';
+                    if (d.lines[i].error) _statusColor(span, 'err');
                     out.appendChild(span);
                 }
                 seen = d.lines.length;
@@ -1832,10 +1844,10 @@ function onPasswordInput(form) {
                     clearInterval(poll);
                     document.getElementById('btn-run-update').disabled = false;
                     if (d.done) {
-                        status.style.color = '#5a5';
+                        _statusColor(status, 'ok');
                         status.textContent = 'Done.';
                     } else {
-                        status.style.color = '#c55';
+                        _statusColor(status, 'err');
                         status.textContent = 'Failed — see output above.';
                     }
                     btn.disabled = false;
@@ -1845,14 +1857,14 @@ function onPasswordInput(form) {
         fetch('/os_update_start', {method: 'POST'}).then(function(r) {
             if (!r.ok) {
                 clearInterval(poll);
-                status.style.color = '#c55';
+                _statusColor(status, 'err');
                 status.textContent = 'Could not start OS update.';
                 btn.disabled = false;
                 document.getElementById('btn-run-update').disabled = false;
             }
         }).catch(function(e) {
             clearInterval(poll);
-            status.style.color = '#c55';
+            _statusColor(status, 'err');
             status.textContent = 'Request failed: ' + e;
             btn.disabled = false;
             document.getElementById('btn-run-update').disabled = false;
@@ -1864,17 +1876,17 @@ function onPasswordInput(form) {
         if (!file) return;
         input.value = '';
         var status = document.getElementById('restore-status');
-        status.style.color = '#888';
+        _statusColor(status, 'muted');
         status.textContent = 'Uploading…';
         var fd = new FormData();
         fd.append('backup_file', file);
         fetch('/backup_restore', {method: 'POST', body: fd}).then(function(r) { return r.json(); }).then(function(d) {
             if (!d.ok) {
-                status.style.color = '#c55';
+                _statusColor(status, 'err');
                 status.textContent = d.error || 'Restore failed.';
                 return;
             }
-            status.style.color = '#888';
+            _statusColor(status, 'muted');
             status.textContent = 'Restored — restarting…';
             var tries = 0;
             var poll = setInterval(function() {
@@ -1886,7 +1898,7 @@ function onPasswordInput(form) {
                 });
             }, 1000);
         }).catch(function() {
-            status.style.color = '#c55';
+            _statusColor(status, 'err');
             status.textContent = 'Upload failed.';
         });
     }
@@ -1932,13 +1944,13 @@ function onPasswordInput(form) {
             var ntpEl = document.getElementById('ntp-status');
             if (d.ntp_active && d.synchronized) {
                 ntpEl.textContent = '● NTP synchronized';
-                ntpEl.style.color = '#5a5';
+                _statusColor(ntpEl, 'ok');
             } else if (d.ntp_active) {
                 ntpEl.textContent = '○ NTP active, syncing…';
-                ntpEl.style.color = '#888';
+                _statusColor(ntpEl, 'muted');
             } else {
                 ntpEl.textContent = '○ NTP inactive';
-                ntpEl.style.color = '#c55';
+                _statusColor(ntpEl, 'err');
             }
             document.getElementById('time-set-date').value = d.date.replace(/-/g, '/');
             document.getElementById('time-set-time').value = d.time;
@@ -1949,7 +1961,7 @@ function onPasswordInput(form) {
         var btn   = document.getElementById('btn-time-sync');
         var ntpEl = document.getElementById('ntp-status');
         btn.disabled = true;
-        ntpEl.style.color = '#888';
+        _statusColor(ntpEl, 'muted');
         ntpEl.textContent = 'Checking network…';
 
         function doSync() {
@@ -1959,7 +1971,7 @@ function onPasswordInput(form) {
                 if (d.ok) {
                     setTimeout(_loadTimeStatus, 2000);
                 } else {
-                    ntpEl.style.color = '#c55';
+                    _statusColor(ntpEl, 'err');
                     ntpEl.textContent = 'Error: ' + (d.error || 'Sync failed');
                 }
             });
@@ -1970,7 +1982,7 @@ function onPasswordInput(form) {
             var hasEth  = net.eth_ip  && net.eth_ip.trim() && net.eth_ip !== 'Not connected';
             if (!hasWifi && !hasEth) {
                 btn.disabled = false;
-                ntpEl.style.color = '#c55';
+                _statusColor(ntpEl, 'err');
                 var msg;
                 if (!net.enabled)
                     msg = 'WiFi is disabled and Ethernet is not connected.';
@@ -1989,18 +2001,18 @@ function onPasswordInput(form) {
         var date   = document.getElementById('time-set-date').value.replace(/\//g, '-');
         var time   = document.getElementById('time-set-time').value;
         var status = document.getElementById('time-set-status');
-        if (!date || !time) { status.style.color = '#c55'; status.textContent = 'Enter date and time.'; return; }
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { status.style.color = '#c55'; status.textContent = 'Use YYYY/MM/DD format.'; return; }
-        status.style.color = '#888';
+        if (!date || !time) { _statusColor(status, 'err'); status.textContent = 'Enter date and time.'; return; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { _statusColor(status, 'err'); status.textContent = 'Use YYYY/MM/DD format.'; return; }
+        _statusColor(status, 'muted');
         status.textContent = 'Setting…';
         fetch('/time_set', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({date:date, time:time})})
             .then(function(r){ return r.json(); }).then(function(d){
                 if (d.ok) {
-                    status.style.color = '#5a5';
+                    _statusColor(status, 'ok');
                     status.textContent = 'Time set.';
                     setTimeout(_loadTimeStatus, 500);
                 } else {
-                    status.style.color = '#c55';
+                    _statusColor(status, 'err');
                     status.textContent = d.error || 'Failed.';
                 }
             });
@@ -2016,13 +2028,13 @@ function onPasswordInput(form) {
         var el = document.getElementById('rtc-status');
         fetch('/rtc_status').then(function(r){ return r.json(); }).then(function(d){
             if (d.active) {
-                el.style.color = '#5a5';
+                _statusColor(el, 'ok');
                 el.textContent = '● RTC active (DS3231 detected)';
             } else if (d.configured) {
-                el.style.color = '#888';
+                _statusColor(el, 'muted');
                 el.textContent = '○ Configured — reboot required to activate';
             } else {
-                el.style.color = '#888';
+                _statusColor(el, 'muted');
                 el.textContent = '○ Not installed';
             }
         }).catch(function(){});
@@ -2039,7 +2051,7 @@ function onPasswordInput(form) {
         rebootRow.style.display = 'none';
         out.innerHTML = '';
         out.style.display = 'block';
-        status.style.color = '#888';
+        _statusColor(status, 'muted');
         status.textContent = 'Running…';
         var seen = 0;
         var poll = setInterval(function() {
@@ -2047,7 +2059,7 @@ function onPasswordInput(form) {
                 for (var i = seen; i < d.lines.length; i++) {
                     var span = document.createElement('span');
                     span.textContent = d.lines[i].text;
-                    if (d.lines[i].error) span.style.color = '#f88';
+                    if (d.lines[i].error) _statusColor(span, 'err');
                     out.appendChild(span);
                 }
                 seen = d.lines.length;
@@ -2057,11 +2069,11 @@ function onPasswordInput(form) {
                     btnInstall.disabled = false;
                     btnRemove.disabled  = false;
                     if (d.done) {
-                        status.style.color = '#5a5';
+                        _statusColor(status, 'ok');
                         status.textContent = 'Done.';
                         rebootRow.style.display = 'flex';
                     } else {
-                        status.style.color = '#c55';
+                        _statusColor(status, 'err');
                         status.textContent = 'Failed — see output above.';
                     }
                 }
@@ -2070,14 +2082,14 @@ function onPasswordInput(form) {
         fetch(startUrl, {method: 'POST'}).then(function(r) {
             if (!r.ok) {
                 clearInterval(poll);
-                status.style.color = '#c55';
+                _statusColor(status, 'err');
                 status.textContent = 'Could not start.';
                 btnInstall.disabled = false;
                 btnRemove.disabled  = false;
             }
         }).catch(function(e) {
             clearInterval(poll);
-            status.style.color = '#c55';
+            _statusColor(status, 'err');
             status.textContent = 'Request failed: ' + e;
             btnInstall.disabled = false;
             btnRemove.disabled  = false;
@@ -2090,7 +2102,7 @@ function onPasswordInput(form) {
     function rtcReboot() {
         var status = document.getElementById('rtc-status');
         document.getElementById('rtc-reboot-row').style.display = 'none';
-        status.style.color = '#888';
+        _statusColor(status, 'muted');
         status.textContent = 'Rebooting…';
         fetch('/system_reboot', {method: 'POST'});
     }
@@ -2233,11 +2245,10 @@ function onPasswordInput(form) {
     function _applySerialStatus(d) {
         var badge = document.getElementById('serial-status-badge');
         if (!badge) return;
-        var labels = {idle: '—', opening: 'Opening…', open: 'Connected', error: 'Error'};
-        var colors = {idle: ['#ccc','#333'], opening: ['#d9a21b','#fff'], open: ['#3c763d','#fff'], error: ['#a94442','#fff']};
+        var labels   = {idle: '—', opening: 'Opening…', open: 'Connected', error: 'Error'};
+        var variants = {idle: 'text-bg-secondary', opening: 'text-bg-warning', open: 'text-bg-success', error: 'text-bg-danger'};
         badge.textContent = labels[d.state] || d.state;
-        badge.style.background = (colors[d.state] || ['#ccc','#333'])[0];
-        badge.style.color       = (colors[d.state] || ['#ccc','#333'])[1];
+        badge.className = 'badge rounded-pill ' + (variants[d.state] || 'text-bg-secondary');
         if (d.msg) {
             var log = document.getElementById('serial-log');
             var ts  = new Date().toLocaleTimeString();
@@ -2254,7 +2265,7 @@ function onPasswordInput(form) {
             var line = document.createElement('div');
             var hex  = document.createElement('span');
             hex.textContent = d.hex;
-            hex.style.color = '#888';
+            _statusColor(hex, 'muted');
             hex.style.marginRight = '16px';
             line.appendChild(hex);
             if (d.text) {
@@ -2290,22 +2301,22 @@ function onPasswordInput(form) {
         var text = document.getElementById('cloud-status-text');
         var btn  = document.getElementById('btn-cloud-toggle');
         if (!d.url) {
-            text.style.color = '#888';
+            _statusColor(text, 'muted');
             text.textContent = 'Not configured';
             btn.textContent  = 'Connect';
             btn.disabled     = true;
         } else if (d.connected) {
-            text.style.color = '#5a5';
+            _statusColor(text, 'ok');
             text.textContent = 'Connected · ' + d.url;
             btn.textContent  = 'Disconnect';
             btn.disabled     = false;
         } else if (d.running) {
-            text.style.color = '#a80';
+            _statusColor(text, 'warn');
             text.textContent = 'Connecting…';
             btn.textContent  = 'Disconnect';
             btn.disabled     = false;
         } else {
-            text.style.color = '#888';
+            _statusColor(text, 'muted');
             text.textContent = 'Disconnected';
             btn.textContent  = 'Connect';
             btn.disabled     = false;
