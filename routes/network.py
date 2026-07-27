@@ -155,21 +155,32 @@ def route_wifi_scan():
         # _split_terse() honours so the SSID stays intact.
         r     = _nmcli('-t', '-f', 'IN-USE,SIGNAL,SECURITY,SSID',
                        'dev', 'wifi', 'list', timeout=20)
-        networks, seen = [], set()
+        # A single SSID can appear several times (one row per BSSID/band). Merge
+        # them by SSID so each network shows once, keeping the strongest signal
+        # and marking it active if *any* of its BSSIDs is the in-use one — the
+        # connected AP is often not the strongest row, so dropping duplicates
+        # naively would lose the '*' and hide the "Connected" state.
+        by_ssid = {}
         for line in r.stdout.splitlines():
             if not line:
                 continue
             active, signal, security, ssid = _split_terse(line, 4)
-            if not ssid or ssid in seen:
+            if not ssid:
                 continue
-            seen.add(ssid)
-            networks.append({
-                'ssid':     ssid,
-                'signal':   int(signal) if signal.isdigit() else 0,
-                'security': '' if security in ('--', '') else security,
-                'active':   '*' in active,
-            })
-        networks.sort(key=lambda n: n['signal'], reverse=True)
+            sig = int(signal) if signal.isdigit() else 0
+            net = by_ssid.get(ssid)
+            if net is None:
+                by_ssid[ssid] = {
+                    'ssid':     ssid,
+                    'signal':   sig,
+                    'security': '' if security in ('--', '') else security,
+                    'active':   '*' in active,
+                }
+            else:
+                net['signal'] = max(net['signal'], sig)
+                net['active'] = net['active'] or ('*' in active)
+        networks = sorted(by_ssid.values(),
+                          key=lambda n: n['signal'], reverse=True)
         return {'networks': networks}
     except FileNotFoundError:
         return JSONResponse({'error': 'nmcli not found'}, status_code=503)
