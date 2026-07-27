@@ -6,7 +6,8 @@ import os
 import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Form, Request, WebSocket, WebSocketDisconnect
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -14,7 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import bus
 import state
 from meet_data import _get_next_heats, send_event_info
-from web import NotAuthenticated, render, templates
+from web import NotAuthenticated, render, require_login, templates
 from worker import _worker_adjust_splits, _worker_next_heat, main_thread_worker
 
 from routes.scoreboard import router as scoreboard_router
@@ -48,7 +49,9 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(lifespan=lifespan)
+# Built-in docs are disabled here and re-served below behind `require_login`, so
+# the OpenAPI schema and Swagger/ReDoc UIs are only reachable once signed in.
+app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 app.mount('/static', StaticFiles(directory=os.path.join(state.app_dir, 'static')), name='static')
 
@@ -64,6 +67,26 @@ app.include_router(appearance_router)
 @app.exception_handler(NotAuthenticated)
 async def _redirect_to_login(request: Request, exc: NotAuthenticated):
     return RedirectResponse('/login', status_code=303)
+
+
+# ── API docs (login-gated) ───────────────────────────────────────────────────
+# Unauthenticated hits raise NotAuthenticated → redirect to /login. Once signed
+# in, the session cookie also authorizes Swagger UI's fetch of /openapi.json.
+
+@app.get('/openapi.json', include_in_schema=False,
+         dependencies=[Depends(require_login)])
+async def route_openapi():
+    return app.openapi()
+
+
+@app.get('/docs', include_in_schema=False, dependencies=[Depends(require_login)])
+async def route_docs():
+    return get_swagger_ui_html(openapi_url='/openapi.json', title='Tremplin API docs')
+
+
+@app.get('/redoc', include_in_schema=False, dependencies=[Depends(require_login)])
+async def route_redoc():
+    return get_redoc_html(openapi_url='/openapi.json', title='Tremplin API docs')
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────

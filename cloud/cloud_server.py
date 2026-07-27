@@ -28,6 +28,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import (Depends, FastAPI, HTTPException, Request, WebSocket,
                      WebSocketDisconnect)
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -117,7 +118,9 @@ async def lifespan(app):
             pass                                        # don't let a failed drain error shutdown
 
 
-app = FastAPI(lifespan=lifespan)
+# Built-in docs are disabled here and re-served below behind `require_admin`, so
+# the OpenAPI schema and Swagger/ReDoc UIs require admin Basic-auth credentials.
+app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.mount('/static', StaticFiles(directory=os.path.join(_HERE, 'static'), check_dir=False),
           name='static')
 templates = Jinja2Templates(directory=os.path.join(_HERE, 'templates'))
@@ -512,6 +515,26 @@ def require_admin(request: Request):
     if not _check_admin(request):
         raise HTTPException(status_code=401, detail='Authentication required',
                             headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
+
+
+# ── API docs (admin-gated) ─────────────────────────────────────────────────────
+# 401 → the browser prompts for admin Basic-auth credentials, which it then also
+# resends when Swagger UI fetches /openapi.json from the same origin.
+
+@app.get('/openapi.json', include_in_schema=False,
+         dependencies=[Depends(require_admin)])
+async def route_openapi():
+    return app.openapi()
+
+
+@app.get('/docs', include_in_schema=False, dependencies=[Depends(require_admin)])
+async def route_docs():
+    return get_swagger_ui_html(openapi_url='/openapi.json', title='Tremplin Cloud API docs')
+
+
+@app.get('/redoc', include_in_schema=False, dependencies=[Depends(require_admin)])
+async def route_redoc():
+    return get_redoc_html(openapi_url='/openapi.json', title='Tremplin Cloud API docs')
 
 
 # ── Attendee analytics (opt-in) ────────────────────────────────────────────────
