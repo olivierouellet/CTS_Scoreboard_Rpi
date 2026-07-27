@@ -647,7 +647,7 @@ def route_mobile(request: Request):
         return RedirectResponse('/', status_code=303)
     return render(request, 'mobile.html',
                   meet_id=meet_id,
-                  name=meet['name'],
+                  meet_name=meet['name'],
                   location=meet['location'],
                   sport=meet['sport'],
                   app_window_title=meet.get('app_window_title', ''),
