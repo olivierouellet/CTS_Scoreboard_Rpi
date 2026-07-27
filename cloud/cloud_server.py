@@ -1179,7 +1179,8 @@ def route_stats(request: Request):
     return {'enabled': True, 'count': _attendee_count(meet_id, since)}
 
 
-@app.api_route('/admin', methods=['GET', 'POST'], tags=['Admin'], dependencies=[Depends(require_admin)])
+@app.get('/admin', tags=['Admin'], dependencies=[Depends(require_admin)])
+@app.post('/admin', tags=['Admin'], dependencies=[Depends(require_admin)])
 async def route_admin(request: Request):
     keys = _load_keys()
 

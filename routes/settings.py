@@ -132,7 +132,8 @@ def _meet_update_file(file):
     return {'ok': True}
 
 
-@router.api_route('/settings', methods=['GET', 'POST'], dependencies=[Depends(require_login)])
+@router.get('/settings', dependencies=[Depends(require_login)])
+@router.post('/settings', dependencies=[Depends(require_login)])
 async def route_settings(request: Request):
     form = await request.form() if request.method == 'POST' else None
     # POST parses uploads (PIL resize), enumerates serial ports and writes files;
