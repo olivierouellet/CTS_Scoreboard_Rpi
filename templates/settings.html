@@ -257,12 +257,11 @@ function onPasswordInput(form) {
 
         <!-- ── Meet Setup ──────────────────────────────────────────── -->
         <div class="tab-pane active" id="tab-meet">
-        <div class="row"><div class="col-lg-8">
-            <div id="meet-test-warning" style="display:none; background:#fcf8e3; border:1px solid #faebcc; border-radius:4px; padding:8px 14px; margin-bottom:8px; font-size:0.9em; color:#8a6d3b;">
-                ⚠ A test session is running — meet file upload is disabled.
-            </div>
-            <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px; display:flex;">
-                <div style="flex:1;">
+            <div class="row"><div class="col-lg-8">
+                <div id="meet-test-warning" class="alert alert-warning py-2 px-3 small" style="display:none;">
+                    ⚠ A test session is running — meet file upload is disabled.
+                </div>
+                <div class="card"><div class="card-body">
                     <!-- Two non-nested forms: one for loading/unloading, one for uploading -->
                     <form id="meet_load_form" action="/settings" method="post">
                         <input type="hidden" name="meet_file_load_submit" value="1">
@@ -270,46 +269,45 @@ function onPasswordInput(form) {
                     <form id="meet_upload_form" action="/settings" method="POST" enctype="multipart/form-data">
                         <input type="hidden" name="meet_setup_submit" value="1">
                     </form>
-                    <label style="font-weight:normal;">Meet Files</label>
-                    <select form="meet_load_form" id="meet-file-select" name="meet_file_select" class="form-control input-sm" style="margin-bottom:4px;" onchange="_fsubmit(document.getElementById('meet_load_form'))">
+                    <label class="form-label">Meet Files</label>
+                    <select form="meet_load_form" id="meet-file-select" name="meet_file_select" class="form-select form-select-sm mb-1" onchange="_fsubmit(document.getElementById('meet_load_form'))">
                         <option value="" {% if not active_meet_file %}selected{% endif %}>— No file loaded —</option>
                         {% for f in meet_file_list %}
                         <option value="{{ f }}" {% if f == active_meet_file %}selected{% endif %}>{{ f }}</option>
                         {% endfor %}
                     </select>
-                    <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap; overflow:hidden;">
-                        <div class="file-picker" style="flex-shrink:0;">
-                            <label class="btn btn-default btn-xs" style="margin:0; font-weight:normal; cursor:pointer; white-space:nowrap;">
+                    <div class="d-flex flex-wrap align-items-center gap-1">
+                        <div class="file-picker flex-shrink-0">
+                            <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer; white-space:nowrap;">
                                 Add Meet File<input form="meet_upload_form" id="meet_file" name="meet_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="_fsubmit(document.getElementById('meet_upload_form'))">
                             </label>
-                            <span class="file-msg" style="font-size:0.85em; color:#888; display:inline; margin-left:4px;"></span>
+                            <span class="file-msg small text-body-secondary ms-1"></span>
                         </div>
                         <div id="meet-file-actions" style="display:contents;">
                             {% if active_meet_file %}
-                            <a id="meet-preview-btn" href="{{ '/hytek_preview' if active_meet_file.endswith('.csv') else '/lenex_preview' }}" class="btn btn-default btn-xs" style="flex-shrink:0;">Preview</a>
-                            <label class="btn btn-default btn-xs" style="margin:0; font-weight:normal; cursor:pointer; flex-shrink:0; white-space:nowrap;">
+                            <a id="meet-preview-btn" href="{{ '/hytek_preview' if active_meet_file.endswith('.csv') else '/lenex_preview' }}" class="btn btn-secondary btn-sm flex-shrink-0">Preview</a>
+                            <label class="btn btn-secondary btn-sm m-0 flex-shrink-0" style="cursor:pointer; white-space:nowrap;">
                                 Update File<input id="meet_update_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="updateMeetFile(this)">
                             </label>
-                            <button class="btn btn-default btn-xs danger" type="button" style="flex-shrink:0;" onclick="var f=document.getElementById('meet-file-select').value;if(f&&confirm('Delete '+f+'?'))location.href='/meet_delete?file='+encodeURIComponent(f);">Delete</button>
-                            <button class="btn btn-default btn-xs danger" type="button" style="flex-shrink:0;" onclick="if(confirm('Delete all meet files?'))location.href='/meet_clear';">Delete All</button>
+                            <button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="var f=document.getElementById('meet-file-select').value;if(f&&confirm('Delete '+f+'?'))location.href='/meet_delete?file='+encodeURIComponent(f);">Delete</button>
+                            <button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="if(confirm('Delete all meet files?'))location.href='/meet_clear';">Delete All</button>
                             {% endif %}
                         </div>
                     </div>
                     {% if active_meet_file %}
-                    <div id="meet-update-msg" style="font-size:0.85em; margin-top:6px; display:none;"></div>
-                    <p style="font-size:0.8em; color:#888; margin:4px 0 0;">
+                    <div id="meet-update-msg" class="small mt-2" style="display:none;"></div>
+                    <p class="small text-body-secondary mt-1 mb-0">
                         <strong>Update File</strong> replaces the current meet's file in place — keeping its cloud link so connected attendees stay attached.
                         The new file must be the same meet (same name and session dates); otherwise it's rejected. To load a different meet, use <strong>Add Meet File</strong>.
                     </p>
                     {% endif %}
-                </div>
-            </div>
-            <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px; margin-top:10px;">
+                </div></div>
+            <div class="card mt-3"><div class="card-body">
                 <form id="pool_setup_form" action="/settings" method="POST">
                     <input type="hidden" name="pool_setup_submit" value="1">
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                        <label for="num_lanes" style="min-width:160px; font-weight:normal; margin:0;">Number of Lanes</label>
-                        <select id="num_lanes" name="num_lanes" class="form-control input-sm" style="width:120px;" onchange="_fsubmit(this.form)">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <label for="num_lanes" class="form-label mb-0" style="min-width:160px;">Number of Lanes</label>
+                        <select id="num_lanes" name="num_lanes" class="form-select form-select-sm" style="width:120px;" onchange="_fsubmit(this.form)">
                             <option value="12" {% if num_lanes == 12 %}selected{% endif %}>12 Lanes</option>
                             <option value="10" {% if num_lanes == 10 %}selected{% endif %}>10 Lanes</option>
                             <option value="8"  {% if num_lanes == 8  %}selected{% endif %}>8 Lanes</option>
@@ -317,96 +315,96 @@ function onPasswordInput(form) {
                             <option value="4"  {% if num_lanes == 4  %}selected{% endif %}>4 Lanes</option>
                         </select>
                     </div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                        <label style="min-width:160px; font-weight:normal; margin:0;">Pool length</label>
-                        <select name="pool_length" class="form-control input-sm" style="width:80px;" onchange="_fsubmit(this.form)">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <label class="form-label mb-0" style="min-width:160px;">Pool length</label>
+                        <select name="pool_length" class="form-select form-select-sm" style="width:80px;" onchange="_fsubmit(this.form)">
                             <option value="25" {% if pool_length == 25 %}selected{% endif %}>25 m</option>
                             <option value="33" {% if pool_length == 33 %}selected{% endif %}>33 m</option>
                             <option value="50" {% if pool_length == 50 %}selected{% endif %}>50 m</option>
                         </select>
-                        <span style="color:#888;"><small>(used to calculate expected splits)</small></span>
+                        <span class="text-body-secondary"><small>(used to calculate expected splits)</small></span>
                     </div>
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                        <label style="min-width:160px; font-weight:normal; margin:0;">Touchpads</label>
-                        <select name="touchpad_sides" class="form-control input-sm" style="width:120px;" onchange="_fsubmit(this.form)">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <label class="form-label mb-0" style="min-width:160px;">Touchpads</label>
+                        <select name="touchpad_sides" class="form-select form-select-sm" style="width:120px;" onchange="_fsubmit(this.form)">
                             <option value="2" {% if touchpad_sides == 2 %}selected{% endif %}>Both ends</option>
                             <option value="1" {% if touchpad_sides == 1 %}selected{% endif %}>One end only</option>
                         </select>
-                        <span style="color:#888;"><small>(one end = each touch counts as 2 splits)</small></span>
+                        <span class="text-body-secondary"><small>(one end = each touch counts as 2 splits)</small></span>
                     </div>
                     {% if lenex_pool_length and lenex_pool_length != pool_length %}
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    <div class="d-flex align-items-center gap-2 mb-2">
                         <span style="min-width:160px;"></span>
-                        <div style="background:#3a2a00; border:1px solid #a07000; color:#f0c040; border-radius:4px; padding:4px 10px; font-size:0.85em;">
+                        <div class="alert alert-warning py-1 px-2 mb-0 small">
                             ⚠ Lenex file specifies {{ lenex_pool_length }} m — your setting ({{ pool_length }} m) will be used.
                         </div>
                     </div>
                     {% endif %}
                 </form>
-            </div>
+            </div></div>
 
             <!-- ── Cloud appearance (per loaded meet) ──────────────────── -->
             {% if active_meet_file %}
-            <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px; margin-top:10px;">
+            <div class="card mt-3"><div class="card-body">
                 <form action="/settings" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="meet_appearance_submit" value="1">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                    <label style="font-weight:bold; margin:0;">Cloud appearance — this meet</label>
-                    <button id="btn-update-meet" type="submit" class="btn btn-default btn-xs">Save</button>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label fw-bold mb-0">Cloud appearance — this meet</label>
+                    <button id="btn-update-meet" type="submit" class="btn btn-secondary btn-sm">Save</button>
                 </div>
-                <p style="font-size:0.82em; color:#888; margin:0 0 10px;">Saved separately for each meet file, so each day of a split meet keeps its own title, image and icon.</p>
+                <p class="small text-body-secondary mb-2">Saved separately for each meet file, so each day of a split meet keeps its own title, image and icon.</p>
 
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                    <label style="min-width:150px; font-weight:normal; margin:0;">Picker title</label>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <label class="form-label mb-0" style="min-width:150px;">Picker title</label>
                     <input type="text" name="cloud_meet_title" id="cloud_meet_title" value="{{ cloud_meet_title }}"
-                           class="form-control input-sm" style="flex:1;" placeholder="{{ meet_title or 'Meet title' }}">
+                           class="form-control form-control-sm" style="flex:1;" placeholder="{{ meet_title or 'Meet title' }}">
                 </div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                    <label style="min-width:150px; font-weight:normal; margin:0;">Location</label>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <label class="form-label mb-0" style="min-width:150px;">Location</label>
                     <input type="text" name="meet_location" value="{{ meet_location }}"
-                           class="form-control input-sm" style="flex:1;" placeholder="City or venue (auto from Lenex if blank)">
+                           class="form-control form-control-sm" style="flex:1;" placeholder="City or venue (auto from Lenex if blank)">
                 </div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                    <label style="min-width:150px; font-weight:normal; margin:0;">Sport</label>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <label class="form-label mb-0" style="min-width:150px;">Sport</label>
                     <input type="text" name="meet_sport" value="{{ meet_sport }}"
-                           class="form-control input-sm" style="flex:1;" placeholder="e.g. Swimming (optional)">
+                           class="form-control form-control-sm" style="flex:1;" placeholder="e.g. Swimming (optional)">
                 </div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                    <label style="min-width:150px; font-weight:normal; margin:0;">App / window title</label>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <label class="form-label mb-0" style="min-width:150px;">App / window title</label>
                     <input type="text" name="app_window_title" id="app_window_title" value="{{ app_window_title }}"
-                           class="form-control input-sm" style="flex:1;" placeholder="Tremplin (blank = meet name)">
+                           class="form-control form-control-sm" style="flex:1;" placeholder="Tremplin (blank = meet name)">
                 </div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-                    <label style="min-width:150px; font-weight:normal; margin:0;">Column label style</label>
-                    <select name="cloud_label_style" class="form-control input-sm" style="width:auto;">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <label class="form-label mb-0" style="min-width:150px;">Column label style</label>
+                    <select name="cloud_label_style" class="form-select form-select-sm" style="width:auto;">
                         <option value="short" {% if cloud_label_style == 'short' %}selected{% endif %}>Short (EV, HT, LN…)</option>
                         <option value="long"  {% if cloud_label_style == 'long'  %}selected{% endif %}>Long (EVENT, HEAT, LANE…)</option>
                     </select>
                 </div>
 
                 <!-- Picker image -->
-                <label style="font-weight:normal; margin-bottom:2px;">Picker image <small style="color:#999;">(shown on the meet card)</small></label>
-                {% if picker_image_error %}<p style="color:#c00; font-size:0.82em; margin-bottom:4px;">{{ picker_image_error }}</p>{% endif %}
-                <select name="selected_picker_image" class="form-control input-sm" style="margin-bottom:4px;" onchange="_fsubmit(this.closest('form'))">
+                <label class="form-label mb-1">Picker image <small class="text-body-secondary">(shown on the meet card)</small></label>
+                {% if picker_image_error %}<p class="text-danger small mb-1">{{ picker_image_error }}</p>{% endif %}
+                <select name="selected_picker_image" class="form-select form-select-sm mb-1" onchange="_fsubmit(this.closest('form'))">
                     <option value="" {% if not active_picker_image %}selected{% endif %}>— None —</option>
                     {% for img in picker_image_list %}
                     <option value="{{ img }}" {% if img == active_picker_image %}selected{% endif %}>{{ img }}</option>
                     {% endfor %}
                 </select>
-                <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-                    <div class="file-picker" style="flex-shrink:0;">
-                        <label class="btn btn-default btn-xs" style="margin:0; font-weight:normal; cursor:pointer;">
+                <div class="d-flex flex-wrap align-items-center gap-1 mb-3">
+                    <div class="file-picker flex-shrink-0">
+                        <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
                             Add Image
                             <input type="file" name="picker_image" accept="image/*" style="display:none;"
                                    onchange="var m=this.closest('.file-picker').querySelector('.file-msg');m.style.opacity='1';m.style.transition='none';m.textContent='Uploading…';_fsubmit(this.closest('form'))">
                         </label>
-                        <span class="file-msg" style="font-size:0.85em; color:#888; display:inline; margin-left:4px;"></span>
+                        <span class="file-msg small text-body-secondary ms-1"></span>
                     </div>
                     {% if active_picker_image %}
-                    <a href="/picker_image_delete?file={{ active_picker_image }}" class="btn btn-default btn-xs danger" style="flex-shrink:0;" onclick="return confirm('Delete {{ active_picker_image }}?')">Delete</a>
+                    <a href="/picker_image_delete?file={{ active_picker_image }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_picker_image }}?')">Delete</a>
                     {% endif %}
                     {% if picker_image_list %}
-                    <a href="/picker_image_delete_all" class="btn btn-default btn-xs danger" style="flex-shrink:0;" onclick="return confirm('Delete all picker images?')">Delete All</a>
+                    <a href="/picker_image_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete all picker images?')">Delete All</a>
                     {% endif %}
                     {% if active_picker_image %}
                     <img src="/picker_image" style="height:28px; border-radius:4px; border:1px solid #ccc; flex-shrink:0;">
@@ -414,39 +412,39 @@ function onPasswordInput(form) {
                 </div>
 
                 <!-- Home screen icon -->
-                <label style="font-weight:normal; margin-bottom:2px;">Home screen icon <small style="color:#999;">(square PNG, 512 or 1024 px)</small></label>
-                {% if icon_error %}<p style="color:#c00; font-size:0.82em; margin-bottom:4px;">{{ icon_error }}</p>{% endif %}
-                <select name="selected_home_icon" class="form-control input-sm" style="margin-bottom:4px;" onchange="_fsubmit(this.closest('form'))">
+                <label class="form-label mb-1">Home screen icon <small class="text-body-secondary">(square PNG, 512 or 1024 px)</small></label>
+                {% if icon_error %}<p class="text-danger small mb-1">{{ icon_error }}</p>{% endif %}
+                <select name="selected_home_icon" class="form-select form-select-sm mb-1" onchange="_fsubmit(this.closest('form'))">
                     <option value="" {% if not active_home_icon %}selected{% endif %}>— None —</option>
                     {% for icon in icon_list %}
                     <option value="{{ icon }}" {% if icon == active_home_icon %}selected{% endif %}>{{ icon }}</option>
                     {% endfor %}
                 </select>
-                <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
-                    <div class="file-picker" style="flex-shrink:0;">
-                        <label class="btn btn-default btn-xs" style="margin:0; font-weight:normal; cursor:pointer;">
+                <div class="d-flex flex-wrap align-items-center gap-1">
+                    <div class="file-picker flex-shrink-0">
+                        <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
                             Add Icon
                             <input type="file" name="home_icon" accept="image/png" style="display:none;"
                                    onchange="var m=this.closest('.file-picker').querySelector('.file-msg');m.style.opacity='1';m.style.transition='none';m.textContent='Resizing…';_fsubmit(this.closest('form'))">
                         </label>
-                        <span class="file-msg" style="font-size:0.85em; color:#888; display:inline; margin-left:4px;"></span>
+                        <span class="file-msg small text-body-secondary ms-1"></span>
                     </div>
                     {% if active_home_icon %}
-                    <a href="/icon_delete?file={{ active_home_icon }}" class="btn btn-default btn-xs danger" style="flex-shrink:0;" onclick="return confirm('Delete {{ active_home_icon }}?')">Delete</a>
+                    <a href="/icon_delete?file={{ active_home_icon }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_home_icon }}?')">Delete</a>
                     {% endif %}
                     {% if icon_list %}
-                    <a href="/icon_delete_all" class="btn btn-default btn-xs danger" style="flex-shrink:0;" onclick="return confirm('Delete all icons?')">Delete All</a>
+                    <a href="/icon_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete all icons?')">Delete All</a>
                     {% endif %}
                     {% if has_home_icon %}
                     <img src="/home_icon" style="height:28px; width:28px; border-radius:6px; border:1px solid #ccc; flex-shrink:0;">
                     {% endif %}
                 </div>
                 </form>
-            </div>
+            </div></div>
             {% else %}
-            <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px; margin-top:10px; color:#888; font-size:0.9em;">
+            <div class="card mt-3"><div class="card-body text-body-secondary small">
                 Load a meet file to set its cloud picker title, image and icon.
-            </div>
+            </div></div>
             {% endif %}
         </div></div>
         </div>
@@ -1223,10 +1221,10 @@ function onPasswordInput(form) {
             var actions = document.getElementById('meet-file-actions');
             if (d.active) {
                 actions.innerHTML =
-                    '<a id="meet-preview-btn" href="' + d.preview_url + '" class="btn btn-default btn-xs" style="flex-shrink:0;">Preview</a>' +
-                    '<label class="btn btn-default btn-xs" style="margin:0; font-weight:normal; cursor:pointer; flex-shrink:0; white-space:nowrap;">Update File<input id="meet_update_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="updateMeetFile(this)"></label>' +
-                    '<button class="btn btn-default btn-xs danger" type="button" style="flex-shrink:0;" onclick="var f=document.getElementById(\'meet-file-select\').value;if(f&&confirm(\'Delete \'+f+\'?\'))location.href=\'/meet_delete?file=\'+encodeURIComponent(f);">Delete</button>' +
-                    '<button class="btn btn-default btn-xs danger" type="button" style="flex-shrink:0;" onclick="if(confirm(\'Delete all meet files?\'))location.href=\'/meet_clear\';">Delete All</button>';
+                    '<a id="meet-preview-btn" href="' + d.preview_url + '" class="btn btn-secondary btn-sm flex-shrink-0">Preview</a>' +
+                    '<label class="btn btn-secondary btn-sm m-0 flex-shrink-0" style="cursor:pointer; white-space:nowrap;">Update File<input id="meet_update_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="updateMeetFile(this)"></label>' +
+                    '<button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="var f=document.getElementById(\'meet-file-select\').value;if(f&&confirm(\'Delete \'+f+\'?\'))location.href=\'/meet_delete?file=\'+encodeURIComponent(f);">Delete</button>' +
+                    '<button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="if(confirm(\'Delete all meet files?\'))location.href=\'/meet_clear\';">Delete All</button>';
             } else {
                 actions.innerHTML = '';
             }
