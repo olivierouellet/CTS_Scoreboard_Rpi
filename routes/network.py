@@ -1,12 +1,12 @@
 import subprocess
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, IPvAnyAddress
 from starlette.concurrency import run_in_threadpool
 
 import state
-from web import require_login
+from web import ActionResult, require_login
 
 router = APIRouter(tags=['Network'])
 
@@ -14,6 +14,11 @@ router = APIRouter(tags=['Network'])
 class EthIP(BaseModel):
     ip: IPvAnyAddress
     prefix: int = Field(24, ge=1, le=32)
+
+
+class WifiConnect(BaseModel):
+    ssid: str = ''
+    password: str = ''
 
 
 def _nmcli(*args, timeout=8):
@@ -132,12 +137,12 @@ def route_cloud_toggle():
     return relay.status()
 
 
-@router.post('/wifi_connect', dependencies=[Depends(require_login)])
-async def route_wifi_connect(request: Request):
-    data = await request.json()
+@router.post('/wifi_connect', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+async def route_wifi_connect(body: WifiConnect):
     # nmcli connect can take up to 30 s — run it off the event loop so live
     # scoreboard broadcasts keep flowing while it works.
-    return await run_in_threadpool(_wifi_connect, data.get('ssid', ''), data.get('password', ''))
+    return await run_in_threadpool(_wifi_connect, body.ssid, body.password)
 
 
 def _wifi_connect(ssid, password):
@@ -162,7 +167,8 @@ def _wifi_connect(ssid, password):
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@router.post('/eth_dhcp_set', dependencies=[Depends(require_login)])
+@router.post('/eth_dhcp_set', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_eth_dhcp_set():
     try:
         r = subprocess.run(
@@ -178,7 +184,8 @@ def route_eth_dhcp_set():
         return {'ok': False, 'error': str(e)}
 
 
-@router.post('/eth_ip_set', dependencies=[Depends(require_login)])
+@router.post('/eth_ip_set', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 async def route_eth_ip_set(body: EthIP):
     # ip/prefix are already validated by the EthIP model.
     return await run_in_threadpool(_eth_ip_set, str(body.ip), body.prefix)

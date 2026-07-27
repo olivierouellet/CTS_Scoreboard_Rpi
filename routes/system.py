@@ -14,9 +14,13 @@ from starlette.concurrency import run_in_threadpool
 
 import bus
 import state
-from web import require_login
+from web import ActionResult, require_login
 
 router = APIRouter(tags=['System'])
+
+
+class UpdateStart(BaseModel):
+    target: str | None = None
 
 
 class TimeSet(BaseModel):
@@ -104,7 +108,8 @@ def route_time_status():
     }
 
 
-@router.post('/time_sync', dependencies=[Depends(require_login)])
+@router.post('/time_sync', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_time_sync():
     try:
         subprocess.run(['sudo', 'timedatectl', 'set-ntp', 'true'], timeout=5, check=True)
@@ -114,7 +119,8 @@ def route_time_sync():
         return {'ok': False, 'error': str(e)}
 
 
-@router.post('/time_set', dependencies=[Depends(require_login)])
+@router.post('/time_set', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 async def route_time_set(body: TimeSet):
     return await run_in_threadpool(_time_set, body.date, body.time)
 
@@ -252,21 +258,19 @@ def route_version_list():
         return {'ok': False, 'error': str(e)}
 
 
-@router.post('/update_start', dependencies=[Depends(require_login)])
-async def route_update_start(request: Request):
+@router.post('/update_start', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+async def route_update_start(body: UpdateStart | None = None):
     if state._update_in_progress:
         return JSONResponse({'error': 'Update already in progress'}, status_code=409)
     state._update_in_progress = True
-    try:
-        data = await request.json()
-    except Exception:
-        data = {}
-    target = (data or {}).get('target') or None
+    target = (body.target if body else None) or None
     bus.run_bg(_run_update, target)
     return {'ok': True}
 
 
-@router.post('/os_update_start', dependencies=[Depends(require_login)])
+@router.post('/os_update_start', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_os_update_start():
     if state._os_update_in_progress:
         return JSONResponse({'error': 'OS update already in progress'}, status_code=409)
@@ -339,7 +343,8 @@ def _run_rtc(action):
         state._rtc_in_progress = False
 
 
-@router.post('/rtc_install_start', dependencies=[Depends(require_login)])
+@router.post('/rtc_install_start', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_rtc_install_start():
     if state._rtc_in_progress:
         return JSONResponse({'error': 'RTC setup already in progress'}, status_code=409)
@@ -348,7 +353,8 @@ def route_rtc_install_start():
     return {'ok': True}
 
 
-@router.post('/rtc_remove_start', dependencies=[Depends(require_login)])
+@router.post('/rtc_remove_start', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_rtc_remove_start():
     if state._rtc_in_progress:
         return JSONResponse({'error': 'RTC setup already in progress'}, status_code=409)
@@ -384,7 +390,8 @@ def route_logs_save():
         return JSONResponse({'ok': False, 'error': str(e)}, status_code=500)
 
 
-@router.post('/system_reboot', dependencies=[Depends(require_login)])
+@router.post('/system_reboot', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_system_reboot():
     def _reboot():
         time.sleep(1)
@@ -393,7 +400,8 @@ def route_system_reboot():
     return {'ok': True}
 
 
-@router.post('/system_shutdown', dependencies=[Depends(require_login)])
+@router.post('/system_shutdown', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_system_shutdown():
     def _shutdown():
         time.sleep(1)
@@ -414,7 +422,8 @@ def route_backup_download():
                  f'attachment; filename="tremplin_backup_{date_str}.tar.gz"'})
 
 
-@router.post('/backup_restore', dependencies=[Depends(require_login)])
+@router.post('/backup_restore', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 async def route_backup_restore(request: Request):
     form = await request.form()
     f = form.get('backup_file')

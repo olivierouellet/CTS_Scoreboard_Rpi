@@ -17,10 +17,14 @@ import bus
 import state
 from meet_data import send_event_info
 from parsers.lenex_parser import load_lenex
-from web import redirect, require_login, save_upload
+from web import ActionResult, redirect, require_login, save_upload
 from worker import _cleanup_test_meet, _list_sessions, _restart_worker
 
 router = APIRouter(tags=['Debug'])
+
+
+class NameBody(BaseModel):
+    name: str = ''
 
 
 class SpeedBody(BaseModel):
@@ -55,11 +59,11 @@ def route_test_status():
     }
 
 
-@router.post('/test_play', dependencies=[Depends(require_login)])
-async def route_test_play(request: Request):
-    name = (await request.json()).get('name', '')
+@router.post('/test_play', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+async def route_test_play(body: NameBody):
     # Copying + parsing the companion LENEX is blocking — run off the loop.
-    return await run_in_threadpool(_test_play, name)
+    return await run_in_threadpool(_test_play, body.name)
 
 
 def _test_play(name):
@@ -95,7 +99,8 @@ def _test_play(name):
     return JSONResponse({'error': 'Session not found'}, status_code=404)
 
 
-@router.post('/test_stop', dependencies=[Depends(require_login)])
+@router.post('/test_stop', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_test_stop():
     _cleanup_test_meet()
     bus.emit('/scoreboard', 'test_mode', {'active': False})
@@ -149,17 +154,17 @@ def route_test_set_speed(body: SpeedBody):
 
 
 @router.post('/test_record_start', dependencies=[Depends(require_login)])
-async def route_test_record_start(request: Request):
+async def route_test_record_start(body: NameBody):
     if state._record_handle:
         state._record_handle.close()
-    name = (await request.json()).get('name', 'recording').strip()
-    code = re.sub(r'[^a-z0-9_-]', '_', name.lower()) or 'recording'
+    code = re.sub(r'[^a-z0-9_-]', '_', body.name.strip().lower()) or 'recording'
     path = os.path.join(state.CUSTOM_SESSIONS_FOLDER, code + '.cts')
     state._record_handle = open(path, 'wt')
     return {'ok': True, 'file': code + '.cts'}
 
 
-@router.post('/test_record_stop', dependencies=[Depends(require_login)])
+@router.post('/test_record_stop', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_test_record_stop():
     if state._record_handle:
         state._record_handle.close()
@@ -168,9 +173,8 @@ def route_test_record_stop():
 
 
 @router.post('/test_session_delete', dependencies=[Depends(require_login)])
-async def route_test_session_delete(request: Request):
-    name = (await request.json()).get('name', '')
-    path = os.path.join(state.CUSTOM_SESSIONS_FOLDER, name)
+async def route_test_session_delete(body: NameBody):
+    path = os.path.join(state.CUSTOM_SESSIONS_FOLDER, body.name)
     if os.path.isfile(path) and (path.endswith('.cts') or
                                   path.endswith('.raw') or
                                   path.endswith('.cap')):
@@ -240,7 +244,8 @@ def _pty_reader():
     bus.emit('/terminal', 'exit', {})
 
 
-@router.post('/terminal_start', dependencies=[Depends(require_login)])
+@router.post('/terminal_start', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 async def route_terminal_start(body: TerminalStart):
     if not state._PTY_AVAILABLE:
         return {'ok': False, 'error': 'PTY not available on this platform'}
@@ -276,7 +281,8 @@ async def route_terminal_start(body: TerminalStart):
         return {'ok': False, 'error': str(e)}
 
 
-@router.post('/terminal_stop', dependencies=[Depends(require_login)])
+@router.post('/terminal_stop', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
 def route_terminal_stop():
     if state._pty_pid:
         try:

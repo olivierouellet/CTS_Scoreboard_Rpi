@@ -10,8 +10,21 @@ import shutil
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 import state
+
+
+class ActionResult(BaseModel):
+    """Standard body for endpoints that just report success/failure.
+
+    Used as ``response_model`` so the ``{ok, error}`` shape shows up in /docs.
+    ``error`` is only present on failure. Handlers that need to return extra
+    fields (a filename, a path, …) should not use this model, since a
+    ``response_model`` filters the response down to the declared fields.
+    """
+    ok: bool
+    error: str | None = None
 
 
 class NotAuthenticated(Exception):
