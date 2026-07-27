@@ -147,3 +147,36 @@ class TestLenexParser:
         assert data.start_list[1][1][3]['club'] == 'AQUA'
         assert data.start_list[1][1][3]['seed_time'] == '58.20'
         assert data.start_list[1][2][5]['name'] == 'Marc Tremblay'
+
+
+class TestArchiveVariants:
+    """The inner Lenex XML is found regardless of how the archive names it."""
+
+    @staticmethod
+    def _lxf(inner_name):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as z:
+            z.writestr(inner_name, lenex2_xml(EVENTS_XML).encode('utf-8'))
+        buf.seek(0)
+        return buf
+
+    def test_uppercase_lef_extension(self):
+        data = load_lenex(self._lxf('MEET.LEF'))
+        assert data.event_names[1] == 'Girls 10U 100 Freestyle'
+
+    def test_xml_extension_fallback(self):
+        data = load_lenex(self._lxf('meet.xml'))
+        assert data.event_names[1] == 'Girls 10U 100 Freestyle'
+
+    def test_single_unrecognized_member(self):
+        data = load_lenex(self._lxf('lenex'))
+        assert data.event_names[1] == 'Girls 10U 100 Freestyle'
+
+    def test_no_lenex_member_raises_clear_error(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as z:
+            z.writestr('readme.txt', b'not lenex')
+            z.writestr('notes.md', b'still not lenex')
+        buf.seek(0)
+        with pytest.raises(ValueError, match='No Lenex XML'):
+            load_lenex(buf)

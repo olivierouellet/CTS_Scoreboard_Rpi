@@ -5,6 +5,32 @@ from collections import namedtuple
 LenexData = namedtuple('LenexData', ['event_names', 'start_list', 'heat_times', 'meet_info', 'event_distances'])
 
 
+def _open_lenex_xml(path):
+    """Return the parsed XML tree for a Lenex file at *path*.
+
+    A .lxf file is a zip that, per the spec, holds a single .lef XML. Real-world
+    exporters vary, so be forgiving: match the inner file case-insensitively, and
+    if none ends in .lef fall back to a .xml member or the only file present. A
+    plain (unzipped) .lef XML file is also accepted.
+    """
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as z:
+            names = [n for n in z.namelist() if not n.endswith('/')]
+            xml_name = (
+                next((n for n in names if n.lower().endswith('.lef')), None)
+                or next((n for n in names if n.lower().endswith('.xml')), None)
+                or (names[0] if len(names) == 1 else None)
+            )
+            if xml_name is None:
+                raise ValueError(
+                    f'No Lenex XML (.lef) found inside {path}; '
+                    f'archive contains: {", ".join(names) or "(empty)"}'
+                )
+            return ET.parse(z.open(xml_name))
+    # Not a zip — assume a raw .lef/.xml Lenex document.
+    return ET.parse(path)
+
+
 def load_lenex(path):
     """
     Parse a Lenex .lxf file (zip containing a .lef XML).
@@ -13,9 +39,7 @@ def load_lenex(path):
         event_names  — {event_number: str}
         start_list   — {event_number: {heat_number: {lane: {'name': str, 'club': str}}}}
     """
-    with zipfile.ZipFile(path) as z:
-        xml_name = next(n for n in z.namelist() if n.endswith('.lef'))
-        tree = ET.parse(z.open(xml_name))
+    tree = _open_lenex_xml(path)
 
     root = tree.getroot()
 
