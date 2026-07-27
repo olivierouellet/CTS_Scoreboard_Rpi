@@ -5,7 +5,7 @@
 # Only branches that exist on origin are shown. 
 # extra_branches = ["branch_1", "branch_2", "branch_3"]     ### List of multiple branches
 # extra_branches = []                                       ### for release tags only.
-extra_branches = ["fastapi"]
+extra_branches = ["fastapi", "settings"]
 
 # Maximum number of release tags shown in the dropdown (newest first).
 # Use 0 for no limit.
