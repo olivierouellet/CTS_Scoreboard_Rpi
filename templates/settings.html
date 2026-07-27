@@ -486,94 +486,94 @@ function onPasswordInput(form) {
 
         <!-- ── Time ────────────────────────────────────────────────── -->
         <div class="tab-pane" id="tab-time">
-        <div class="row"><div class="col-lg-8">
-            <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px;">
+            <div class="row"><div class="col-lg-8">
+                <div class="card"><div class="card-body">
 
-                <div style="font-size:0.9em; font-weight:bold; margin-bottom:6px;">Current Time</div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                    <span id="time-display" style="font-size:1.4em; font-family:monospace; flex:1;">—</span>
-                    <span id="time-tz" style="font-size:0.9em; color:#888;"></span>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                    <span id="ntp-status" style="font-size:0.9em; flex:1; color:#888;">—</span>
-                    <button id="btn-time-sync" class="btn btn-default btn-xs" style="width:80px;" onclick="timeSync()">Sync NTP</button>
-                </div>
+                    <div class="fw-bold mb-2">Current Time</div>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span id="time-display" class="flex-fill" style="font-size:1.4em; font-family:monospace;">—</span>
+                        <span id="time-tz" class="text-secondary small"></span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span id="ntp-status" class="flex-fill text-secondary small">—</span>
+                        <button id="btn-time-sync" class="btn btn-secondary btn-sm" style="width:80px;" onclick="timeSync()">Sync NTP</button>
+                    </div>
 
-                <hr style="margin:8px 0;">
+                    <hr>
 
-                <div style="font-size:0.9em; font-weight:bold; margin-bottom:4px;">Set Time Manually</div>
-                <p style="font-size:0.85em; color:#888; margin:0 0 8px;">Disables NTP synchronization.</p>
-                <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
-                    <input type="text" id="time-set-date" class="form-control input-sm" style="flex:1; min-width:130px;" placeholder="YYYY/MM/DD" maxlength="10">
-                    <input type="time" id="time-set-time" class="form-control input-sm" style="flex:1; min-width:100px;" step="1">
-                    <button class="btn btn-default btn-xs" style="width:80px;" onclick="timeSet()">Set Time</button>
-                </div>
-                <div id="time-set-status" style="margin-top:6px; font-size:0.85em;"></div>
+                    <div class="fw-bold mb-1">Set Time Manually</div>
+                    <p class="text-secondary small mb-2">Disables NTP synchronization.</p>
+                    <div class="d-flex flex-wrap align-items-center gap-1">
+                        <input type="text" id="time-set-date" class="form-control form-control-sm" style="flex:1; min-width:130px;" placeholder="YYYY/MM/DD" maxlength="10">
+                        <input type="time" id="time-set-time" class="form-control form-control-sm" style="flex:1; min-width:100px;" step="1">
+                        <button class="btn btn-secondary btn-sm" style="width:80px;" onclick="timeSet()">Set Time</button>
+                    </div>
+                    <div id="time-set-status" class="mt-2 small"></div>
 
-                <hr style="margin:8px 0;">
+                    <hr>
 
-                <div style="font-size:0.9em; font-weight:bold; margin-bottom:4px;">Real-Time Clock (Adafruit PiRTC DS3231)</div>
-                <p style="font-size:0.85em; color:#888; margin:0 0 8px;">
-                    Keeps accurate time without a network connection.
-                    <a href="https://learn.adafruit.com/adding-a-real-time-clock-to-raspberry-pi" target="_blank" rel="noopener">Setup guide</a>
-                </p>
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                    <span id="rtc-status" style="font-size:0.9em; flex:1; color:#888;">—</span>
-                    <button id="btn-rtc-install" class="btn btn-default btn-xs" onclick="startRtcInstall()">Install</button>
-                    <button id="btn-rtc-remove" class="btn btn-default btn-xs" onclick="startRtcRemove()">Remove</button>
-                </div>
-                <pre id="rtc-output" style="display:none; background:#1a1a1a; color:#e0e0e0; padding:8px 12px; border-radius:3px; min-height:80px; max-height:240px; overflow-y:auto; font-size:0.8em; margin:0 0 8px;"></pre>
-                <div id="rtc-reboot-row" style="display:none; align-items:center; gap:8px;">
-                    <button class="btn btn-warning btn-xs" onclick="rtcReboot()">Reboot Now</button>
-                    <span style="font-size:0.85em; color:#888;">Reboot required to apply changes.</span>
-                </div>
+                    <div class="fw-bold mb-1">Real-Time Clock (Adafruit PiRTC DS3231)</div>
+                    <p class="text-secondary small mb-2">
+                        Keeps accurate time without a network connection.
+                        <a href="https://learn.adafruit.com/adding-a-real-time-clock-to-raspberry-pi" target="_blank" rel="noopener">Setup guide</a>
+                    </p>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span id="rtc-status" class="flex-fill text-secondary small">—</span>
+                        <button id="btn-rtc-install" class="btn btn-secondary btn-sm" onclick="startRtcInstall()">Install</button>
+                        <button id="btn-rtc-remove" class="btn btn-secondary btn-sm" onclick="startRtcRemove()">Remove</button>
+                    </div>
+                    <pre id="rtc-output" class="border rounded p-2" style="display:none; background:#111; color:#e0e0e0; min-height:80px; max-height:240px; overflow-y:auto; font-size:0.8em; margin:0 0 8px;"></pre>
+                    <div id="rtc-reboot-row" style="display:none; align-items:center; gap:8px;">
+                        <button class="btn btn-warning btn-sm" onclick="rtcReboot()">Reboot Now</button>
+                        <span class="text-secondary small">Reboot required to apply changes.</span>
+                    </div>
 
-            </div>
-        </div></div>
+                </div></div>
+            </div></div>
         </div>
 
         <!-- ── Update ──────────────────────────────────────────────── -->
         <div class="tab-pane" id="tab-update">
-        <div class="row"><div class="col-lg-8">
-            <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px;">
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                    <span style="font-size:0.9em; color:#555;">Current version:</span>
-                    <span id="current-version" style="font-size:0.9em; font-family:monospace; color:#333;">—</span>
-                    <button class="btn btn-default btn-xs" onclick="loadVersions()" style="margin-left:4px;">Refresh</button>
-                </div>
-                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-                    <select id="version-select" class="form-control input-sm" style="flex:1;">
-                        <option value="">Loading…</option>
-                    </select>
-                    <button id="btn-run-update" class="btn btn-default btn-sm" onclick="startUpdate()">Install</button>
-                    <span id="update-status" style="font-size:0.9em; color:#888;"></span>
-                </div>
-                <pre id="update-output" style="display:none; background:#1a1a1a; color:#e0e0e0; padding:8px 12px; border-radius:3px; min-height:80px; max-height:360px; overflow-y:auto; font-size:0.8em; margin:0;"></pre>
-
-                <hr style="margin:12px 0 8px;">
-
-                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-                    <button id="btn-os-update" class="btn btn-default btn-sm" onclick="startOsUpdate()">Update OS</button>
-                    <span id="os-update-status" style="font-size:0.9em; color:#888;"></span>
-                </div>
-                <pre id="os-update-output" style="display:none; background:#1a1a1a; color:#e0e0e0; padding:8px 12px; border-radius:3px; min-height:80px; max-height:360px; overflow-y:auto; font-size:0.8em; margin:0;"></pre>
-
-                <hr style="margin:12px 0 8px;">
-
-                <p style="margin:0 0 8px; font-size:0.9em; color:#555;">
-                    Backup includes meet files, images, recorded sessions, and settings.
-                </p>
-                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <a href="/backup_download" class="btn btn-default btn-sm">Download Backup</a>
-                    <div class="file-picker">
-                        <label class="btn btn-default btn-sm" style="margin:0; font-weight:normal; cursor:pointer;">
-                            Restore Backup<input type="file" accept=".tar.gz" style="display:none;" onchange="restoreBackup(this)">
-                        </label>
+            <div class="row"><div class="col-lg-8">
+                <div class="card"><div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="text-secondary small">Current version:</span>
+                        <span id="current-version" class="small" style="font-family:monospace;">—</span>
+                        <button class="btn btn-secondary btn-sm ms-1" onclick="loadVersions()">Refresh</button>
                     </div>
-                    <span id="restore-status" style="font-size:0.9em; color:#888;"></span>
-                </div>
-            </div>
-        </div></div>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <select id="version-select" class="form-select form-select-sm" style="flex:1;">
+                            <option value="">Loading…</option>
+                        </select>
+                        <button id="btn-run-update" class="btn btn-secondary btn-sm" onclick="startUpdate()">Install</button>
+                        <span id="update-status" class="text-secondary small"></span>
+                    </div>
+                    <pre id="update-output" class="border rounded p-2" style="display:none; background:#111; color:#e0e0e0; min-height:80px; max-height:360px; overflow-y:auto; font-size:0.8em; margin:0;"></pre>
+
+                    <hr>
+
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <button id="btn-os-update" class="btn btn-secondary btn-sm" onclick="startOsUpdate()">Update OS</button>
+                        <span id="os-update-status" class="text-secondary small"></span>
+                    </div>
+                    <pre id="os-update-output" class="border rounded p-2" style="display:none; background:#111; color:#e0e0e0; min-height:80px; max-height:360px; overflow-y:auto; font-size:0.8em; margin:0;"></pre>
+
+                    <hr>
+
+                    <p class="text-secondary small mb-2">
+                        Backup includes meet files, images, recorded sessions, and settings.
+                    </p>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <a href="/backup_download" class="btn btn-secondary btn-sm">Download Backup</a>
+                        <div class="file-picker">
+                            <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
+                                Restore Backup<input type="file" accept=".tar.gz" style="display:none;" onchange="restoreBackup(this)">
+                            </label>
+                        </div>
+                        <span id="restore-status" class="text-secondary small"></span>
+                    </div>
+                </div></div>
+            </div></div>
         </div>
 
         <!-- ── Timing ────────────────────────────────────────────── -->
