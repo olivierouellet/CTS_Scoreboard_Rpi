@@ -15,132 +15,22 @@
     --font-digits:      '{{ theme_fonts.digits }}';
     --font-timing:      '{{ theme_fonts.timing }}';
 }
-/* ── Modern dark theme override ─────────────────────────────────────────── */
-body {
-    background: var(--color-bg);
-    color: #d0d0d0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-.container { padding-top: 24px; padding-bottom: 40px; }
-h2 { color: #ffffff; font-weight: 600; font-size: 1.25em; letter-spacing: 0.01em; }
-h3, h4 { color: #cccccc; }
-label { color: #999; font-size: 0.82em; text-transform: uppercase; letter-spacing: 0.05em; }
-hr  { border-color: #2a2a2a; }
-p.text-muted { color: #666 !important; }
-code { background: #1e1e1e; color: #aef; border: 1px solid #333; padding: 1px 5px; border-radius: 4px; }
+/* ── Intentional base styling (BS5-native, no overrides) ── */
+/* Field labels keep the compact uppercase operator-panel look. */
+.form-label { text-transform: uppercase; font-size: 0.78rem; letter-spacing: 0.03em; color: var(--bs-secondary-color); margin-bottom: 0.25rem; }
 
-/* ── Nav tabs ── */
-.nav-tabs { border-bottom: 1px solid #2a2a2a; }
-.nav-tabs > li > a {
-    color: #888;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    border-radius: 0;
-    padding: 10px 16px;
-    font-size: 0.88em;
-    font-weight: 500;
-    transition: color 0.15s;
-}
-.nav-tabs > li > a:hover { color: #ccc; background: transparent; border-color: transparent; border-bottom-color: #444; }
-.nav-tabs > li.active > a,
-.nav-tabs > li.active > a:hover,
-.nav-tabs > li.active > a:focus { color: #fff; background: transparent; border: none; border-bottom: 2px solid #fff; }
-.tab-content { padding-top: 20px; }
-#tab-appearance > .nav-tabs,
-#tab-netgroup   > .nav-tabs,
-#tab-devtools   > .nav-tabs { margin-top: -14px; }
-
-/* ── Cards / panels ── */
-.tab-pane > .row > div > div[style*="background:#f5f5f5"],
-.tab-pane > .row > div > div[style*="background: #f5f5f5"] {
-    background: #1a1a1a !important;
-    border-color: #2e2e2e !important;
-    border-radius: 10px !important;
-}
-div[style*="background:#f5f5f5"] { background: #1a1a1a !important; border-color: #2e2e2e !important; }
-div[style*="background: #f5f5f5"] { background: #1a1a1a !important; border-color: #2e2e2e !important; }
-div[style*="background:#fcf8e3"] { background: #2a2310 !important; border-color: #4a3d10 !important; color: #c8b060 !important; }
-div[style*="background:#fff8e1"] { background: #2a2310 !important; border-color: #4a3d10 !important; }
-div[style*="background:#1a1a1a"] { border-color: #2e2e2e !important; }
-
-/* ── Form controls ── */
-.form-control {
-    background: #111 !important;
-    border: 1px solid #333 !important;
-    color: #d0d0d0 !important;
-    border-radius: 7px !important;
-    box-shadow: none !important;
-}
-.form-control:focus { border-color: #555 !important; box-shadow: none !important; }
-.form-control[disabled], .form-control[readonly] { background: #0a0a0a !important; color: #555 !important; }
-select.form-control option { background: #1a1a1a; color: #d0d0d0; }
-input[type="color"] { border: 1px solid #333; border-radius: 5px; background: #111; }
-
-/* ── Buttons ── */
-.btn { border-radius: 7px; font-size: 0.88em; font-weight: 500; transition: opacity 0.15s; }
-.btn:hover { opacity: 0.85; }
-.btn-default { background: #2a2a2a !important; color: #ccc !important; border: 1px solid #3a3a3a !important; }
-.btn-default:hover { background: #333 !important; color: #fff !important; }
-.btn-primary { background: #2563eb !important; color: #fff !important; }
-.btn-success { background: #16a34a !important; color: #fff !important; }
-.btn-warning { background: #d97706 !important; color: #fff !important; }
-.btn-danger  { background: #dc2626 !important; color: #fff !important; }
-.btn-info    { background: #0891b2 !important; color: #fff !important; }
-.btn[disabled] { opacity: 0.35 !important; }
-
-/* ── Tables ── */
-.table { color: #d0d0d0; }
-.table > thead > tr > th { border-color: #2a2a2a; color: #888; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; background: #151515; }
-.table > tbody > tr > td { border-color: #222; }
-.table-striped > tbody > tr:nth-of-type(odd) { background: #161616; }
-.table-hover > tbody > tr:hover { background: #1e1e1e; }
-.table-bordered { border-color: #2a2a2a !important; }
-.table-bordered > thead > tr > th,
-.table-bordered > tbody > tr > td { border-color: #2a2a2a !important; }
-
-/* ── Alerts / well ── */
-.alert-warning { background: #2a2310; border-color: #4a3d10; color: #c8b060; }
-.alert-danger  { background: #2a1010; border-color: #5c2020; color: #e07070; }
-.alert-success { background: #0f2a1a; border-color: #1a5c30; color: #70c080; }
-.alert-info    { background: #0f1e2a; border-color: #1a3a5c; color: #70a0d0; }
-.well { background: #151515; border-color: #2a2a2a; box-shadow: none; }
-
-/* ── Misc ── */
-.input-group { width: 100%; }
-.input-group-addon { background: #1a1a1a; border-color: #333; color: #888; }
-.panel { background: #1a1a1a; border-color: #2e2e2e; }
-.panel-heading { background: #222 !important; border-color: #2e2e2e; color: #ccc; }
-a { color: #7aaaf0; }
-a:hover { color: #aac8ff; }
-small, .small { color: #777; }
-
-/* ── Time input vertical centering ── */
-input[type="time"].form-control {
-    line-height: 1;
-    padding-top: 5px;
-    padding-bottom: 5px;
-    -webkit-align-items: center;
-    align-items: center;
-}
-input[type="time"]::-webkit-datetime-edit { padding: 0; line-height: 1.4; }
-
-/* ── Password / autofill override ── */
-input[type="password"] { background: #111 !important; color: #d0d0d0 !important; }
+/* Keep autofilled inputs dark instead of the browser's white/yellow box. */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
-    -webkit-box-shadow: 0 0 0 30px #111 inset !important;
-    -webkit-text-fill-color: #d0d0d0 !important;
-    caret-color: #d0d0d0;
+    -webkit-box-shadow: 0 0 0 30px var(--bs-body-bg) inset !important;
+    -webkit-text-fill-color: var(--bs-body-color) !important;
+    caret-color: var(--bs-body-color);
 }
 
-/* ── Test tab: meet-loaded warning ── */
-#test-has-meet-warning {
-    background: #2a2310 !important;
-    border: 1px solid #4a3d10 !important;
-    color: #c8b060 !important;
-}
+/* Vertically center the native time-picker text (webkit). */
+input[type="time"]::-webkit-datetime-edit { padding: 0; line-height: 1.4; }
+
 @font-face { font-family:'Overpass Mono';  src:url('/static/fonts/OverpassMono-Regular.woff2')  format('woff2'); }
 @font-face { font-family:'DSEG7Classic';   src:url('/static/fonts/DSEG7Classic-Regular.woff2')   format('woff2'); }
 @font-face { font-family:'DSEG14Classic';  src:url('/static/fonts/DSEG14Classic-Regular.woff2')  format('woff2'); }
@@ -148,12 +38,7 @@ input:-webkit-autofill:focus {
 @font-face { font-family:'Orbitron';       src:url('/static/fonts/Orbitron-Regular.woff2')        format('woff2'); }
 @font-face { font-family:'Roboto Mono';    src:url('/static/fonts/RobotoMono-Regular.woff2')      format('woff2'); }
 
-/* ── BS5 responsive sidebar shell (modernization Increment 1) ───────────────
-   The old horizontal .nav-tabs bars (top + nested) are replaced by a sidebar.
-   They are hidden rather than deleted so pane markup/IDs stay untouched while
-   panes are reskinned tab-by-tab. The bridge overrides above keep not-yet-
-   reskinned panes looking like today. */
-ul.nav-tabs { display: none !important; }
+/* ── BS5 responsive sidebar shell ── */
 .tab-content { padding-top: 0; }
 #app-sidebar { width: 240px; }
 #app-sidebar .offcanvas-body { padding: 10px; }
@@ -625,11 +510,6 @@ function onPasswordInput(form) {
 
         <!-- ── Appearance ─────────────────────────────────────────── -->
         <div class="tab-pane" id="tab-appearance">
-            <ul class="nav nav-tabs" style="margin-bottom:16px;">
-                <li class="active"><a href="#tab-flow" data-toggle="tab">Flow</a></li>
-                <li><a href="#tab-display" data-toggle="tab">Display</a></li>
-                <li><a href="#tab-theme" data-toggle="tab">Theme</a></li>
-            </ul>
             <div class="tab-content">
                 <!-- ── Flow ───────────────────────────────────────────────── -->
                 <div class="tab-pane active" id="tab-flow">
@@ -997,10 +877,6 @@ function onPasswordInput(form) {
 
         <!-- ── Network group ──────────────────────────────────────────── -->
         <div class="tab-pane" id="tab-netgroup">
-            <ul class="nav nav-tabs" style="margin-bottom:16px;">
-                <li class="active"><a href="#tab-network" data-toggle="tab">Local</a></li>
-                <li><a href="#tab-cloud" data-toggle="tab">Cloud</a></li>
-            </ul>
             <div class="tab-content">
                 <!-- ── Network ─────────────────────────────────────────────── -->
                 <div class="tab-pane active" id="tab-network">
@@ -1107,10 +983,6 @@ function onPasswordInput(form) {
 
         <!-- ── Debug group ────────────────────────────────────────────── -->
         <div class="tab-pane" id="tab-devtools">
-            <ul class="nav nav-tabs" style="margin-bottom:16px;">
-                <li class="active"><a href="#tab-test" data-toggle="tab">Test</a></li>
-                <li><a href="#tab-terminal" data-toggle="tab">Terminal</a></li>
-            </ul>
             <div class="tab-content">
                 <!-- ── Test ─────────────────────────────────────────────────── -->
                 <div class="tab-pane active" id="tab-test">
@@ -1307,7 +1179,7 @@ function onPasswordInput(form) {
             if (state.btn) {
                 var btn = document.getElementById(state.btn);
                 if (btn) {
-                    btn.classList.remove('btn-default', 'btn-secondary', 'btn-warning');
+                    btn.classList.remove('btn-secondary', 'btn-warning');
                     btn.classList.add('btn-success');
                     setTimeout(function() {
                         btn.classList.remove('btn-success');
@@ -1383,7 +1255,7 @@ function onPasswordInput(form) {
             ['input', 'change'].forEach(function(evt) {
                 el.addEventListener(evt, function() {
                     var btn = document.getElementById(btnId);
-                    btn.classList.remove('btn-default', 'btn-secondary');
+                    btn.classList.remove('btn-secondary');
                     btn.classList.add('btn-warning');
                 });
             });
