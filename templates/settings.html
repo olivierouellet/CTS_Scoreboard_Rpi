@@ -1134,7 +1134,7 @@ function onPasswordInput(form) {
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <span class="fw-bold">Recorded Sessions</span>
                             <div class="file-picker">
-                                <label class="btn btn-secondary btn-sm m-0 text-center" style="cursor:pointer; width:70px;">
+                                <label class="btn btn-secondary btn-sm m-0 text-nowrap" style="cursor:pointer; min-width:70px;">
                                     Upload<input type="file" accept=".cts" style="display:none;" onchange="testUpload(this)">
                                 </label>
                             </div>
@@ -1170,7 +1170,7 @@ function onPasswordInput(form) {
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span class="fw-bold">Meet File</span>
                                 <div id="test-meet-upload-btn">
-                                    <label class="btn btn-secondary btn-sm m-0 text-center" style="cursor:pointer; width:70px;">
+                                    <label class="btn btn-secondary btn-sm m-0 text-nowrap" style="cursor:pointer; min-width:70px;">
                                         Load<input type="file" accept=".csv,.lxf" style="display:none;" onchange="testMeetUpload(this)">
                                     </label>
                                 </div>
@@ -1470,9 +1470,9 @@ function onPasswordInput(form) {
                 : '<span class="me-1" style="display:inline-block; ' + W + '"></span>';
             var badge = s.source === 'builtin'
                 ? '<span class="small text-body-secondary ms-1">built-in</span>' : '';
-            html += '<div class="d-flex align-items-center border-bottom py-1">' +
-                    '<span class="flex-fill">' + s.name + badge + '</span>' +
-                    '<div class="d-flex">' + delBtn + playBtn + '</div>' +
+            html += '<div class="d-flex align-items-center border-bottom py-1 gap-1">' +
+                    '<span class="flex-fill text-break" style="min-width:0;">' + s.name + badge + '</span>' +
+                    '<div class="d-flex flex-shrink-0">' + delBtn + playBtn + '</div>' +
                     '</div>';
         });
         div.innerHTML = html;
@@ -1704,10 +1704,10 @@ function onPasswordInput(form) {
                     : '<button class="btn btn-secondary btn-sm text-nowrap" style="min-width:80px;" onclick="showJoinForm(' +
                       JSON.stringify(n.ssid).replace(/"/g, '&quot;') + ',' + (n.security ? 'true' : 'false') +
                       ')">Connect</button>';
-                html += '<div class="d-flex align-items-center border-bottom py-1">' +
-                        '<span class="flex-fill">' + n.ssid + lock + '</span>' +
-                        '<span class="text-body-secondary me-2 text-nowrap" style="font-family:monospace;">' + bars + '</span>' +
-                        '<div style="min-width:110px; text-align:center;">' + action + '</div>' +
+                html += '<div class="d-flex align-items-center border-bottom py-1 gap-1">' +
+                        '<span class="flex-fill text-break" style="min-width:0;">' + n.ssid + lock + '</span>' +
+                        '<span class="text-body-secondary text-nowrap" style="font-family:monospace;">' + bars + '</span>' +
+                        '<div class="flex-shrink-0" style="min-width:80px; text-align:center;">' + action + '</div>' +
                         '</div>';
             });
             list.innerHTML = html;
