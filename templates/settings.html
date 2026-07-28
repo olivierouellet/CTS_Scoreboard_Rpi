@@ -628,73 +628,75 @@ function onPasswordInput(form) {
                 <div class="row"><div class="col-lg-8">
                 <form action="/settings" method="POST">
                     <input type="hidden" name="flow_settings_submit" value="1">
-                    <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px; display:flex;">
-                        <div style="flex:1;">
+                    <div class="card"><div class="card-body">
 
-                            <!-- State diagram -->
-                            <div style="font-size:0.9em; font-weight:bold; margin-bottom:8px;">Screen Modes</div>
-                            <div style="font-size:0.85em; color:#555; margin-bottom:12px; line-height:1.8;">
-                                The scoreboard switches modes automatically based on what the CTS console is sending.
-                            </div>
-                            <div style="font-family:monospace; font-size:0.82em; background:#141414; border:1px solid #2e2e2e; border-radius:3px; padding:10px 14px; line-height:2; margin-bottom:14px;">
-                                <div><span style="background:#333; color:#ccc; padding:1px 6px; border-radius:3px;">Splash</span> &nbsp;←&nbsp; No activity for <strong>Intro timeout</strong> or <strong>Results timeout</strong></div>
-                                <div style="padding-left:16px; color:#666;">↓ New event / heat received</div>
-                                <div><span style="background:#0f2a1a; color:#70c080; padding:1px 6px; border-radius:3px;">Intro</span> &nbsp;&nbsp;&nbsp;Shows swimmer names — if no names, goes straight to Running</div>
-                                <div style="padding-left:16px; color:#666;">↓ Any lane starts running</div>
-                                <div><span style="background:#0f1e2a; color:#70a0d0; padding:1px 6px; border-radius:3px;">Running</span> &nbsp;Shows live clock in all active lanes</div>
-                                <div style="padding-left:16px; color:#666;">↓ All lanes finish</div>
-                                <div><span style="background:#2a2310; color:#c8b060; padding:1px 6px; border-radius:3px;">Results</span> &nbsp;Shows final times and podium highlights (name column empty if no names loaded)</div>
-                            </div>
-
-                            <hr style="margin:8px 0;">
-
-                            <!-- Timeout inputs -->
-                            <div style="font-size:0.9em; font-weight:bold; margin-bottom:4px;">Splash timeouts <small style="font-weight:normal; color:#666;">(scoreboard.html only)</small></div>
-                            <div style="font-size:0.82em; color:#666; margin-bottom:8px;">These apply only to <code>scoreboard.html</code>, which has a Splash mode. <code>live.html</code> has no splash.</div>
-                            <div style="display:flex; flex-direction:column; gap:8px; font-size:0.9em; margin-bottom:14px;">
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <label style="min-width:160px; font-weight:normal; margin:0;">Intro → Splash after</label>
-                                    <input type="number" name="intro_timeout" value="{{ intro_timeout }}" min="5" max="3600"
-                                           class="form-control input-sm" style="width:80px;">
-                                    <span style="color:#888;">seconds &nbsp;<small>(if race doesn't start)</small></span>
-                                </div>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <label style="min-width:160px; font-weight:normal; margin:0;">Results → Splash after</label>
-                                    <input type="number" name="results_timeout" value="{{ results_timeout }}" min="5" max="3600"
-                                           class="form-control input-sm" style="width:80px;">
-                                    <span style="color:#888;">seconds</span>
-                                </div>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <label style="min-width:160px; font-weight:normal; margin:0;">No server update → Splash after</label>
-                                    <input type="number" name="server_update_timeout" value="{{ server_update_timeout }}" min="10" max="3600"
-                                           class="form-control input-sm" style="width:80px;">
-                                    <span style="color:#888;">seconds</span>
-                                </div>
-                            </div>
-
-                            <hr style="margin:8px 0;">
-
-                            <div style="font-size:0.9em; font-weight:bold; margin-bottom:8px;">Timing</div>
-                            <div style="display:flex; flex-direction:column; gap:8px; font-size:0.9em;">
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <label style="min-width:160px; font-weight:normal; margin:0;">Finish debounce</label>
-                                    <input type="number" name="finish_debounce" value="{{ finish_debounce }}" min="0.5" max="10" step="0.1"
-                                           class="form-control input-sm" style="width:80px;">
-                                    <span style="color:#888;">seconds &nbsp;<small>(lap split vs. true finish)</small></span>
-                                </div>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <label style="min-width:160px; font-weight:normal; margin:0;">Split min. duration</label>
-                                    <input type="number" name="split_min_duration" value="{{ split_min_duration }}" min="0.5" max="10" step="0.1"
-                                           class="form-control input-sm" style="width:80px;">
-                                    <span style="color:#888;">seconds &nbsp;<small>(min. stop time to count as a split)</small></span>
-                                </div>
-                            </div>
-
+                        <!-- State diagram -->
+                        <div class="fw-bold mb-2">Screen Modes</div>
+                        <p class="small text-body-secondary mb-2" style="line-height:1.8;">
+                            The scoreboard switches modes automatically based on what the CTS console is sending.
+                        </p>
+                        <div class="border rounded p-2 mb-3" style="font-family:monospace; font-size:0.82em; background:#111; line-height:2;">
+                            <div><span style="background:#333; color:#ccc; padding:1px 6px; border-radius:3px;">Splash</span> &nbsp;←&nbsp; No activity for <strong>Intro timeout</strong> or <strong>Results timeout</strong></div>
+                            <div style="padding-left:16px; color:#666;">↓ New event / heat received</div>
+                            <div><span style="background:#0f2a1a; color:#70c080; padding:1px 6px; border-radius:3px;">Intro</span> &nbsp;&nbsp;&nbsp;Shows swimmer names — if no names, goes straight to Running</div>
+                            <div style="padding-left:16px; color:#666;">↓ Any lane starts running</div>
+                            <div><span style="background:#0f1e2a; color:#70a0d0; padding:1px 6px; border-radius:3px;">Running</span> &nbsp;Shows live clock in all active lanes</div>
+                            <div style="padding-left:16px; color:#666;">↓ All lanes finish</div>
+                            <div><span style="background:#2a2310; color:#c8b060; padding:1px 6px; border-radius:3px;">Results</span> &nbsp;Shows final times and podium highlights (name column empty if no names loaded)</div>
                         </div>
-                        <div style="margin-left:14px; padding-top:20px;">
-                            <button id="btn-update-flow" class="btn btn-default btn-sm" type="submit">Update</button>
+
+                        <hr>
+
+                        <!-- Timeout inputs -->
+                        <div class="fw-bold mb-1">Splash timeouts <small class="fw-normal text-body-secondary">(scoreboard.html only)</small></div>
+                        <p class="small text-body-secondary mb-2">These apply only to <code>scoreboard.html</code>, which has a Splash mode. <code>live.html</code> has no splash.</p>
+
+                        <div class="mb-3">
+                            <label class="form-label mb-1">Intro → Splash after</label>
+                            <div class="input-group input-group-sm" style="max-width:220px;">
+                                <input type="number" name="intro_timeout" value="{{ intro_timeout }}" min="5" max="3600" class="form-control">
+                                <span class="input-group-text">seconds</span>
+                            </div>
+                            <div class="form-text">If the race doesn't start.</div>
                         </div>
-                    </div>
+                        <div class="mb-3">
+                            <label class="form-label mb-1">Results → Splash after</label>
+                            <div class="input-group input-group-sm" style="max-width:220px;">
+                                <input type="number" name="results_timeout" value="{{ results_timeout }}" min="5" max="3600" class="form-control">
+                                <span class="input-group-text">seconds</span>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label mb-1">No server update → Splash after</label>
+                            <div class="input-group input-group-sm" style="max-width:220px;">
+                                <input type="number" name="server_update_timeout" value="{{ server_update_timeout }}" min="10" max="3600" class="form-control">
+                                <span class="input-group-text">seconds</span>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <div class="fw-bold mb-2">Timing</div>
+                        <div class="mb-3">
+                            <label class="form-label mb-1">Finish debounce</label>
+                            <div class="input-group input-group-sm" style="max-width:220px;">
+                                <input type="number" name="finish_debounce" value="{{ finish_debounce }}" min="0.5" max="10" step="0.1" class="form-control">
+                                <span class="input-group-text">seconds</span>
+                            </div>
+                            <div class="form-text">Lap split vs. true finish.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label mb-1">Split min. duration</label>
+                            <div class="input-group input-group-sm" style="max-width:220px;">
+                                <input type="number" name="split_min_duration" value="{{ split_min_duration }}" min="0.5" max="10" step="0.1" class="form-control">
+                                <span class="input-group-text">seconds</span>
+                            </div>
+                            <div class="form-text">Min. stop time to count as a split.</div>
+                        </div>
+
+                        <button id="btn-update-flow" class="btn btn-secondary btn-sm" type="submit">Update</button>
+
+                    </div></div>
                 </form>
                 </div></div>
                 </div>
@@ -703,139 +705,128 @@ function onPasswordInput(form) {
                 <div class="tab-pane" id="tab-display">
                 <div class="row"><div class="col-lg-8"><form id="display-settings-form" action="/settings" method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="display_settings_submit" value="1">
-                    <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px; display:flex;">
-                        <div style="flex:1;">
-                            <div style="display:flex; gap:12px; margin-bottom:8px;">
-                                <div style="flex:1;">
-                                    <label for="meet_title" style="font-weight:normal;">Title</label>
-                                    <input id="meet_title" name="meet_title" value="{{ meet_title }}" class="form-control">
+                    <div class="card"><div class="card-body">
+                        <div class="mb-3">
+                            <label for="meet_title" class="form-label">Title</label>
+                            <input id="meet_title" name="meet_title" value="{{ meet_title }}" class="form-control" style="max-width:420px;">
+                        </div>
+                        <hr>
+                        <div class="mb-3">
+                            <label for="locale" class="form-label">Language</label>
+                            <select id="locale" name="locale" class="form-select form-select-sm mb-1" style="max-width:220px;">
+                            {% for code, lname in locale_list %}
+                                <option value="{{ code }}" {% if code == locale %}selected{% endif %}>{{ lname }}</option>
+                            {% endfor %}
+                            {% if custom_locale_list %}
+                                <optgroup label="Custom">
+                                {% for code, lname in custom_locale_list %}
+                                    <option value="{{ code }}" {% if code == locale %}selected{% endif %}>{{ lname }}</option>
+                                {% endfor %}
+                                </optgroup>
+                            {% endif %}
+                            </select>
+                            <div class="d-flex flex-wrap gap-1">
+                                <div class="file-picker">
+                                    <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
+                                        Add<input name="locale_file" type="file" accept=".toml" style="display:none;">
+                                    </label>
+                                    <span class="file-msg small text-body-secondary ms-1"></span>
                                 </div>
-                                <div style="flex:1;"></div>
-                            </div>
-                            <hr style="margin:8px 0;">
-                            <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:8px;">
-                                <label for="locale" style="min-width:160px; font-weight:normal; margin:0; padding-top:5px;">Language</label>
-                                <div>
-                                    <select id="locale" name="locale" class="form-control input-sm" style="width:180px; margin-bottom:4px;">
-                                    {% for code, lname in locale_list %}
-                                        <option value="{{ code }}" {% if code == locale %}selected{% endif %}>{{ lname }}</option>
-                                    {% endfor %}
-                                    {% if custom_locale_list %}
-                                        <optgroup label="Custom">
-                                        {% for code, lname in custom_locale_list %}
-                                            <option value="{{ code }}" {% if code == locale %}selected{% endif %}>{{ lname }}</option>
-                                        {% endfor %}
-                                        </optgroup>
-                                    {% endif %}
-                                    </select>
-                                    <div style="display:flex; gap:4px; flex-wrap:wrap;">
-                                        <div class="file-picker">
-                                            <label class="btn btn-default btn-xs" style="margin:0; font-weight:normal; cursor:pointer;">
-                                                Add<input name="locale_file" type="file" accept=".toml" style="display:none;">
-                                            </label>
-                                            <span class="file-msg" style="font-size:0.85em; color:#888; display:inline; margin-left:4px;"></span>
-                                        </div>
-                                        {% if locale in custom_locale_codes %}
-                                        <a href="/locale_delete" class="btn btn-default btn-xs">Delete</a>
-                                        {% endif %}
-                                        {% if custom_locale_list %}
-                                        <a href="/locale_delete_all" class="btn btn-default btn-xs">Delete All</a>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </div>
-                            <hr style="margin:8px 0;">
-                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                                <label for="label_style" style="min-width:160px; font-weight:normal; margin:0;">Label Style</label>
-                                <select id="label_style" name="label_style" class="form-control input-sm" style="width:180px;">
-                                    <option value="long"  {% if label_style == 'long'  %}selected{% endif %}>Long  (ex: EVENT)</option>
-                                    <option value="short" {% if label_style == 'short' %}selected{% endif %}>Short (ex: EV)</option>
-                                </select>
-                            </div>
-                            <hr style="margin:8px 0;">
-                            <div style="padding:4px 0; display:flex; align-items:center;">
-                                <span style="display:inline-block; min-width:130px;">Column titles:</span>
-                                <label style="font-weight:normal; min-width:70px;"><input type="checkbox" name="show_lane_header" value="1" {% if show_lane_header %}checked{% endif %}> Lane</label>
-                                <label style="font-weight:normal; min-width:70px;"><input type="checkbox" name="show_name_header" value="1" {% if show_name_header %}checked{% endif %}> Name</label>
-                                <label style="font-weight:normal; min-width:70px;"><input type="checkbox" name="show_club_header" value="1" {% if show_club_header %}checked{% endif %}> Club</label>
-                                <label style="font-weight:normal; min-width:70px;"><input type="checkbox" name="show_time_header" value="1" {% if show_time_header %}checked{% endif %}> Time</label>
-                                <label style="font-weight:normal; min-width:70px;"><input type="checkbox" name="show_delta_header" value="1" {% if show_delta_header %}checked{% endif %}> Diff</label>
-                                <label style="font-weight:normal;"><input type="checkbox" name="show_position_header" value="1" {% if show_position_header %}checked{% endif %}> Position</label>
-                            </div>
-                            <div style="padding:4px 0; display:flex; align-items:center;">
-                                <span style="display:inline-block; min-width:130px;">Columns shown:</span>
-                                <span style="min-width:70px;"></span>
-                                <label style="font-weight:normal; min-width:70px;"><input type="checkbox" name="show_name" value="1" {% if show_name %}checked{% endif %}> Name</label>
-                                <label style="font-weight:normal; min-width:70px;"><input type="checkbox" name="show_club" value="1" {% if show_club %}checked{% endif %}> Club</label>
-                                <span style="min-width:70px;"></span>
-                                <label style="font-weight:normal; min-width:70px;"><input type="checkbox" name="show_delta" value="1" {% if show_delta %}checked{% endif %}> Diff</label>
-                                <label style="font-weight:normal; min-width:70px;"><input type="checkbox" name="show_position" value="1" {% if show_position %}checked{% endif %}> Position</label>
-                            </div>
-                            <div style="padding:4px 0; display:flex; align-items:center;">
-                                <span style="display:inline-block; min-width:130px;">Features:</span>
-                                <label style="font-weight:normal; min-width:70px;"><input type="checkbox" name="show_podium" value="1" {% if show_podium %}checked{% endif %}> Podium colors</label>
-                            </div>
-                            <div style="padding:4px 0; display:flex; align-items:center;">
-                                <span style="display:inline-block; min-width:130px;">Results order:</span>
-                                <label style="font-weight:normal; min-width:100px;"><input type="radio" name="results_sort" value="lane" {% if results_sort == 'lane' %}checked{% endif %}> By lane</label>
-                                <label style="font-weight:normal; min-width:100px;"><input type="radio" name="results_sort" value="place" {% if results_sort == 'place' %}checked{% endif %}> By position</label>
+                                {% if locale in custom_locale_codes %}
+                                <a href="/locale_delete" class="btn btn-outline-danger btn-sm">Delete</a>
+                                {% endif %}
+                                {% if custom_locale_list %}
+                                <a href="/locale_delete_all" class="btn btn-outline-danger btn-sm">Delete All</a>
+                                {% endif %}
                             </div>
                         </div>
-                        <div style="margin-left:14px; padding-top:20px;">
-                            <button id="btn-update-display" class="btn btn-default btn-sm" type="submit">Update</button>
+                        <hr>
+                        <div class="mb-3">
+                            <label for="label_style" class="form-label">Label Style</label>
+                            <select id="label_style" name="label_style" class="form-select form-select-sm" style="max-width:220px;">
+                                <option value="long"  {% if label_style == 'long'  %}selected{% endif %}>Long  (ex: EVENT)</option>
+                                <option value="short" {% if label_style == 'short' %}selected{% endif %}>Short (ex: EV)</option>
+                            </select>
                         </div>
-                    </div>
+                        <hr>
+                        <div class="mb-3">
+                            <div class="form-label mb-1">Column titles</div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_lane_h"  name="show_lane_header"     value="1" {% if show_lane_header %}checked{% endif %}><label class="form-check-label" for="cb_lane_h">Lane</label></div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_name_h"  name="show_name_header"     value="1" {% if show_name_header %}checked{% endif %}><label class="form-check-label" for="cb_name_h">Name</label></div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_club_h"  name="show_club_header"     value="1" {% if show_club_header %}checked{% endif %}><label class="form-check-label" for="cb_club_h">Club</label></div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_time_h"  name="show_time_header"     value="1" {% if show_time_header %}checked{% endif %}><label class="form-check-label" for="cb_time_h">Time</label></div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_delta_h" name="show_delta_header"    value="1" {% if show_delta_header %}checked{% endif %}><label class="form-check-label" for="cb_delta_h">Diff</label></div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_pos_h"   name="show_position_header" value="1" {% if show_position_header %}checked{% endif %}><label class="form-check-label" for="cb_pos_h">Position</label></div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-label mb-1">Columns shown</div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_name"  name="show_name"     value="1" {% if show_name %}checked{% endif %}><label class="form-check-label" for="cb_name">Name</label></div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_club"  name="show_club"     value="1" {% if show_club %}checked{% endif %}><label class="form-check-label" for="cb_club">Club</label></div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_delta" name="show_delta"    value="1" {% if show_delta %}checked{% endif %}><label class="form-check-label" for="cb_delta">Diff</label></div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_pos"   name="show_position" value="1" {% if show_position %}checked{% endif %}><label class="form-check-label" for="cb_pos">Position</label></div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-label mb-1">Features</div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_podium" name="show_podium" value="1" {% if show_podium %}checked{% endif %}><label class="form-check-label" for="cb_podium">Podium colors</label></div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-label mb-1">Results order</div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="rs_lane"  name="results_sort" value="lane"  {% if results_sort == 'lane' %}checked{% endif %}><label class="form-check-label" for="rs_lane">By lane</label></div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="rs_place" name="results_sort" value="place" {% if results_sort == 'place' %}checked{% endif %}><label class="form-check-label" for="rs_place">By position</label></div>
+                        </div>
+                        <button id="btn-update-display" class="btn btn-secondary btn-sm" type="submit">Update</button>
+                    </div></div>
                 </form>
-                <form id="splash-settings-form" action="/settings" method="POST" enctype="multipart/form-data" style="margin-top:10px;">
+                <form id="splash-settings-form" action="/settings" method="POST" enctype="multipart/form-data" class="mt-3">
                     <input type="hidden" name="splash_settings_submit" value="1">
-                    <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px;">
-                        <div style="margin-bottom:8px;">
-                            <label style="font-weight:normal;">Splash Screen</label>
-                            <select name="splash_url" class="form-control" style="margin-bottom:4px;" onchange="_fsubmit(this.form)">
+                    <div class="card"><div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Splash Screen</label>
+                            <select name="splash_url" class="form-select form-select-sm mb-1" onchange="_fsubmit(this.form)">
                                 <option value="" {% if not splash_url %}selected{% endif %}>-- None --</option>
                                 {% for url in splash_url_list %}
                                     <option value="{{ url }}" {% if url == splash_url %}selected{% endif %}>{{ url }}</option>
                                 {% endfor %}
                             </select>
-                            <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap; overflow:hidden;">
-                                <div class="file-picker" style="flex-shrink:0;">
-                                    <label class="btn btn-default btn-xs" style="margin:0; font-weight:normal; cursor:pointer;">
+                            <div class="d-flex flex-wrap align-items-center gap-1">
+                                <div class="file-picker flex-shrink-0">
+                                    <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
                                         Add Image<input name="splash_file" type="file" accept="image/*" style="display:none;" onchange="_fsubmit(this.closest('form'))">
                                     </label>
-                                    <span class="file-msg" style="font-size:0.85em; color:#888; display:inline; margin-left:4px;"></span>
+                                    <span class="file-msg small text-body-secondary ms-1"></span>
                                 </div>
                                 {% if splash_url %}
-                                <a href="/splash_delete" class="btn btn-default btn-xs danger" style="flex-shrink:0;" onclick="return confirm('Delete {{ splash_url }}?')">Delete</a>
+                                <a href="/splash_delete" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ splash_url }}?')">Delete</a>
                                 {% endif %}
                                 {% if splash_url_list %}
-                                <a href="/splash_delete_all" class="btn btn-default btn-xs danger" style="flex-shrink:0;" onclick="return confirm('Delete all splash images?')">Delete All</a>
+                                <a href="/splash_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete all splash images?')">Delete All</a>
                                 {% endif %}
                                 {% if splash_url %}
                                 <img src="{{ url_for('appearance.serve_image', filename=splash_url) }}" style="max-height:36px; max-width:72px; border-radius:3px; flex-shrink:0;"/>
                                 {% endif %}
                             </div>
                         </div>
-                        <div style="padding:4px 0; display:flex; align-items:center; gap:8px;">
-                            <label style="min-width:160px; font-weight:normal; margin:0;">Carousel interval</label>
-                            <input type="number" name="carousel_interval" value="{{ carousel_interval }}" min="3" max="300" step="1"
-                                   class="form-control input-sm" style="width:80px;" onchange="_fsubmit(this.form)">
-                            <span style="color:#888;">seconds per slide</span>
+                        <div>
+                            <label class="form-label mb-1">Carousel interval</label>
+                            <div class="input-group input-group-sm" style="max-width:220px;">
+                                <input type="number" name="carousel_interval" value="{{ carousel_interval }}" min="3" max="300" step="1" class="form-control" onchange="_fsubmit(this.form)">
+                                <span class="input-group-text">sec / slide</span>
+                            </div>
                         </div>
-                    </div>
+                    </div></div>
                 </form></div></div>
                 </div>
 
                 <!-- ── Theme ───────────────────────────────────────────────── -->
                 <div class="tab-pane" id="tab-theme">
                 <div class="row"><div class="col-lg-8">
-                    <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px; display:flex;">
-                        <div style="flex:1;">
+                    <div class="card"><div class="card-body">
                             <form id="theme_update_form" action="/settings" method="POST" enctype="multipart/form-data">
                                 <input type="hidden" name="theme_update_submit" value="1">
-                                <div style="display:flex; gap:12px; margin-bottom:4px;">
-                                    <div style="flex:1;">
-                                        <label for="theme_select" style="font-weight:normal;">Theme</label>
-                                        <select id="theme_select" name="theme_select" class="form-control" style="margin-bottom:4px;">
+                                <div class="row g-3 mb-1">
+                                    <div class="col-md-6">
+                                        <label for="theme_select" class="form-label">Theme</label>
+                                        <select id="theme_select" name="theme_select" class="form-select form-select-sm mb-1">
                                         {% for code, tname in theme_list %}
                                             <option value="{{ code }}" {% if code == active_theme %}selected{% endif %}>{{ tname }}</option>
                                         {% endfor %}
@@ -847,86 +838,86 @@ function onPasswordInput(form) {
                                             </optgroup>
                                         {% endif %}
                                         </select>
-                                        <div style="display:flex; gap:4px;">
+                                        <div class="d-flex flex-wrap gap-1">
                                             {% if active_theme in custom_theme_codes %}
-                                            <a href="/theme_delete" class="btn btn-default btn-xs">Delete</a>
+                                            <a href="/theme_delete" class="btn btn-outline-danger btn-sm">Delete</a>
                                             {% endif %}
                                             {% if custom_theme_list %}
-                                            <a href="/theme_delete_all" class="btn btn-default btn-xs">Delete All Customs</a>
+                                            <a href="/theme_delete_all" class="btn btn-outline-danger btn-sm">Delete All Customs</a>
                                             {% endif %}
                                         </div>
                                     </div>
-                                    <div style="flex:1;">
-                                        <label style="visibility:hidden;">.</label>
-                                        <div style="display:flex; gap:4px; align-items:flex-start;">
+                                    <div class="col-md-6">
+                                        <label class="form-label d-none d-md-block">&nbsp;</label>
+                                        <div class="d-flex gap-1 align-items-start">
                                             <div class="file-picker">
-                                                <label class="btn btn-default btn-sm" style="margin:0; font-weight:normal; cursor:pointer;">
+                                                <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
                                                     Add Theme<input name="theme_file" type="file" accept=".toml" style="display:none;">
                                                 </label>
-                                                <span class="file-msg" style="font-size:0.85em; color:#888; display:block; margin-top:4px;"></span>
+                                                <span class="file-msg small text-body-secondary d-block mt-1"></span>
                                             </div>
-                                            <button type="button" class="btn btn-default btn-sm" onclick="saveCustomTheme()">Save custom</button>
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="saveCustomTheme()">Save custom</button>
                                         </div>
                                     </div>
                                 </div>
-                                <hr style="margin:8px 0;">
-                                <div style="font-weight:bold; margin-bottom:8px;">Custom overrides</div>
+                                <hr>
+                                <div class="fw-bold mb-2">Custom overrides</div>
                                 <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                    <span style="min-width:120px; font-size:0.9em; color:#555; flex-shrink:0;">Background</span>
+                                    <span style="min-width:120px; font-size:0.9em; color:var(--bs-secondary-color); flex-shrink:0;">Background</span>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_bg" value="{{ theme_colors.bg }}"> Background</label>
                                 </div>
                                 <hr style="margin:6px 0;">
                                 <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                    <span style="min-width:120px; font-size:0.9em; color:#555; flex-shrink:0;">Header bar</span>
+                                    <span style="min-width:120px; font-size:0.9em; color:var(--bs-secondary-color); flex-shrink:0;">Header bar</span>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_header_bg" value="{{ theme_colors.header_bg }}"> Background</label>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_header_border" value="{{ theme_colors.header_border }}"> Border</label>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_header_label" value="{{ theme_colors.header_label }}"> Label</label>
                                     <label style="font-weight:normal; font-size:0.9em;"><input type="color" name="color_header_value" value="{{ theme_colors.header_value }}"> Value</label>
                                 </div>
                                 <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                    <span style="min-width:120px; font-size:0.9em; color:#555; flex-shrink:0;">Table header</span>
+                                    <span style="min-width:120px; font-size:0.9em; color:var(--bs-secondary-color); flex-shrink:0;">Table header</span>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_th_bg" value="{{ theme_colors.th_bg }}"> Background</label>
                                     <label style="font-weight:normal; font-size:0.9em;"><input type="color" name="color_th_text" value="{{ theme_colors.th_text }}"> Text</label>
                                 </div>
                                 <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                    <span style="min-width:120px; font-size:0.9em; color:#555; flex-shrink:0;">Rows</span>
+                                    <span style="min-width:120px; font-size:0.9em; color:var(--bs-secondary-color); flex-shrink:0;">Rows</span>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_row_odd" value="{{ theme_colors.row_odd }}"> Odd</label>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_row_even" value="{{ theme_colors.row_even }}"> Even</label>
                                     <label style="font-weight:normal; font-size:0.9em;"><input type="color" name="color_row_text" value="{{ theme_colors.row_text }}"> Text</label>
                                 </div>
                                 <hr style="margin:6px 0;">
                                 <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                    <span style="min-width:120px; font-size:0.9em; color:#555; flex-shrink:0;">Timing</span>
+                                    <span style="min-width:120px; font-size:0.9em; color:var(--bs-secondary-color); flex-shrink:0;">Timing</span>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_time" value="{{ theme_colors.time }}"> Time</label>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_delta_better" value="{{ theme_colors.delta_better }}"> Faster</label>
                                     <label style="font-weight:normal; font-size:0.9em;"><input type="color" name="color_delta_worse" value="{{ theme_colors.delta_worse }}"> Slower</label>
                                 </div>
                                 <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                    <span style="min-width:120px; font-size:0.9em; color:#555; flex-shrink:0;">Podium</span>
+                                    <span style="min-width:120px; font-size:0.9em; color:var(--bs-secondary-color); flex-shrink:0;">Podium</span>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_podium_gold" value="{{ theme_colors.podium_gold }}"> Gold</label>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_podium_silver" value="{{ theme_colors.podium_silver }}"> Silver</label>
                                     <label style="font-weight:normal; font-size:0.9em;"><input type="color" name="color_podium_bronze" value="{{ theme_colors.podium_bronze }}"> Bronze</label>
                                 </div>
                                 <hr style="margin:6px 0;">
-                                <div style="font-size:0.8em; color:#555; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;">Schedule</div>
+                                <div class="text-uppercase small mb-2" style="color:var(--bs-secondary-color); letter-spacing:0.06em;">Schedule</div>
                                 <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                    <span style="min-width:120px; font-size:0.9em; color:#555; flex-shrink:0;">Event / Heat</span>
+                                    <span style="min-width:120px; font-size:0.9em; color:var(--bs-secondary-color); flex-shrink:0;">Event / Heat</span>
                                     <label style="font-weight:normal; font-size:0.9em;"><input type="color" name="color_schedule_event" value="{{ theme_colors.schedule_event }}"> Text</label>
                                 </div>
                                 <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                    <span style="min-width:120px; font-size:0.9em; color:#555; flex-shrink:0;">Time</span>
+                                    <span style="min-width:120px; font-size:0.9em; color:var(--bs-secondary-color); flex-shrink:0;">Time</span>
                                     <label style="font-weight:normal; font-size:0.9em;"><input type="color" name="color_schedule_time" value="{{ theme_colors.schedule_time }}"> Text</label>
                                 </div>
                                 <div style="display:flex; align-items:center; margin-bottom:6px;">
-                                    <span style="min-width:120px; font-size:0.9em; color:#555; flex-shrink:0;">Swimmer</span>
+                                    <span style="min-width:120px; font-size:0.9em; color:var(--bs-secondary-color); flex-shrink:0;">Swimmer</span>
                                     <label style="font-weight:normal; font-size:0.9em; min-width:130px;"><input type="color" name="color_schedule_name" value="{{ theme_colors.schedule_name }}"> Name</label>
                                     <label style="font-weight:normal; font-size:0.9em;"><input type="color" name="color_schedule_club" value="{{ theme_colors.schedule_club }}"> Club</label>
                                 </div>
                                 <hr style="margin:6px 0;">
-                                <div style="display:flex; gap:12px; margin-bottom:4px;">
-                                    <div style="flex:1;">
-                                        <label style="font-weight:normal;">Font</label>
-                                        <select name="font_family" id="sel-font-family" class="form-control" onchange="updateFontPreview(this,'prev-font-family')">
+                                <div class="row g-3 mb-1">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Font</label>
+                                        <select name="font_family" id="sel-font-family" class="form-select form-select-sm" onchange="updateFontPreview(this,'prev-font-family')">
                                             <option value="Overpass Mono"   {% if theme_fonts.family == 'Overpass Mono'   %}selected{% endif %}>Overpass Mono</option>
                                             <option value="Roboto Mono"     {% if theme_fonts.family == 'Roboto Mono'     %}selected{% endif %}>Roboto Mono</option>
                                             <option value="Share Tech Mono" {% if theme_fonts.family == 'Share Tech Mono' %}selected{% endif %}>Share Tech Mono</option>
@@ -938,9 +929,9 @@ function onPasswordInput(form) {
                                         </select>
                                         <div id="prev-font-family" style="font-family:var(--font-family),monospace; margin-top:4px; padding:3px 8px; background:var(--color-row-odd); border:1px solid #2e2e2e; border-radius:3px; font-size:1em; color:var(--color-row-text); white-space:nowrap; overflow:hidden;">0:58.21 — Tremblay Sophie</div>
                                     </div>
-                                    <div style="flex:1;">
-                                        <label style="font-weight:normal;">Digit Font</label>
-                                        <select name="font_digits" id="sel-font-digits" class="form-control" onchange="updateFontPreview(this,'prev-font-digits')">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Digit Font</label>
+                                        <select name="font_digits" id="sel-font-digits" class="form-select form-select-sm" onchange="updateFontPreview(this,'prev-font-digits')">
                                             <option value="DSEG7Classic"    {% if theme_fonts.digits == 'DSEG7Classic'    %}selected{% endif %}>DSEG7Classic</option>
                                             <option value="DSEG14Classic"   {% if theme_fonts.digits == 'DSEG14Classic'   %}selected{% endif %}>DSEG14Classic</option>
                                             <option value="Overpass Mono"   {% if theme_fonts.digits == 'Overpass Mono'   %}selected{% endif %}>Overpass Mono</option>
@@ -952,9 +943,9 @@ function onPasswordInput(form) {
                                         </select>
                                         <div id="prev-font-digits" style="font-family:var(--font-digits),monospace; margin-top:4px; padding:3px 8px; background:var(--color-row-odd); border:1px solid #2e2e2e; border-radius:3px; font-size:1em; color:var(--color-time); white-space:nowrap; overflow:hidden;">1:02.34</div>
                                     </div>
-                                    <div style="flex:1;">
-                                        <label style="font-weight:normal;">Timing Font</label>
-                                        <select name="font_timing" id="sel-font-timing" class="form-control" onchange="updateFontPreview(this,'prev-font-timing')">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Timing Font</label>
+                                        <select name="font_timing" id="sel-font-timing" class="form-select form-select-sm" onchange="updateFontPreview(this,'prev-font-timing')">
                                             <option value="DSEG7Classic"    {% if theme_fonts.timing == 'DSEG7Classic'    %}selected{% endif %}>DSEG7Classic</option>
                                             <option value="DSEG14Classic"   {% if theme_fonts.timing == 'DSEG14Classic'   %}selected{% endif %}>DSEG14Classic</option>
                                             <option value="Overpass Mono"   {% if theme_fonts.timing == 'Overpass Mono'   %}selected{% endif %}>Overpass Mono</option>
@@ -969,11 +960,8 @@ function onPasswordInput(form) {
                                 <input type="hidden" name="theme_save_submit" value="1">
                                 <input type="hidden" id="theme_save_name" name="theme_name" value="">
                             </form>
-                        </div>
-                        <div style="margin-left:14px; padding-top:20px;">
-                            <button id="btn-update-theme" class="btn btn-default btn-sm" form="theme_update_form" type="submit">Update</button>
-                        </div>
-                    </div>
+                            <button id="btn-update-theme" class="btn btn-secondary btn-sm" form="theme_update_form" type="submit">Update</button>
+                    </div></div>
                 </div></div>
                 </div>
             </div>
