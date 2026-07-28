@@ -1,13 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ t.admin_title }}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.ico">
+    <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { background:#0d0d0d; color:#e0e0e0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; padding:32px 24px; }
+        body { background:#0d0d0d; color:#e0e0e0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }
         h1  { font-size:1.3em; font-weight:400; color:#888; letter-spacing:0.06em; text-transform:uppercase; }
         h2  { font-size:0.78em; font-weight:600; color:#555; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:10px; }
         table { width:100%; border-collapse:collapse; margin-bottom:16px; }
@@ -64,27 +65,47 @@
         .panel-row { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
         .panel-row:last-child { margin-bottom:0; }
         .panel-label { font-size:0.8em; color:#555; min-width:90px; }
+
+        /* ── BS5 responsive sidebar shell ── */
+        #app-sidebar { width: 240px; }
+        #app-sidebar .offcanvas-body { padding: 10px; }
+        .app-nav .nav-link { color:#bbb; border-radius:6px; padding:6px 12px; font-size:0.9em; cursor:pointer; }
+        .app-nav .nav-link:hover { background:#1e1e1e; color:#fff; }
+        .app-nav .nav-link.active { background:#2563eb; color:#fff; }
+        @media (min-width:992px) { #app-sidebar { min-height: calc(100vh - 57px); flex:0 0 auto; } }
     </style>
 </head>
 <body>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
-        <h1>{{ t.admin_title }}</h1>
-        <div style="display:flex;gap:8px;align-items:center;">
-            <a href="/admin" style="font-size:0.8em;color:#555;text-decoration:none;border:1px solid #333;padding:4px 10px;border-radius:4px;" onmouseover="this.style.color='#aaa';this.style.borderColor='#666'" onmouseout="this.style.color='#555';this.style.borderColor='#333'">↻</a>
-            <a href="/logout" style="font-size:0.8em;color:#555;text-decoration:none;border:1px solid #333;padding:4px 10px;border-radius:4px;" onmouseover="this.style.color='#aaa';this.style.borderColor='#666'" onmouseout="this.style.color='#555';this.style.borderColor='#333'">{{ t.logout }}</a>
+<div class="container-fluid px-0">
+    <nav class="navbar border-bottom px-3 py-2">
+        <button class="btn btn-secondary btn-sm d-lg-none me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#app-sidebar" aria-controls="app-sidebar">☰</button>
+        <span class="navbar-brand mb-0 h5">{{ t.admin_title }}</span>
+        <div class="d-flex gap-2 align-items-center ms-auto">
+            <a href="/admin" class="btn btn-secondary btn-sm" title="Refresh">↻</a>
+            <a href="/logout" class="btn btn-secondary btn-sm">{{ t.logout }}</a>
         </div>
-    </div>
+    </nav>
 
-    <ul class="nav-tabs" id="main-tabs">
-        <li class="active"><a href="#tab-meets">{{ t.active_meets }}</a></li>
-        <li><a href="#tab-organizers">{{ t.organizers }}</a></li>
-        <li><a href="#tab-appearance">{{ t.get('tab_appearance', 'Appearance') }}</a></li>
-        <li><a href="#tab-update">{{ t.get('tab_update', 'Update & Backup') }}</a></li>
-        <li><a href="#tab-debug">{{ t.get('tab_debug', 'Debug') }}</a></li>
-        <li><a href="#tab-account">{{ t.get('tab_account', 'Account') }}</a></li>
-    </ul>
+    <div class="d-flex">
+        <div class="offcanvas-lg offcanvas-start border-end" tabindex="-1" id="app-sidebar" aria-labelledby="app-sidebar-label">
+            <div class="offcanvas-header d-lg-none">
+                <h5 class="offcanvas-title" id="app-sidebar-label">Menu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#app-sidebar" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body d-block">
+                <nav class="nav flex-column app-nav">
+                    <a class="nav-link" data-target="#tab-meets">{{ t.active_meets }}</a>
+                    <a class="nav-link" data-target="#tab-organizers">{{ t.organizers }}</a>
+                    <a class="nav-link" data-target="#tab-appearance">{{ t.get('tab_appearance', 'Appearance') }}</a>
+                    <a class="nav-link" data-target="#tab-update">{{ t.get('tab_update', 'Update & Backup') }}</a>
+                    <a class="nav-link" data-target="#tab-debug">{{ t.get('tab_debug', 'Debug') }}</a>
+                    <a class="nav-link" data-target="#tab-account">{{ t.get('tab_account', 'Account') }}</a>
+                </nav>
+            </div>
+        </div>
 
-    <div class="tab-content">
+        <main class="flex-fill p-3" style="min-width:0;">
+            <div class="tab-content">
 
         <!-- ── Meets (live + retained) ── -->
         <div class="tab-pane active" id="tab-meets">
@@ -375,8 +396,13 @@
             </div>
         </div>
 
-    </div><!-- /.tab-content -->
+            </div><!-- /.tab-content -->
+        </main>
+    </div><!-- /.d-flex -->
+</div><!-- /.container-fluid -->
 
+    <script src="/static/js/bootstrap.bundle-5.3.3.min.js"></script>
+    <script src="/static/js/htmx-2.0.4.min.js"></script>
     <script>
         // ── Attendance counts ──────────────────────────────────────────────────
         function refreshAttendees(span, win) {
@@ -398,20 +424,23 @@
             });
         });
 
-        // ── Tab switching ──────────────────────────────────────────────────────
-        function showTab(hash) {
-            const target = hash || '#tab-meets';
-            document.querySelectorAll('.nav-tabs li').forEach(li => li.classList.remove('active'));
+        // ── Sidebar navigation ──────────────────────────────────────────────────
+        function showTab(target) {
+            target = target || '#tab-meets';
+            document.querySelectorAll('.app-nav .nav-link').forEach(a => a.classList.remove('active'));
             document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-            const a = document.querySelector('.nav-tabs a[href="' + target + '"]');
+            const a = document.querySelector('.app-nav .nav-link[data-target="' + target + '"]');
             const pane = document.querySelector(target);
-            if (a && pane) { a.parentElement.classList.add('active'); pane.classList.add('active'); }
+            if (a && pane) { a.classList.add('active'); pane.classList.add('active'); }
         }
-        document.querySelectorAll('.nav-tabs a').forEach(a => {
+        document.querySelectorAll('.app-nav .nav-link[data-target]').forEach(a => {
             a.addEventListener('click', e => {
                 e.preventDefault();
-                showTab(a.getAttribute('href'));
-                history.replaceState(null, '', a.getAttribute('href'));
+                const target = a.getAttribute('data-target');
+                showTab(target);
+                history.replaceState(null, '', target);
+                const oc = document.getElementById('app-sidebar');
+                if (window.bootstrap && oc) { const i = bootstrap.Offcanvas.getInstance(oc); if (i) i.hide(); }
             });
         });
         showTab(location.hash);
