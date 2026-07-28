@@ -174,6 +174,7 @@ ul.nav-tabs { display: none !important; }
     animation: holdfill 1.2s linear forwards;
 }
 @keyframes holdfill { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }
+[data-hold] { touch-action: none; }
 @media (min-width: 992px) {
     #app-sidebar { min-height: calc(100vh - 57px); flex: 0 0 auto; }
 }
@@ -199,8 +200,8 @@ function onPasswordInput(form) {
                     <button type="button" class="btn btn-default btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="saveLogsToPi()">Save to Pi</button>
                 </div>
             </span>
-            <button type="button" class="btn btn-warning btn-sm" onclick="systemReboot()">Reboot</button>
-            <button type="button" class="btn btn-danger btn-sm" onclick="systemShutdown()">Shutdown</button>
+            <button type="button" class="btn btn-warning btn-sm" data-hold data-hold-fn="systemReboot" data-hold-label="Hold to reboot…">Reboot</button>
+            <button type="button" class="btn btn-danger btn-sm" data-hold data-hold-fn="systemShutdown" data-hold-label="Hold to shut down…">Shutdown</button>
             <a href="/help" class="btn btn-default btn-sm">Help</a>
             <a href="/info" class="btn btn-default btn-sm">Info</a>
             <form action="/logout" class="m-0">
@@ -299,7 +300,7 @@ function onPasswordInput(form) {
                                 Update File<input id="meet_update_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="updateMeetFile(this)">
                             </label>
                             <button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="var f=document.getElementById('meet-file-select').value;if(f&&confirm('Delete '+f+'?'))location.href='/meet_delete?file='+encodeURIComponent(f);">Delete</button>
-                            <button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="if(confirm('Delete all meet files?'))location.href='/meet_clear';">Delete All</button>
+                            <button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" data-hold data-hold-href="/meet_clear" data-hold-label="Hold to delete all…">Delete All</button>
                             {% endif %}
                         </div>
                     </div>
@@ -410,7 +411,7 @@ function onPasswordInput(form) {
                     <a href="/picker_image_delete?file={{ active_picker_image }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_picker_image }}?')">Delete</a>
                     {% endif %}
                     {% if picker_image_list %}
-                    <a href="/picker_image_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete all picker images?')">Delete All</a>
+                    <a href="/picker_image_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="Hold to delete all…">Delete All</a>
                     {% endif %}
                     {% if active_picker_image %}
                     <img src="/picker_image" style="height:28px; border-radius:4px; border:1px solid #ccc; flex-shrink:0;">
@@ -439,7 +440,7 @@ function onPasswordInput(form) {
                     <a href="/icon_delete?file={{ active_home_icon }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_home_icon }}?')">Delete</a>
                     {% endif %}
                     {% if icon_list %}
-                    <a href="/icon_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete all icons?')">Delete All</a>
+                    <a href="/icon_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="Hold to delete all…">Delete All</a>
                     {% endif %}
                     {% if has_home_icon %}
                     <img src="/home_icon" style="height:28px; width:28px; border-radius:6px; border:1px solid #ccc; flex-shrink:0;">
@@ -745,7 +746,7 @@ function onPasswordInput(form) {
                                 <a href="/locale_delete" class="btn btn-outline-danger btn-sm">Delete</a>
                                 {% endif %}
                                 {% if custom_locale_list %}
-                                <a href="/locale_delete_all" class="btn btn-outline-danger btn-sm">Delete All</a>
+                                <a href="/locale_delete_all" class="btn btn-outline-danger btn-sm" data-hold data-hold-label="Hold to delete all…">Delete All</a>
                                 {% endif %}
                             </div>
                         </div>
@@ -812,7 +813,7 @@ function onPasswordInput(form) {
                                 <a href="/splash_delete" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ splash_url }}?')">Delete</a>
                                 {% endif %}
                                 {% if splash_url_list %}
-                                <a href="/splash_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete all splash images?')">Delete All</a>
+                                <a href="/splash_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="Hold to delete all…">Delete All</a>
                                 {% endif %}
                                 {% if splash_url %}
                                 <img src="{{ url_for('appearance.serve_image', filename=splash_url) }}" style="max-height:36px; max-width:72px; border-radius:3px; flex-shrink:0;"/>
@@ -856,7 +857,7 @@ function onPasswordInput(form) {
                                             <a href="/theme_delete" class="btn btn-outline-danger btn-sm">Delete</a>
                                             {% endif %}
                                             {% if custom_theme_list %}
-                                            <a href="/theme_delete_all" class="btn btn-outline-danger btn-sm">Delete All Customs</a>
+                                            <a href="/theme_delete_all" class="btn btn-outline-danger btn-sm" data-hold data-hold-label="Hold to delete all…">Delete All Customs</a>
                                             {% endif %}
                                         </div>
                                     </div>
@@ -1234,7 +1235,7 @@ function onPasswordInput(form) {
                     '<a id="meet-preview-btn" href="' + d.preview_url + '" class="btn btn-secondary btn-sm flex-shrink-0">Preview</a>' +
                     '<label class="btn btn-secondary btn-sm m-0 flex-shrink-0" style="cursor:pointer; white-space:nowrap;">Update File<input id="meet_update_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="updateMeetFile(this)"></label>' +
                     '<button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="var f=document.getElementById(\'meet-file-select\').value;if(f&&confirm(\'Delete \'+f+\'?\'))location.href=\'/meet_delete?file=\'+encodeURIComponent(f);">Delete</button>' +
-                    '<button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="if(confirm(\'Delete all meet files?\'))location.href=\'/meet_clear\';">Delete All</button>';
+                    '<button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" data-hold data-hold-href="/meet_clear" data-hold-label="Hold to delete all…">Delete All</button>';
             } else {
                 actions.innerHTML = '';
             }
@@ -2175,16 +2176,62 @@ function onPasswordInput(form) {
 
     // ── System power ─────────────────────────────────────────────────────────
     function systemReboot() {
-        if (!confirm('Reboot the Pi now?')) return;
         document.getElementById('system-power-status').textContent = 'Rebooting…';
         fetch('/system_reboot', {method: 'POST'});
     }
 
     function systemShutdown() {
-        if (!confirm('Shut down the Pi now?\n\nYou will need to physically power-cycle it (or use a smart plug) to turn it back on.')) return;
         document.getElementById('system-power-status').textContent = 'Shutting down…';
         fetch('/system_shutdown', {method: 'POST'});
     }
+
+    // ── Press-and-hold confirmation for destructive actions ──────────────────
+    // Any element with [data-hold] needs a ~1.2 s press-and-hold instead of a
+    // click (the button fills red as feedback). On completion it runs the action:
+    // the global function named in data-hold-fn, else navigates to
+    // data-hold-href / href. Delegated, so it also covers dynamically-added
+    // buttons (e.g. the meet "Delete All" rebuilt by _refreshMeetTab).
+    (function() {
+        var HOLD_MS = 1200;
+        var active = null, timer = null, origLabel = null;
+
+        function reset(el) {
+            el.classList.remove('btn-holding');
+            if (origLabel !== null) { el.textContent = origLabel; origLabel = null; }
+        }
+        function run(el) {
+            var fn = el.getAttribute('data-hold-fn');
+            var href = el.getAttribute('data-hold-href') || el.getAttribute('href');
+            if (fn && typeof window[fn] === 'function') window[fn]();
+            else if (href) window.location.href = href;
+        }
+        function cancel() {
+            if (timer) { clearTimeout(timer); timer = null; }
+            if (active) { reset(active); active = null; }
+        }
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('[data-hold]')) e.preventDefault();  // no plain-click action
+        }, true);
+        document.addEventListener('pointerdown', function(e) {
+            var el = e.target.closest('[data-hold]');
+            if (!el || el.disabled || el.classList.contains('disabled')) return;
+            e.preventDefault();
+            active = el;
+            el.classList.add('btn-holding');
+            var lbl = el.getAttribute('data-hold-label');
+            if (lbl !== null) { origLabel = el.textContent; el.textContent = lbl; }
+            timer = setTimeout(function() {
+                timer = null;
+                var el2 = active; active = null;
+                if (el2) { reset(el2); run(el2); }
+            }, HOLD_MS);
+        });
+        document.addEventListener('pointerup', cancel);
+        document.addEventListener('pointercancel', cancel);
+        document.addEventListener('pointermove', function(e) {
+            if (active && e.target.closest('[data-hold]') !== active) cancel();
+        });
+    })();
 
     // ── Terminal tab ─────────────────────────────────────────────────────────
     var _term = null;
