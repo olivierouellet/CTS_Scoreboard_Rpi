@@ -194,16 +194,16 @@ function onPasswordInput(form) {
         <div class="d-flex gap-2 align-items-center flex-wrap ms-auto">
             <span id="system-power-status" style="font-size:0.85em; color:#888;"></span>
             <span style="position:relative; display:inline-block;">
-                <button type="button" class="btn btn-default btn-sm" onclick="toggleLogMenu(event)">Save Logs ▾</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleLogMenu(event)">Save Logs ▾</button>
                 <div id="log-menu" style="display:none; position:absolute; right:0; top:100%; margin-top:4px; background:#222; border:1px solid #444; border-radius:4px; z-index:50; min-width:150px; box-shadow:0 2px 8px rgba(0,0,0,0.4);">
-                    <button type="button" class="btn btn-default btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="downloadLogs()">Download</button>
-                    <button type="button" class="btn btn-default btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="saveLogsToPi()">Save to Pi</button>
+                    <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="downloadLogs()">Download</button>
+                    <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="saveLogsToPi()">Save to Pi</button>
                 </div>
             </span>
             <button type="button" class="btn btn-warning btn-sm" data-hold data-hold-fn="systemReboot" data-hold-label="Hold to reboot…">Reboot</button>
             <button type="button" class="btn btn-danger btn-sm" data-hold data-hold-fn="systemShutdown" data-hold-label="Hold to shut down…">Shutdown</button>
-            <a href="/help" class="btn btn-default btn-sm">Help</a>
-            <a href="/info" class="btn btn-default btn-sm">Info</a>
+            <a href="/help" class="btn btn-secondary btn-sm">Help</a>
+            <a href="/info" class="btn btn-secondary btn-sm">Info</a>
             <form action="/logout" class="m-0">
                 <input type="submit" value="Log Out" class="btn btn-secondary btn-sm"/>
             </form>
@@ -583,46 +583,44 @@ function onPasswordInput(form) {
 
         <!-- ── Timing ────────────────────────────────────────────── -->
         <div class="tab-pane" id="tab-debug">
-        <div class="row"><div class="col-lg-8">
-            <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px; margin-bottom:10px; display:flex;">
-                <div style="flex:1;">
+            <div class="row"><div class="col-lg-8">
+                <div class="card mb-3"><div class="card-body">
                     <form id="timing_form" action="/settings" method="POST">
                         <input type="hidden" name="timing_settings_submit" value="1">
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                            <label for="console_type" style="min-width:160px; font-weight:normal; margin:0;">Timing Equipment</label>
-                            <select id="console_type" name="console_type" class="form-control input-sm" style="flex:1; max-width:360px;" onchange="_fsubmit(this.form)">
+                        <div class="mb-3">
+                            <label for="console_type" class="form-label">Timing Equipment</label>
+                            <select id="console_type" name="console_type" class="form-select form-select-sm" style="max-width:360px;" onchange="_fsubmit(this.form)">
                             {% for key, label in console_options %}
                                 <option value="{{key}}" {% if key == console_type %}selected{% endif %}>{{label}}</option>
                             {% endfor %}
                             </select>
                         </div>
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:0;">
-                            <label for="serial_port" style="min-width:160px; font-weight:normal; margin:0;">Serial Port</label>
-                            <select id="serial_port" name="serial_port" class="form-control input-sm" style="flex:1; max-width:360px;" onchange="_fsubmit(this.form)">
+                        <div>
+                            <label for="serial_port" class="form-label">Serial Port</label>
+                            <select id="serial_port" name="serial_port" class="form-select form-select-sm" style="max-width:360px;" onchange="_fsubmit(this.form)">
                             {% for port, desc in serial_port_list %}
                                 <option value="{{port}}" {% if port == serial_port %}selected{% endif %}>{{desc}}</option>
                             {% endfor %}
                             </select>
                         </div>
                     </form>
-                </div>
-            </div>
-            <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px; margin-bottom:10px;">
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                    <span style="font-size:0.9em; font-weight:bold; flex:1;">Connection</span>
-                    <span id="serial-status-badge" class="badge rounded-pill text-bg-secondary">—</span>
-                </div>
-                <pre id="serial-log" style="background:#1a1a1a; color:#ccc; font-size:0.78em; height:90px; overflow-y:auto; margin:0; padding:6px 10px; border-radius:4px; white-space:pre-wrap; word-break:break-all;"></pre>
-            </div>
-            <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px;">
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                    <span style="font-size:0.9em; font-weight:bold; flex:1;">Serial Monitor</span>
-                    <button id="btn-debug-toggle" class="btn btn-default btn-xs" style="width:70px;" onclick="debugToggle()">Enable</button>
-                    <button class="btn btn-default btn-xs" style="width:70px;" onclick="debugClear()">Clear</button>
-                </div>
-                <pre id="debug-output" style="background:#1a1a1a; color:#e0e0e0; font-size:0.8em; height:300px; overflow-y:auto; margin:0; padding:6px 10px; border-radius:4px; white-space:pre-wrap; word-break:break-all;"></pre>
-            </div>
-        </div></div>
+                </div></div>
+                <div class="card mb-3"><div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="fw-bold flex-fill">Connection</span>
+                        <span id="serial-status-badge" class="badge rounded-pill text-bg-secondary">—</span>
+                    </div>
+                    <pre id="serial-log" class="border rounded p-2 mb-0" style="background:#111; color:#ccc; font-size:0.78em; height:90px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;"></pre>
+                </div></div>
+                <div class="card"><div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="fw-bold flex-fill">Serial Monitor</span>
+                        <button id="btn-debug-toggle" class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugToggle()">Enable</button>
+                        <button class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugClear()">Clear</button>
+                    </div>
+                    <pre id="debug-output" class="border rounded p-2 mb-0" style="background:#111; color:#e0e0e0; font-size:0.8em; height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;"></pre>
+                </div></div>
+            </div></div>
         </div>
 
         <!-- ── Appearance ─────────────────────────────────────────── -->
@@ -1117,89 +1115,87 @@ function onPasswordInput(form) {
                 <!-- ── Test ─────────────────────────────────────────────────── -->
                 <div class="tab-pane active" id="tab-test">
                 <div class="row"><div class="col-lg-8">
-                    <div style="background:#f5f5f5; border:1px solid #e3e3e3; border-radius:4px; padding:8px 14px;">
+                    <div class="card"><div class="card-body">
 
-                        <!-- Playback status bar -->
-                        <div id="test-status-bar" style="display:none; margin-bottom:8px; align-items:center; gap:8px;">
-                            <span id="test-status-text" style="font-size:0.9em; color:#555; flex:1;"></span>
-                            <button class="btn btn-danger btn-xs" style="width:70px;" onclick="testStop()">Stop</button>
+                        <!-- Playback status bar (shown as flex by JS) -->
+                        <div id="test-status-bar" style="display:none; align-items:center; gap:8px; margin-bottom:8px;">
+                            <span id="test-status-text" class="flex-fill small text-body-secondary"></span>
+                            <button class="btn btn-danger btn-sm" style="width:70px;" onclick="testStop()">Stop</button>
                         </div>
 
-                        <hr id="test-status-hr" style="display:none; margin:8px 0;">
+                        <hr id="test-status-hr" style="display:none;">
 
-                        <!-- Meet-loaded warning -->
-                        <div id="test-has-meet-warning" style="display:none; font-size:0.85em; color:#a67c00; background:#fff8e1; border:1px solid #ffe082; border-radius:3px; padding:5px 10px; margin-bottom:8px;">
+                        <!-- Meet-loaded warning (toggled by JS) -->
+                        <div id="test-has-meet-warning" class="alert alert-warning py-2 px-3 small mb-2" style="display:none;">
                             A meet file is loaded — go to Meet Setup and click <strong>Delete</strong> before running test sessions.
                         </div>
 
                         <!-- Session list -->
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                            <span style="font-size:0.9em; font-weight:bold;">Recorded Sessions</span>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-bold">Recorded Sessions</span>
                             <div class="file-picker">
-                                <label class="btn btn-default btn-xs" style="margin:0; font-weight:normal; cursor:pointer; width:70px; text-align:center;">
-                                    Upload<input type="file" accept=".cts" style="display:none;"
-                                        onchange="testUpload(this)">
+                                <label class="btn btn-secondary btn-sm m-0 text-center" style="cursor:pointer; width:70px;">
+                                    Upload<input type="file" accept=".cts" style="display:none;" onchange="testUpload(this)">
                                 </label>
                             </div>
                         </div>
-                        <div id="test-session-list" style="font-size:0.9em; color:#888; min-height:32px;">Loading…</div>
+                        <div id="test-session-list" class="small" style="min-height:32px;"><span class="text-body-secondary">Loading…</span></div>
 
-                        <hr style="margin:8px 0;">
+                        <hr>
 
                         <!-- Speed -->
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                            <span style="font-size:0.9em; font-weight:bold; min-width:110px;">Playback Speed</span>
-                            <div style="display:flex; gap:4px;">
-                                <button class="btn btn-default btn-xs speed-btn" onclick="setSpeed(1)">1×</button>
-                                <button class="btn btn-default btn-xs speed-btn" onclick="setSpeed(2)">2×</button>
-                                <button class="btn btn-default btn-xs speed-btn" onclick="setSpeed(4)">4×</button>
-                                <button class="btn btn-default btn-xs speed-btn" onclick="setSpeed(10)">10×</button>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <span class="fw-bold" style="min-width:110px;">Playback Speed</span>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-secondary btn-sm speed-btn" onclick="setSpeed(1)">1×</button>
+                                <button class="btn btn-secondary btn-sm speed-btn" onclick="setSpeed(2)">2×</button>
+                                <button class="btn btn-secondary btn-sm speed-btn" onclick="setSpeed(4)">4×</button>
+                                <button class="btn btn-secondary btn-sm speed-btn" onclick="setSpeed(10)">10×</button>
                             </div>
                         </div>
 
-                        <hr style="margin:8px 0;">
+                        <hr>
 
                         <!-- Record -->
-                        <div style="font-size:0.9em; font-weight:bold; margin-bottom:6px;">Record Live Session</div>
-                        <div style="display:flex; gap:4px; align-items:center;">
-                            <input id="test-record-name" type="text" class="form-control input-sm"
-                                   placeholder="Session name" style="flex:1;">
-                            <button id="btn-record" class="btn btn-default btn-xs" style="width:70px;" onclick="testRecordToggle()">Start</button>
-                            <span id="test-record-status" style="font-size:0.9em; color:#888;"></span>
+                        <div class="fw-bold mb-2">Record Live Session</div>
+                        <div class="d-flex align-items-center gap-1">
+                            <input id="test-record-name" type="text" class="form-control form-control-sm" placeholder="Session name" style="flex:1;">
+                            <button id="btn-record" class="btn btn-secondary btn-sm" style="width:70px;" onclick="testRecordToggle()">Start</button>
+                            <span id="test-record-status" class="small text-body-secondary"></span>
                         </div>
 
                         <!-- Test meet file — only shown when test is playing and no real meet is loaded -->
                         <div id="test-meet-section" style="display:none;">
-                            <hr style="margin:8px 0;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                <span style="font-size:0.9em; font-weight:bold;">Meet File</span>
+                            <hr>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-bold">Meet File</span>
                                 <div id="test-meet-upload-btn">
-                                    <label class="btn btn-default btn-xs" style="margin:0; font-weight:normal; cursor:pointer; width:70px; text-align:center;">
+                                    <label class="btn btn-secondary btn-sm m-0 text-center" style="cursor:pointer; width:70px;">
                                         Load<input type="file" accept=".csv,.lxf" style="display:none;" onchange="testMeetUpload(this)">
                                     </label>
                                 </div>
                             </div>
-                            <div id="test-meet-status" style="font-size:0.85em; color:#888;">No meet file loaded — load one to show swimmer names during the test.</div>
+                            <div id="test-meet-status" class="small text-body-secondary">No meet file loaded — load one to show swimmer names during the test.</div>
                         </div>
 
-                    </div>
+                    </div></div>
                 </div></div>
                 </div>
 
                 <!-- ── Terminal ──────────────────────────────────────────── -->
                 <div class="tab-pane" id="tab-terminal">
-                    <div style="background:#1a1a1a; border-radius:4px; padding:8px 12px; max-width:860px;">
-                        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
-                            <button class="btn btn-default btn-xs" onclick="termLaunch('bash')">Shell</button>
-                            <button class="btn btn-default btn-xs" onclick="termLaunch('raspi-config')">raspi-config</button>
-                            <button class="btn btn-default btn-xs" onclick="termLaunch('logs')">Scoreboard logs</button>
-                            <button class="btn btn-default btn-xs" onclick="termLaunch('dmesg-tty')">dmesg tty</button>
-                            <button class="btn btn-default btn-xs" onclick="termLaunch('serial-ports')">Serial ports</button>
-                            <span style="flex:1;"></span>
-                            <button id="btn-term-stop" class="btn btn-danger btn-xs" style="display:none;" onclick="termStop()">Stop</button>
+                    <div class="card" style="max-width:860px;"><div class="card-body">
+                        <div class="d-flex align-items-center gap-1 mb-2 flex-wrap">
+                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('bash')">Shell</button>
+                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('raspi-config')">raspi-config</button>
+                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('logs')">Scoreboard logs</button>
+                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('dmesg-tty')">dmesg tty</button>
+                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('serial-ports')">Serial ports</button>
+                            <span class="flex-fill"></span>
+                            <button id="btn-term-stop" class="btn btn-danger btn-sm" style="display:none;" onclick="termStop()">Stop</button>
                         </div>
                         <div id="terminal-container"></div>
-                    </div>
+                    </div></div>
                 </div>
             </div>
         </div>
@@ -1421,7 +1417,7 @@ function onPasswordInput(form) {
             _recording = d.recording;
             var btn = document.getElementById('btn-record');
             btn.textContent = _recording ? 'Stop' : 'Start';
-            btn.className   = _recording ? 'btn btn-danger btn-sm' : 'btn btn-default btn-sm';
+            btn.className   = _recording ? 'btn btn-danger btn-sm' : 'btn btn-secondary btn-sm';
             btn.disabled    = d.playing;
             document.getElementById('test-record-name').disabled = d.playing;
             document.getElementById('test-record-status').textContent = _recording ? '● Recording' : '';
@@ -1461,25 +1457,25 @@ function onPasswordInput(form) {
 
     function _renderSessions(sessions, anyPlaying, hasMeet) {
         var div = document.getElementById('test-session-list');
-        if (!sessions.length) { div.innerHTML = '<span style="color:#888;">No sessions found.</span>'; return; }
-        var html = '<div>';
+        if (!sessions.length) { div.innerHTML = '<span class="text-body-secondary">No sessions found.</span>'; return; }
+        var html = '';
         sessions.forEach(function(s) {
             var isPlaying = document.getElementById('test-status-text').textContent === 'Playing: ' + s.name;
             var W = 'width:70px;';
             var playBtn = isPlaying
-                ? '<button class="btn btn-success btn-xs" style="' + W + '" disabled>Playing</button>'
-                : '<button class="btn btn-default btn-xs" style="' + W + '" onclick="testPlay(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')"' + (anyPlaying || hasMeet ? ' disabled' : '') + '>Play</button>';
+                ? '<button class="btn btn-success btn-sm text-nowrap" style="' + W + '" disabled>Playing</button>'
+                : '<button class="btn btn-secondary btn-sm" style="' + W + '" onclick="testPlay(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')"' + (anyPlaying || hasMeet ? ' disabled' : '') + '>Play</button>';
             var delBtn = s.source === 'custom'
-                ? '<button class="btn btn-default btn-xs" style="' + W + ' margin-right:4px;" onclick="testDelete(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')">Delete</button>'
-                : '<span style="display:inline-block; ' + W + ' margin-right:4px;"></span>';
+                ? '<button class="btn btn-secondary btn-sm me-1" style="' + W + '" onclick="testDelete(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')">Delete</button>'
+                : '<span class="me-1" style="display:inline-block; ' + W + '"></span>';
             var badge = s.source === 'builtin'
-                ? '<span style="font-size:0.8em; color:#999; margin-left:4px;">built-in</span>' : '';
-            html += '<div style="display:flex; align-items:center; border-bottom:1px solid #ddd; padding:4px 0;">' +
-                    '<span style="flex:1;">' + s.name + badge + '</span>' +
-                    '<div style="display:flex;">' + delBtn + playBtn + '</div>' +
+                ? '<span class="small text-body-secondary ms-1">built-in</span>' : '';
+            html += '<div class="d-flex align-items-center border-bottom py-1">' +
+                    '<span class="flex-fill">' + s.name + badge + '</span>' +
+                    '<div class="d-flex">' + delBtn + playBtn + '</div>' +
                     '</div>';
         });
-        div.innerHTML = html + '</div>';
+        div.innerHTML = html;
     }
 
     function setSpeed(s) {
@@ -1492,7 +1488,7 @@ function onPasswordInput(form) {
         document.querySelectorAll('.speed-btn').forEach(function(btn) {
             var match = Math.abs(parseFloat(btn.textContent) - s) < 0.01 ||
                         btn.textContent === map[s];
-            btn.className = 'btn btn-xs speed-btn ' + (match ? 'btn-primary' : 'btn-default');
+            btn.className = 'btn btn-sm speed-btn ' + (match ? 'btn-primary' : 'btn-secondary');
         });
     }
 
@@ -2315,7 +2311,7 @@ function onPasswordInput(form) {
     function _applyDebugState(enabled) {
         var btn = document.getElementById('btn-debug-toggle');
         btn.textContent = enabled ? 'Disable' : 'Enable';
-        btn.className = 'btn btn-xs ' + (enabled ? 'btn-danger' : 'btn-default');
+        btn.className = 'btn btn-sm ' + (enabled ? 'btn-danger' : 'btn-secondary');
     }
 
     function debugToggle() {
