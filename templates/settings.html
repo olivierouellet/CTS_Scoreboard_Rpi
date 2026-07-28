@@ -165,6 +165,15 @@ ul.nav-tabs { display: none !important; }
 .app-nav .group-toggle .caret { transition: transform 0.15s; font-size: 0.8em; }
 .app-nav .group-toggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
 .app-quicklinks .btn { --bs-btn-padding-y: 2px; --bs-btn-padding-x: 8px; --bs-btn-font-size: 0.78em; }
+/* Hold-to-confirm: the button fills red over the hold duration as feedback. */
+.btn-holding {
+    background-image: linear-gradient(to right, var(--bs-danger), var(--bs-danger));
+    background-repeat: no-repeat;
+    background-size: 0% 100%;
+    color: #fff !important;
+    animation: holdfill 1.2s linear forwards;
+}
+@keyframes holdfill { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }
 @media (min-width: 992px) {
     #app-sidebar { min-height: calc(100vh - 57px); flex: 0 0 auto; }
 }
@@ -1007,7 +1016,7 @@ function onPasswordInput(form) {
                         <div class="d-flex align-items-center gap-2">
                             <span class="text-body-secondary small" style="min-width:70px;">WiFi</span>
                             <span id="wifi-status-text" class="flex-fill small"></span>
-                            <button id="btn-wifi-toggle" class="btn btn-secondary btn-sm text-nowrap" onclick="toggleWifi()" disabled>…</button>
+                            <button id="btn-wifi-toggle" class="btn btn-secondary btn-sm text-nowrap" disabled style="touch-action:none;">…</button>
                         </div>
                     </div></div>
 
@@ -1640,6 +1649,49 @@ function onPasswordInput(form) {
         });
     }
 
+    // WiFi toggle safety: enabling is a plain tap, but *disabling* (which can drop
+    // the operator's own connection) requires a ~1.2 s press-and-hold to confirm.
+    (function setupWifiToggleHold() {
+        var btn = document.getElementById('btn-wifi-toggle');
+        if (!btn) return;
+        var HOLD_MS = 1200;
+        var timer = null, armed = false, isDisable = false, origLabel = '';
+
+        // We drive the button via pointer events; suppress the synthetic click.
+        btn.addEventListener('click', function(e) { e.preventDefault(); });
+
+        btn.addEventListener('pointerdown', function(e) {
+            if (btn.disabled) return;
+            e.preventDefault();
+            armed = true;
+            isDisable = /Disable/.test(btn.textContent);
+            if (isDisable) {
+                origLabel = btn.textContent;
+                btn.classList.add('btn-holding');
+                btn.textContent = 'Hold to disable…';
+                timer = setTimeout(function() {
+                    timer = null; armed = false; isDisable = false; origLabel = '';
+                    btn.classList.remove('btn-holding');
+                    toggleWifi();                 // fires only after the full hold
+                }, HOLD_MS);
+            }
+        });
+
+        function release(fired) {
+            if (timer) { clearTimeout(timer); timer = null; }
+            if (isDisable && origLabel) {         // aborted hold — restore label
+                btn.classList.remove('btn-holding');
+                btn.textContent = origLabel;
+            } else if (armed && !isDisable && fired) {
+                toggleWifi();                     // enabling: plain tap
+            }
+            armed = false; isDisable = false; origLabel = '';
+        }
+        btn.addEventListener('pointerup',     function() { release(true); });
+        btn.addEventListener('pointerleave',  function() { release(false); });
+        btn.addEventListener('pointercancel', function() { release(false); });
+    })();
+
     function scanWifi() {
         var list = document.getElementById('wifi-net-list');
         list.innerHTML = '<span class="text-body-secondary">Scanning…</span>';
@@ -1651,8 +1703,8 @@ function onPasswordInput(form) {
                 var bars = ['▂░░░','▂▄░░','▂▄▆░','▂▄▆█'][Math.min(3, Math.floor(n.signal / 26))];
                 var lock = n.security ? ' <small class="text-body-secondary">' + n.security + '</small>' : '';
                 var action = n.active
-                    ? '<button class="btn btn-success btn-sm" style="width:80px;" disabled>Connected</button>'
-                    : '<button class="btn btn-secondary btn-sm" style="width:80px;" onclick="showJoinForm(' +
+                    ? '<button class="btn btn-success btn-sm text-nowrap" style="min-width:80px;" disabled>Connected</button>'
+                    : '<button class="btn btn-secondary btn-sm text-nowrap" style="min-width:80px;" onclick="showJoinForm(' +
                       JSON.stringify(n.ssid).replace(/"/g, '&quot;') + ',' + (n.security ? 'true' : 'false') +
                       ')">Connect</button>';
                 html += '<div class="d-flex align-items-center border-bottom py-1">' +
