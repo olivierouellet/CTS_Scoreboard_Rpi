@@ -7,64 +7,24 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.ico">
     <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
     <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { background:#0d0d0d; color:#e0e0e0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; }
-        h1  { font-size:1.3em; font-weight:400; color:#888; letter-spacing:0.06em; text-transform:uppercase; }
-        h2  { font-size:0.78em; font-weight:600; color:#555; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:10px; }
-        table { width:100%; border-collapse:collapse; margin-bottom:16px; }
-        th { text-align:left; font-size:0.75em; color:#555; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em; padding:6px 10px; border-bottom:1px solid #2a2a2a; }
-        td { padding:8px 10px; border-bottom:1px solid #1a1a1a; font-size:0.9em; vertical-align:middle; }
-        .key-display { font-family:monospace; font-size:0.82em; color:#666; word-break:break-all; }
-        .badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:0.72em; font-weight:600; text-transform:uppercase; }
-        .badge-active   { background:#1a3a1a; color:#4CAF50; }
-        .badge-inactive { background:#2a1a1a; color:#888; }
-        .badge-live     { background:#1a2a3a; color:#5ab4e8; }
-        .badge-retained { background:#2a2618; color:#c9a84c; }
-        form { display:inline; }
-        button { background:none; border:1px solid #333; color:#aaa; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:0.8em; transition:border-color 0.15s,color 0.15s; }
-        button:hover { border-color:#666; color:#fff; }
-        button.danger:hover { border-color:#c44; color:#f66; }
-        button.copy { font-size:0.75em; padding:2px 7px; }
-        button.copy.copied { border-color:#2e5e2e; color:#4CAF50; }
-        .add-form { display:flex; gap:8px; margin-top:4px; }
-        .add-form input { background:#1a1a1a; border:1px solid #333; color:#e0e0e0; padding:7px 12px; border-radius:4px; font-size:0.9em; flex:1; outline:none; }
-        .add-form input:focus { border-color:#555; }
-        .add-form button[type=submit] { background:#1a3a1a; border-color:#2e5e2e; color:#4CAF50; padding:7px 16px; }
-        .add-form button[type=submit]:hover { background:#224a22; border-color:#4CAF50; color:#7fdf7f; }
-        .empty-row td { color:#444; font-style:italic; }
-        .note { font-size:0.78em; color:#555; margin-top:6px; }
-        input[type=password], input[type=text] {
-            background:#1a1a1a; border:1px solid #333; color:#e0e0e0;
-            padding:7px 12px; border-radius:4px; font-size:0.9em; outline:none;
-        }
-        input[type=password]:focus, input[type=text]:focus { border-color:#555; }
-        select.field {
-            background:#1a1a1a; border:1px solid #333; color:#e0e0e0;
-            padding:7px 12px; border-radius:4px; font-size:0.9em; outline:none;
-        }
+        /* Field labels: compact uppercase (matches the server panel). */
+        .form-label { text-transform: uppercase; font-size: 0.78rem; letter-spacing: 0.03em; color: var(--bs-secondary-color); margin-bottom: 0.25rem; }
 
-        /* ── Nav tabs (same style as /settings) ── */
-        .nav-tabs { list-style:none; display:flex; border-bottom:1px solid #2a2a2a; margin:0 0 24px; padding:0; }
-        .nav-tabs li a {
-            display:block; color:#888; text-decoration:none;
-            border-bottom:2px solid transparent;
-            padding:10px 16px; font-size:0.88em; font-weight:500;
-            transition:color 0.15s;
-        }
-        .nav-tabs li a:hover { color:#ccc; border-bottom-color:#444; }
-        .nav-tabs li.active a { color:#fff; border-bottom-color:#fff; }
-        .tab-pane { display:none; }
-        .tab-pane.active { display:block; }
+        /* Tab panes toggled by the sidebar switcher. */
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
 
-        /* ── Update panel ── */
-        .panel {
-            background:#1a1a1a; border:1px solid #2e2e2e; border-radius:8px;
-            padding:16px 20px; max-width:560px;
+        /* Copy-key button "copied!" feedback. */
+        .copied { color: var(--bs-success) !important; border-color: var(--bs-success) !important; }
+
+        /* Keep autofilled inputs dark instead of the browser's white/yellow box. */
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover,
+        input:-webkit-autofill:focus {
+            -webkit-box-shadow: 0 0 0 30px var(--bs-body-bg) inset !important;
+            -webkit-text-fill-color: var(--bs-body-color) !important;
+            caret-color: var(--bs-body-color);
         }
-        .panel + .panel { margin-top:16px; }
-        .panel-row { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
-        .panel-row:last-child { margin-bottom:0; }
-        .panel-label { font-size:0.8em; color:#555; min-width:90px; }
 
         /* ── BS5 responsive sidebar shell ── */
         #app-sidebar { width: 240px; }
@@ -111,22 +71,22 @@
         <div class="tab-pane active" id="tab-meets">
 
             <!-- Attendance counting (opt-in) -->
-            <div class="panel" style="margin-bottom:16px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <div class="card mb-3"><div class="card-body">
+                <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
                     <div>
-                        <h2 style="margin:0 0 4px;">{{ t.get('analytics_title', 'Attendance counting') }}</h2>
-                        <p style="margin:0;font-size:0.82em;color:#888;max-width:420px;">{{ t.get('analytics_desc', 'Count unique visitors per meet over a chosen period. Anonymous: a random per-device id is stored, never names or IP addresses.') }}</p>
+                        <h2 class="h6 text-uppercase text-body-secondary mb-1">{{ t.get('analytics_title', 'Attendance counting') }}</h2>
+                        <p class="small text-body-secondary mb-0" style="max-width:420px;">{{ t.get('analytics_desc', 'Count unique visitors per meet over a chosen period. Anonymous: a random per-device id is stored, never names or IP addresses.') }}</p>
                     </div>
-                    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-                        <span class="badge {{ 'badge-live' if analytics_enabled else 'badge-inactive' }}">{{ (t.get('analytics_on', 'On') if analytics_enabled else t.get('analytics_off', 'Off')) }}</span>
-                        <form method="post" style="display:inline;">
+                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                        <span class="badge rounded-pill {{ 'text-bg-info' if analytics_enabled else 'text-bg-secondary' }}">{{ (t.get('analytics_on', 'On') if analytics_enabled else t.get('analytics_off', 'Off')) }}</span>
+                        <form method="post" class="m-0">
                             <input type="hidden" name="action" value="set_analytics">
                             <input type="hidden" name="analytics_enabled" value="{{ '0' if analytics_enabled else '1' }}">
-                            <button type="submit" class="{{ 'danger' if analytics_enabled else '' }}">{{ (t.get('analytics_disable', 'Disable') if analytics_enabled else t.get('analytics_enable', 'Enable')) }}</button>
+                            <button type="submit" class="btn btn-sm {{ 'btn-outline-danger' if analytics_enabled else 'btn-secondary' }}">{{ (t.get('analytics_disable', 'Disable') if analytics_enabled else t.get('analytics_enable', 'Enable')) }}</button>
                         </form>
                     </div>
                 </div>
-                <details style="margin-top:12px;">
+                <details class="mt-3">
                     <summary style="cursor:pointer;font-size:0.82em;color:#c9a227;">{{ t.get('analytics_legal_summary', '⚠ Where this is legal — read before enabling') }}</summary>
                     <div style="font-size:0.8em;color:#aaa;line-height:1.55;margin-top:10px;">
                         <p style="margin:0 0 10px;">{{ t.get('analytics_legal_intro', 'You are responsible for how attendance data is collected where your meet takes place. This feature is built to be privacy-friendly (anonymous, first-party, aggregate only, no cross-site tracking), but the law differs by region:') }}</p>
@@ -136,9 +96,10 @@
                         <p style="margin:10px 0 0;color:#666;">{{ t.get('analytics_legal_disclaimer', 'This is general information, not legal advice. When in doubt, check with whoever handles your compliance.') }}</p>
                     </div>
                 </details>
-            </div>
+            </div></div>
 
-            <table>
+            <div class="table-responsive">
+            <table class="table table-sm align-middle">
                 <thead><tr><th>{{ t.col_meet }}</th><th>{{ t.col_location }}</th><th>{{ t.col_sport }}</th><th>{{ t.col_organizer }}</th><th>{{ t.col_language }}</th>{% if analytics_enabled %}<th>{{ t.get('col_attendees', 'Attendees') }}</th>{% endif %}<th>{{ t.col_status or 'Status' }}</th><th></th></tr></thead>
                 <tbody>
                 {% if active_meets %}
@@ -150,8 +111,8 @@
                         <td>{{ m.organizer }}</td>
                         <td>{{ m.language or '—' }}</td>
                         {% if analytics_enabled %}
-                        <td style="white-space:nowrap;">
-                            <select onchange="loadAttendees(this)" style="font-size:0.82em;">
+                        <td class="text-nowrap">
+                            <select onchange="loadAttendees(this)" class="form-select form-select-sm d-inline-block w-auto">
                                 <option value="1h">{{ t.get('win_1h', 'Last hour') }}</option>
                                 <option value="3h">{{ t.get('win_3h', 'Last 3 hours') }}</option>
                                 <option value="12h">{{ t.get('win_12h', 'Last 12 hours') }}</option>
@@ -159,40 +120,42 @@
                                 <option value="7d">{{ t.get('win_7d', 'Last 7 days') }}</option>
                                 <option value="all">{{ t.get('win_all', 'Whole meet') }}</option>
                             </select>
-                            <span class="att-count" data-meet="{{ m.id }}" style="margin-left:6px;font-weight:bold;">…</span>
+                            <span class="att-count fw-bold ms-2" data-meet="{{ m.id }}">…</span>
                         </td>
                         {% endif %}
                         {% if m.live %}
-                        <td><span class="badge badge-live">{{ t.badge_live }}</span><br><span style="font-size:0.78em;color:#666;">{{ t.col_since or 'since' }} {{ m.connected_at }}</span></td>
+                        <td><span class="badge rounded-pill text-bg-info">{{ t.badge_live }}</span><br><span class="small text-body-secondary">{{ t.col_since or 'since' }} {{ m.connected_at }}</span></td>
                         <td></td>
                         {% else %}
-                        <td><span class="badge badge-retained">{{ t.badge_retained or 'Offline' }}</span><br><span style="font-size:0.78em;color:#666;">{{ t.expires_label or 'until' }} {{ m.expires_display }}</span></td>
-                        <td style="white-space:nowrap;">
-                            <form method="post" style="display:inline-flex;gap:4px;align-items:center;">
+                        <td><span class="badge rounded-pill text-bg-warning">{{ t.badge_retained or 'Offline' }}</span><br><span class="small text-body-secondary">{{ t.expires_label or 'until' }} {{ m.expires_display }}</span></td>
+                        <td class="text-nowrap">
+                            <form method="post" class="d-inline-flex gap-1 align-items-center">
                                 <input type="hidden" name="action" value="set_expiry">
                                 <input type="hidden" name="meet_id" value="{{ m.id }}">
-                                <input type="datetime-local" name="expires_at" value="{{ m.expires_input }}" style="font-size:0.82em;">
-                                <button type="submit">{{ t.set_expiry or 'Set' }}</button>
+                                <input type="datetime-local" name="expires_at" value="{{ m.expires_input }}" class="form-control form-control-sm d-inline-block w-auto">
+                                <button type="submit" class="btn btn-secondary btn-sm">{{ t.set_expiry or 'Set' }}</button>
                             </form>
-                            <form method="post" style="display:inline; margin-left:4px;" onsubmit="return confirm('{{ t.confirm_delete_meet or 'Remove this meet now?' }}');">
+                            <form method="post" class="d-inline ms-1" onsubmit="return confirm('{{ t.confirm_delete_meet or 'Remove this meet now?' }}');">
                                 <input type="hidden" name="action" value="delete_meet">
                                 <input type="hidden" name="meet_id" value="{{ m.id }}">
-                                <button type="submit" class="danger">{{ t.delete or 'Delete' }}</button>
+                                <button type="submit" class="btn btn-outline-danger btn-sm">{{ t.delete or 'Delete' }}</button>
                             </form>
                         </td>
                         {% endif %}
                     </tr>
                     {% endfor %}
                 {% else %}
-                    <tr class="empty-row"><td colspan="{{ 8 if analytics_enabled else 7 }}">{{ t.no_meets_admin }}</td></tr>
+                    <tr><td colspan="{{ 8 if analytics_enabled else 7 }}" class="text-body-secondary fst-italic">{{ t.no_meets_admin }}</td></tr>
                 {% endif %}
                 </tbody>
             </table>
+            </div>
         </div>
 
         <!-- ── Organizers ── -->
         <div class="tab-pane" id="tab-organizers">
-            <table>
+            <div class="table-responsive">
+            <table class="table table-sm align-middle">
                 <thead><tr><th>{{ t.col_organizer }}</th><th>{{ t.col_key }}</th><th>{{ t.col_created }}</th><th>{{ t.col_status }}</th><th></th></tr></thead>
                 <tbody>
                 {% if keys %}
@@ -200,200 +163,202 @@
                     <tr>
                         <td>{{ info.organizer }}</td>
                         <td>
-                            <span class="key-display">{{ key[:12] }}…</span>
-                            <button class="copy" data-copied="{{ t['copied'] }}" onclick="copyKey(this, '{{ key }}')">{{ t['copy'] }}</button>
+                            <span class="font-monospace small text-body-secondary text-break">{{ key[:12] }}…</span>
+                            <button class="btn btn-outline-secondary btn-sm copy" data-copied="{{ t['copied'] }}" onclick="copyKey(this, '{{ key }}')">{{ t['copy'] }}</button>
                         </td>
                         <td>{{ info.created }}</td>
-                        <td><span class="badge {{ 'badge-active' if info.active else 'badge-inactive' }}">{{ t.badge_active if info.active else t.badge_revoked }}</span></td>
-                        <td style="white-space:nowrap;">
+                        <td><span class="badge rounded-pill {{ 'text-bg-success' if info.active else 'text-bg-secondary' }}">{{ t.badge_active if info.active else t.badge_revoked }}</span></td>
+                        <td class="text-nowrap">
                             {% if info.active %}
-                            <form method="post">
+                            <form method="post" class="d-inline">
                                 <input type="hidden" name="action" value="revoke">
                                 <input type="hidden" name="key" value="{{ key }}">
-                                <button type="submit" class="danger">{{ t.revoke }}</button>
+                                <button type="submit" class="btn btn-outline-danger btn-sm">{{ t.revoke }}</button>
                             </form>
                             {% endif %}
-                            <form method="post" style="margin-left:4px;">
+                            <form method="post" class="d-inline ms-1">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="key" value="{{ key }}">
-                                <button type="submit" class="danger">{{ t.delete }}</button>
+                                <button type="submit" class="btn btn-outline-danger btn-sm">{{ t.delete }}</button>
                             </form>
                         </td>
                     </tr>
                     {% endfor %}
                 {% else %}
-                    <tr class="empty-row"><td colspan="5">{{ t.no_organizers }}</td></tr>
+                    <tr><td colspan="5" class="text-body-secondary fst-italic">{{ t.no_organizers }}</td></tr>
                 {% endif %}
                 </tbody>
             </table>
+            </div>
 
-            <h2 style="margin-top:8px;">{{ t.add_organizer }}</h2>
-            <form method="post" class="add-form">
+            <h2 class="h6 text-uppercase text-body-secondary mt-2">{{ t.add_organizer }}</h2>
+            <form method="post" class="d-flex flex-wrap gap-2" style="max-width:480px;">
                 <input type="hidden" name="action" value="add">
-                <input type="text" name="organizer" placeholder="{{ t.org_placeholder }}" required autocomplete="off">
-                <button type="submit">{{ t.generate_key }}</button>
+                <input type="text" name="organizer" class="form-control form-control-sm" style="flex:1; min-width:180px;" placeholder="{{ t.org_placeholder }}" required autocomplete="off">
+                <button type="submit" class="btn btn-success btn-sm">{{ t.generate_key }}</button>
             </form>
-            <p class="note">{{ t.key_note }}</p>
+            <p class="small text-body-secondary mt-2">{{ t.key_note }}</p>
         </div>
 
         <!-- ── Appearance ── -->
         <div class="tab-pane" id="tab-appearance">
-            <div class="panel">
-                <h2 style="margin-bottom:14px;">{{ t.language }}</h2>
+            <div class="card"><div class="card-body">
+                <h2 class="h6 text-uppercase text-body-secondary mb-3">{{ t.language }}</h2>
                 <form method="post" id="locale-form">
                     <input type="hidden" name="action" value="change_locale">
-                    <select name="locale" class="field" onchange="this.form.submit()">
+                    <select name="locale" class="form-select form-select-sm" style="max-width:280px;" onchange="this.form.submit()">
                         <option value="" {% if not current_locale %}selected{% endif %}>{{ t.language_auto }}</option>
                         {% for code, name in locales %}
                         <option value="{{ code }}" {% if current_locale == code %}selected{% endif %}>{{ name }}</option>
                         {% endfor %}
                     </select>
                 </form>
-            </div>
+            </div></div>
 
-            <div class="panel" style="margin-top:16px;">
-                <h2 style="margin-bottom:14px;">Picker Page</h2>
+            <div class="card mt-3"><div class="card-body">
+                <h2 class="h6 text-uppercase text-body-secondary mb-3">Picker Page</h2>
                 <form id="picker-form" onsubmit="savePickerAppearance(this); return false;" enctype="multipart/form-data">
-                    <div class="panel-row">
-                        <span class="panel-label">Window Title</span>
-                        <input type="text" name="picker_window_title" value="{{ picker_window_title_form }}" placeholder="Tremplin" style="flex:1;">
-                        <span style="font-size:0.78em;color:#555;margin-left:8px;">browser tab / app title</span>
+                    <div class="mb-3">
+                        <label class="form-label">Window Title</label>
+                        <input type="text" name="picker_window_title" value="{{ picker_window_title_form }}" class="form-control form-control-sm" style="max-width:360px;" placeholder="Tremplin">
+                        <div class="form-text">browser tab / app title</div>
                     </div>
-                    <div class="panel-row">
-                        <span class="panel-label">Title</span>
-                        <input type="text" name="picker_title" value="{{ picker_title_form }}" placeholder="Tremplin" style="flex:1;">
-                        <span style="font-size:0.78em;color:#555;margin-left:8px;">heading shown on page — leave blank to hide</span>
+                    <div class="mb-3">
+                        <label class="form-label">Title</label>
+                        <input type="text" name="picker_title" value="{{ picker_title_form }}" class="form-control form-control-sm" style="max-width:360px;" placeholder="Tremplin">
+                        <div class="form-text">heading shown on page — leave blank to hide</div>
                     </div>
-                    <div class="panel-row" style="align-items:flex-start;flex-direction:column;gap:6px;">
-                        <span style="font-size:0.8em;color:#555;">Logo</span>
-                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                            <label style="display:inline-block;font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;cursor:pointer;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">
+                    <div class="mb-3">
+                        <label class="form-label">Logo</label>
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
                                 Upload Image<input type="file" name="picker_logo" accept="image/*" style="display:none;" onchange="previewPickerLogo(this)">
                             </label>
-                            <button type="button" class="danger" id="picker-logo-remove-btn" onclick="clearPickerLogo()" {% if not has_picker_logo %}hidden{% endif %}>Remove</button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" id="picker-logo-remove-btn" onclick="clearPickerLogo()" {% if not has_picker_logo %}hidden{% endif %}>Remove</button>
                             <img id="picker-logo-current" src="{{ '/picker_logo' if has_picker_logo else '' }}" style="max-height:36px;max-width:72px;border-radius:4px;border:1px solid #333;flex-shrink:0;" {% if not has_picker_logo %}hidden{% endif %}>
                         </div>
                         <div id="picker-logo-preview" style="display:none;margin-top:4px;">
                             <img id="picker-logo-preview-img" style="max-height:60px;max-width:120px;border-radius:4px;border:1px solid #333;">
                         </div>
                     </div>
-                    <div class="panel-row">
-                        <span class="panel-label">Position</span>
-                        <label style="display:flex;align-items:center;gap:6px;font-size:0.88em;cursor:pointer;">
-                            <input type="checkbox" name="picker_logo_above" value="1" {% if picker_logo_above %}checked{% endif %}>
-                            Image above title
-                        </label>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="picker_logo_above" name="picker_logo_above" value="1" {% if picker_logo_above %}checked{% endif %}>
+                            <label class="form-check-label" for="picker_logo_above">Image above title</label>
+                        </div>
                     </div>
-                    <div class="panel-row" style="align-items:flex-start;flex-direction:column;gap:6px;">
-                        <span style="font-size:0.8em;color:#555;">Home Screen Icon <span style="color:#444;">(square PNG, 512 or 1024 px)</span></span>
-                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                            <label style="display:inline-block;font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;cursor:pointer;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">
+                    <div class="mb-3">
+                        <label class="form-label">Home Screen Icon <span class="text-body-secondary text-lowercase">(square PNG, 512 or 1024 px)</span></label>
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
                                 Upload Image<input type="file" name="picker_icon" accept="image/png" style="display:none;" onchange="previewPickerIcon(this)">
                             </label>
-                            <button type="button" class="danger" id="picker-icon-remove-btn" onclick="clearPickerIcon()" {% if not has_picker_icon %}hidden{% endif %}>Remove</button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" id="picker-icon-remove-btn" onclick="clearPickerIcon()" {% if not has_picker_icon %}hidden{% endif %}>Remove</button>
                             <img id="picker-icon-current" src="{{ '/picker_icon' if has_picker_icon else '' }}" style="height:36px;width:36px;border-radius:8px;border:1px solid #333;flex-shrink:0;" {% if not has_picker_icon %}hidden{% endif %}>
                         </div>
                         <div id="picker-icon-preview" style="display:none;margin-top:4px;">
                             <img id="picker-icon-preview-img" style="height:60px;width:60px;border-radius:10px;border:1px solid #333;">
                         </div>
                     </div>
-                    <div class="panel-row">
-                        <span class="panel-label"></span>
-                        <button type="submit">Save</button>
-                        <span id="picker-appearance-status" style="font-size:0.85em;color:#666;margin-left:8px;"></span>
+                    <div>
+                        <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                        <span id="picker-appearance-status" class="small text-body-secondary ms-2"></span>
                     </div>
                 </form>
-            </div>
+            </div></div>
         </div>
 
         <!-- ── Update & Backup ── -->
         <div class="tab-pane" id="tab-update">
             {% if has_deploy %}
-            <div class="panel">
-                <h2 style="margin-bottom:14px;">{{ t.get('update', 'Update') }}</h2>
-                <div class="panel-row">
-                    <span class="panel-label" style="color:#444;">Current</span>
-                    <span id="current-version" style="font-family:monospace;font-size:0.85em;color:#666;">—</span>
+            <div class="card"><div class="card-body">
+                <h2 class="h6 text-uppercase text-body-secondary mb-3">{{ t.get('update', 'Update') }}</h2>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="small text-body-secondary" style="min-width:90px;">Current</span>
+                    <span id="current-version" class="small text-body-secondary" style="font-family:monospace;">—</span>
                 </div>
-                <div class="panel-row">
-                    <span class="panel-label">{{ t.get('version', 'Version') }}</span>
-                    <select id="update-version" class="field" style="flex:1;">
+                <div class="mb-2" style="max-width:400px;">
+                    <label class="form-label">{{ t.get('version', 'Version') }}</label>
+                    <select id="update-version" class="form-select form-select-sm">
                         <option value="">Loading…</option>
                     </select>
                 </div>
-                <div class="panel-row">
-                    <span class="panel-label"></span>
-                    <button id="update-btn" onclick="triggerUpdate()" style="border-color:#1a3a5c;color:#5ab4e8;">{{ t.get('update', 'Update') }}</button>
-                    <span id="update-status" style="font-size:0.85em;color:#666;"></span>
+                <div class="d-flex align-items-center gap-2">
+                    <button id="update-btn" onclick="triggerUpdate()" class="btn btn-primary btn-sm">{{ t.get('update', 'Update') }}</button>
+                    <span id="update-status" class="small text-body-secondary"></span>
                 </div>
-                <pre id="update-output" style="display:none;background:#111;color:#e0e0e0;padding:10px 14px;border-radius:4px;min-height:80px;max-height:360px;overflow-y:auto;font-size:0.8em;margin-top:4px;white-space:pre-wrap;word-break:break-all;"></pre>
-            </div>
+                <pre id="update-output" class="border rounded p-2 mt-2" style="display:none;background:#111;color:#e0e0e0;min-height:80px;max-height:360px;overflow-y:auto;font-size:0.8em;white-space:pre-wrap;word-break:break-all;"></pre>
+            </div></div>
             {% endif %}
-            <div class="panel" style="margin-top:16px;">
-                <h2 style="margin-bottom:14px;">{{ t.get('backup', 'Backup') }}</h2>
-                <div class="panel-row">
-                    <span class="panel-label" style="color:#444;">{{ t.get('backup_keys', 'Keys & settings') }}</span>
-                    <a id="backup-download-btn" href="/admin/backup/keys" style="font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;text-decoration:none;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">{{ t.get('download_backup', 'Download') }}</a>
-                    <a id="backup-download-full-btn" href="/admin/backup/keys?full=1" style="font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;text-decoration:none;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">{{ t.get('download_backup_full', 'Download full (incl. login)') }}</a>
+            <div class="card mt-3"><div class="card-body">
+                <h2 class="h6 text-uppercase text-body-secondary mb-3">{{ t.get('backup', 'Backup') }}</h2>
+                <div class="mb-3">
+                    <div class="small text-body-secondary mb-1">{{ t.get('backup_keys', 'Keys & settings') }}</div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a id="backup-download-btn" href="/admin/backup/keys" class="btn btn-secondary btn-sm">{{ t.get('download_backup', 'Download') }}</a>
+                        <a id="backup-download-full-btn" href="/admin/backup/keys?full=1" class="btn btn-secondary btn-sm">{{ t.get('download_backup_full', 'Download full (incl. login)') }}</a>
+                    </div>
                 </div>
-                <div class="panel-row" style="align-items:flex-start;flex-direction:column;gap:6px;">
-                    <span style="font-size:0.78em;color:#555;">{{ t.get('restore_keys_note', 'Restore relay keys and settings (picker appearance, analytics, locale) from a backup. The admin login is only restored from a “full” backup; a regular backup leaves the current password unchanged. A full backup contains the password hash — keep it private.') }}</span>
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                        <label style="display:inline-block;font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;cursor:pointer;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">
+                <div class="mb-3">
+                    <p class="small text-body-secondary mb-2">{{ t.get('restore_keys_note', 'Restore relay keys and settings (picker appearance, analytics, locale) from a backup. The admin login is only restored from a “full” backup; a regular backup leaves the current password unchanged. A full backup contains the password hash — keep it private.') }}</p>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
                             {{ t.get('restore_backup', 'Restore…') }}<input type="file" accept=".json" style="display:none;" onchange="restoreKeys(this)">
                         </label>
-                        <span id="restore-status" style="font-size:0.85em;color:#666;"></span>
+                        <span id="restore-status" class="small text-body-secondary"></span>
                     </div>
                 </div>
-                <div class="panel-row" style="border-top:1px solid #222;margin-top:12px;padding-top:12px;">
-                    <span class="panel-label" style="color:#444;">{{ t.get('backup_meets', 'Meets') }}</span>
-                    <a id="backup-meets-btn" href="/admin/backup/meets" style="font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;text-decoration:none;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">{{ t.get('download_backup', 'Download') }}</a>
+                <hr>
+                <div class="mb-3">
+                    <div class="small text-body-secondary mb-1">{{ t.get('backup_meets', 'Meets') }}</div>
+                    <a id="backup-meets-btn" href="/admin/backup/meets" class="btn btn-secondary btn-sm">{{ t.get('download_backup', 'Download') }}</a>
                 </div>
-                <div class="panel-row" style="align-items:flex-start;flex-direction:column;gap:6px;">
-                    <span style="font-size:0.78em;color:#555;">{{ t.get('restore_meets_note', 'Restore retained meets (schedules, images, icons) from a backup. Adds them to the current set — nothing is removed, and currently-live meets keep their own data.') }}</span>
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                        <label style="display:inline-block;font-size:0.8em;border:1px solid #333;color:#aaa;padding:4px 10px;border-radius:4px;cursor:pointer;" onmouseover="this.style.color='#fff';this.style.borderColor='#666'" onmouseout="this.style.color='#aaa';this.style.borderColor='#333'">
+                <div>
+                    <p class="small text-body-secondary mb-2">{{ t.get('restore_meets_note', 'Restore retained meets (schedules, images, icons) from a backup. Adds them to the current set — nothing is removed, and currently-live meets keep their own data.') }}</p>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
                             {{ t.get('restore_backup', 'Restore…') }}<input type="file" accept=".json" style="display:none;" onchange="restoreMeets(this)">
                         </label>
-                        <span id="restore-meets-status" style="font-size:0.85em;color:#666;"></span>
+                        <span id="restore-meets-status" class="small text-body-secondary"></span>
                     </div>
                 </div>
-            </div>
+            </div></div>
         </div>
 
         <!-- ── Debug ── -->
         <div class="tab-pane" id="tab-debug">
-            <div class="panel" style="max-width:none;">
-                <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-                    <select id="log-source" class="field" onchange="loadLogs()">
+            <div class="card"><div class="card-body">
+                <div class="d-flex gap-2 align-items-center mb-3 flex-wrap">
+                    <select id="log-source" class="form-select form-select-sm w-auto" onchange="loadLogs()">
                         <option value="app">App container</option>
                         <option value="caddy">Caddy</option>
                         <option value="webhook">Deploy webhook</option>
                     </select>
-                    <button onclick="loadLogs()">Refresh</button>
-                    <label style="display:flex;align-items:center;gap:5px;font-size:0.85em;color:#666;cursor:pointer;">
-                        <input type="checkbox" id="log-follow" onchange="toggleFollow()"> Follow
-                    </label>
-                    <span id="log-status" style="font-size:0.78em;color:#555;margin-left:auto;"></span>
+                    <button onclick="loadLogs()" class="btn btn-secondary btn-sm">Refresh</button>
+                    <div class="form-check m-0">
+                        <input class="form-check-input" type="checkbox" id="log-follow" onchange="toggleFollow()">
+                        <label class="form-check-label" for="log-follow">Follow</label>
+                    </div>
+                    <span id="log-status" class="small text-body-secondary ms-auto"></span>
                 </div>
-                <pre id="log-output" style="background:#111;color:#e0e0e0;padding:10px 14px;border-radius:4px;height:480px;overflow-y:auto;font-size:0.78em;margin:0;white-space:pre-wrap;word-break:break-all;"></pre>
-            </div>
+                <pre id="log-output" class="border rounded p-2 mb-0" style="background:#111;color:#e0e0e0;height:480px;overflow-y:auto;font-size:0.78em;white-space:pre-wrap;word-break:break-all;"></pre>
+            </div></div>
         </div>
 
         <!-- ── Account ── -->
         <div class="tab-pane" id="tab-account">
-            <div class="panel">
-                <h2 style="margin-bottom:14px;">{{ t.change_credentials }}</h2>
-                {% if creds_error %}<p style="color:#f66;font-size:0.85em;margin-bottom:12px;">{{ creds_error }}</p>{% endif %}
-                <form method="post" style="display:flex;flex-direction:column;gap:8px;max-width:280px;">
+            <div class="card" style="max-width:360px;"><div class="card-body">
+                <h2 class="h6 text-uppercase text-body-secondary mb-3">{{ t.change_credentials }}</h2>
+                {% if creds_error %}<p class="text-danger small mb-3">{{ creds_error }}</p>{% endif %}
+                <form method="post" class="d-flex flex-column gap-2">
                     <input type="hidden" name="action" value="change_credentials">
-                    <input type="password" name="current_password" placeholder="{{ t.current_password }}" required autocomplete="current-password">
-                    <input type="text"     name="new_user"         placeholder="{{ t.new_username }}"    autocomplete="username">
-                    <input type="password" name="new_password"     placeholder="{{ t.new_password }}"    required autocomplete="new-password">
-                    <input type="password" name="new_password2"    placeholder="{{ t.confirm_password }}" required autocomplete="new-password">
-                    <div><button type="submit">{{ t.save }}</button></div>
+                    <input type="password" name="current_password" class="form-control form-control-sm" placeholder="{{ t.current_password }}" required autocomplete="current-password">
+                    <input type="text"     name="new_user"         class="form-control form-control-sm" placeholder="{{ t.new_username }}"    autocomplete="username">
+                    <input type="password" name="new_password"     class="form-control form-control-sm" placeholder="{{ t.new_password }}"    required autocomplete="new-password">
+                    <input type="password" name="new_password2"    class="form-control form-control-sm" placeholder="{{ t.confirm_password }}" required autocomplete="new-password">
+                    <div><button type="submit" class="btn btn-secondary btn-sm">{{ t.save }}</button></div>
                 </form>
-            </div>
+            </div></div>
         </div>
 
             </div><!-- /.tab-content -->
