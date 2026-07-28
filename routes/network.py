@@ -1,13 +1,13 @@
 import subprocess
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, IPvAnyAddress
 from starlette.concurrency import run_in_threadpool
 
 import state
-from web import ActionResult, EnabledFlag, require_login
+from web import ActionResult, EnabledFlag, render, require_login
 
 router = APIRouter(tags=['Network'])
 
@@ -297,3 +297,12 @@ async def route_clients():
     # _scoreboard_clients (the WS connect/disconnect handlers) — so this snapshot
     # can't be preempted mid-iteration by a connect/disconnect.
     return {'clients': list(state._scoreboard_clients.values())}
+
+
+@router.get('/clients_fragment', dependencies=[Depends(require_login)])
+async def route_clients_fragment(request: Request):
+    # HTML-fragment twin of /clients for the settings panel (HTMX hx-get). The
+    # JSON /clients endpoint above is kept for the documented API. async for the
+    # same snapshot-consistency reason as /clients.
+    return render(request, 'partials/clients.html',
+                  clients=list(state._scoreboard_clients.values()))
