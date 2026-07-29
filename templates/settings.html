@@ -549,14 +549,14 @@ function onPasswordInput(form) {
                         <p class="small text-body-secondary mb-2" style="line-height:1.8;">
                             The scoreboard switches modes automatically based on what the CTS console is sending.
                         </p>
-                        <div class="border rounded p-2 mb-3" style="font-family:monospace; font-size:0.82em; background:#111; line-height:2;">
-                            <div><span style="background:#333; color:#ccc; padding:1px 6px; border-radius:3px;">Splash</span> &nbsp;←&nbsp; No activity for <strong>Intro timeout</strong> or <strong>Results timeout</strong></div>
-                            <div style="padding-left:16px; color:#666;">↓ New event / heat received</div>
-                            <div><span style="background:#0f2a1a; color:#70c080; padding:1px 6px; border-radius:3px;">Intro</span> &nbsp;&nbsp;&nbsp;Shows swimmer names — if no names, goes straight to Running</div>
-                            <div style="padding-left:16px; color:#666;">↓ Any lane starts running</div>
-                            <div><span style="background:#0f1e2a; color:#70a0d0; padding:1px 6px; border-radius:3px;">Running</span> &nbsp;Shows live clock in all active lanes</div>
-                            <div style="padding-left:16px; color:#666;">↓ All lanes finish</div>
-                            <div><span style="background:#2a2310; color:#c8b060; padding:1px 6px; border-radius:3px;">Results</span> &nbsp;Shows final times and podium highlights (name column empty if no names loaded)</div>
+                        <div class="border rounded p-2 mb-3 bg-body-tertiary" style="font-family:monospace; font-size:0.82em; line-height:2;">
+                            <div><span class="badge text-bg-secondary">Splash</span> &nbsp;←&nbsp; No activity for <strong>Intro timeout</strong> or <strong>Results timeout</strong></div>
+                            <div class="ps-3 text-body-secondary">↓ New event / heat received</div>
+                            <div><span class="badge text-bg-success">Intro</span> &nbsp;&nbsp;&nbsp;Shows swimmer names — if no names, goes straight to Running</div>
+                            <div class="ps-3 text-body-secondary">↓ Any lane starts running</div>
+                            <div><span class="badge text-bg-info">Running</span> &nbsp;Shows live clock in all active lanes</div>
+                            <div class="ps-3 text-body-secondary">↓ All lanes finish</div>
+                            <div><span class="badge text-bg-warning">Results</span> &nbsp;Shows final times and podium highlights (name column empty if no names loaded)</div>
                         </div>
 
                         <hr>
