@@ -84,19 +84,9 @@ function onPasswordInput(form) {
 <body>
 <div class="container-fluid px-0">
     <nav class="navbar border-bottom px-3 py-2">
-        <button class="btn btn-secondary btn-sm d-lg-none me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#app-sidebar" aria-controls="app-sidebar">☰</button>
+        <button class="btn btn-secondary d-lg-none me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#app-sidebar" aria-controls="app-sidebar" style="font-size:1.4rem; line-height:1; padding:0.1rem 0.65rem;">☰</button>
         <span class="navbar-brand mb-0 h5">Tremplin — Settings</span>
         <div class="d-flex gap-2 align-items-center flex-wrap ms-auto">
-            <span id="system-power-status" style="font-size:0.85em; color:#888;"></span>
-            <span style="position:relative; display:inline-block;">
-                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleLogMenu(event)">Save Logs ▾</button>
-                <div id="log-menu" style="display:none; position:absolute; right:0; top:100%; margin-top:4px; background:#222; border:1px solid #444; border-radius:4px; z-index:50; min-width:150px; box-shadow:0 2px 8px rgba(0,0,0,0.4);">
-                    <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="downloadLogs()">Download</button>
-                    <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="saveLogsToPi()">Save to Pi</button>
-                </div>
-            </span>
-            <button type="button" class="btn btn-warning btn-sm" data-hold data-hold-fn="systemReboot" data-hold-label="Hold to reboot…">Reboot</button>
-            <button type="button" class="btn btn-danger btn-sm" data-hold data-hold-fn="systemShutdown" data-hold-label="Hold to shut down…">Shutdown</button>
             <a href="/help" class="btn btn-secondary btn-sm">Help</a>
             <a href="/info" class="btn btn-secondary btn-sm">Info</a>
             <form action="/logout" class="m-0">
@@ -153,6 +143,15 @@ function onPasswordInput(form) {
                         <a href="/meet"        target="_blank" class="btn btn-secondary">Meet</a>
                         <a href="/console"     target="_blank" class="btn btn-secondary">Console</a>
                     </div>
+                </div>
+                <hr>
+                <div class="app-system">
+                    <div class="text-secondary text-uppercase small mb-1" style="letter-spacing:0.05em;">System</div>
+                    <div class="d-flex flex-wrap gap-1">
+                        <button type="button" class="btn btn-warning btn-sm" data-hold data-hold-fn="systemReboot" data-hold-label="Hold to reboot…">Reboot</button>
+                        <button type="button" class="btn btn-danger btn-sm" data-hold data-hold-fn="systemShutdown" data-hold-label="Hold to shut down…">Shutdown</button>
+                    </div>
+                    <div id="system-power-status" class="small text-body-secondary mt-1"></div>
                 </div>
                 <hr>
                 <div class="app-theme">
@@ -1078,6 +1077,16 @@ function onPasswordInput(form) {
                 <!-- ── Terminal ──────────────────────────────────────────── -->
                 <div class="tab-pane" id="tab-terminal">
                     <div class="card" style="max-width:860px;"><div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                            <span style="position:relative; display:inline-block;">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleLogMenu(event)">Save Logs ▾</button>
+                                <div id="log-menu" style="display:none; position:absolute; left:0; top:100%; margin-top:4px; background:var(--bs-tertiary-bg); border:1px solid var(--bs-border-color); border-radius:4px; z-index:50; min-width:150px; box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+                                    <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="downloadLogs()">Download</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="saveLogsToPi()">Save to Pi</button>
+                                </div>
+                            </span>
+                            <span id="log-save-status" class="small text-body-secondary"></span>
+                        </div>
                         <div class="d-flex align-items-center gap-1 mb-2 flex-wrap">
                             <button class="btn btn-secondary btn-sm" onclick="termLaunch('bash')">Shell</button>
                             <button class="btn btn-secondary btn-sm" onclick="termLaunch('raspi-config')">raspi-config</button>
@@ -2055,7 +2064,7 @@ function onPasswordInput(form) {
     }
     function saveLogsToPi() {
         document.getElementById('log-menu').style.display = 'none';
-        var status = document.getElementById('system-power-status');
+        var status = document.getElementById('log-save-status');
         status.textContent = 'Saving logs…';
         fetch('/logs_save', {method: 'POST'})
             .then(function(r) { return r.json(); })
