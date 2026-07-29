@@ -49,11 +49,11 @@
 <body>
 <div class="container-fluid px-0">
     <nav class="navbar border-bottom px-3 py-2">
-        <button class="btn btn-secondary btn-sm d-lg-none me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#app-sidebar" aria-controls="app-sidebar">☰</button>
-        <span class="navbar-brand mb-0 h5">{{ t.admin_title }}</span>
-        <div class="d-flex gap-2 align-items-center ms-auto">
-            <a href="/admin" class="btn btn-secondary btn-sm" title="Refresh">↻</a>
-        </div>
+        <button class="navbar-toggler d-lg-none me-2" type="button" style="font-size:1.4rem;" data-bs-toggle="offcanvas" data-bs-target="#app-sidebar" aria-controls="app-sidebar" aria-label="Toggle menu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <span class="navbar-brand mb-0 h5 me-auto">{{ t.admin_title }}</span>
+        <a href="/admin" class="btn btn-secondary btn-sm" title="Refresh">↻</a>
     </nav>
 
     <div class="d-flex">
