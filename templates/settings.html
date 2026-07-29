@@ -60,12 +60,17 @@ input[type="time"]::-webkit-datetime-edit { padding: 0; line-height: 1.4; }
 .app-nav .group-toggle .caret { transition: transform 0.15s; font-size: 0.8em; }
 .app-nav .group-toggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
 .app-quicklinks .btn { --bs-btn-padding-y: 2px; --bs-btn-padding-x: 8px; --bs-btn-font-size: 0.78em; }
-/* Hold-to-confirm: the button fills red over the hold duration as feedback. */
+/* Hold-to-confirm: during the hold the button becomes solid red with a white
+   bar sweeping across as a progress indicator. Forcing the base colour (with
+   !important, beating BS5's :active state) makes it show identically on solid
+   and outline buttons alike. */
 .btn-holding {
-    background-image: linear-gradient(to right, var(--bs-danger), var(--bs-danger));
+    color: #fff !important;
+    background-color: var(--bs-danger) !important;
+    border-color: var(--bs-danger) !important;
+    background-image: linear-gradient(to right, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.55));
     background-repeat: no-repeat;
     background-size: 0% 100%;
-    color: #fff !important;
     animation: holdfill 1.2s linear forwards;
 }
 @keyframes holdfill { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }
