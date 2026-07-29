@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ meet_info.name or 'Meet Preview' }}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-5.3.3.min.css') }}">
 <style>
 body {
     background: #0d0d0d;
@@ -191,7 +191,5 @@ body {
 <style>
 @media print { #print-header { display: block !important; } }
 </style>
-<script src="{{ url_for('static', filename='js/jquery-1.12.4.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
 </body>
 </html>
