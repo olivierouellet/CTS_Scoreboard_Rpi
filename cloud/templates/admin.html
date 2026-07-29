@@ -6,6 +6,7 @@
     <title>{{ t.admin_title }}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.ico">
     <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
+    <link rel="stylesheet" href="/static/css/bootstrap-icons.min.css">
     <script>
     // Apply the saved colour theme before first paint (no flash). Default: dark.
     (function () {
@@ -63,11 +64,11 @@
             </div>
             <div class="offcanvas-body d-flex flex-column">
                 <nav class="nav flex-column app-nav">
-                    <a class="nav-link" data-target="#tab-meets">{{ t.active_meets }}</a>
-                    <a class="nav-link" data-target="#tab-organizers">{{ t.organizers }}</a>
-                    <a class="nav-link" data-target="#tab-appearance">{{ t.get('tab_appearance', 'Appearance') }}</a>
-                    <a class="nav-link" data-target="#tab-update">{{ t.get('tab_update', 'Update & Backup') }}</a>
-                    <a class="nav-link" data-target="#tab-debug">{{ t.get('tab_debug', 'Debug') }}</a>
+                    <a class="nav-link" data-target="#tab-meets"><i class="bi bi-water me-2"></i>{{ t.active_meets }}</a>
+                    <a class="nav-link" data-target="#tab-organizers"><i class="bi bi-people me-2"></i>{{ t.organizers }}</a>
+                    <a class="nav-link" data-target="#tab-appearance"><i class="bi bi-palette me-2"></i>{{ t.get('tab_appearance', 'Appearance') }}</a>
+                    <a class="nav-link" data-target="#tab-update"><i class="bi bi-arrow-repeat me-2"></i>{{ t.get('tab_update', 'Update & Backup') }}</a>
+                    <a class="nav-link" data-target="#tab-debug"><i class="bi bi-bug me-2"></i>{{ t.get('tab_debug', 'Debug') }}</a>
                 </nav>
                 <hr>
                 <div class="app-theme">
