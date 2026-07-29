@@ -2159,7 +2159,7 @@ function onPasswordInput(form) {
         script.onload = callback;
         script.onerror = function() {
             document.getElementById('terminal-container').innerHTML =
-                '<p style="color:#c55; padding:8px 0;">xterm.js not found — run install.sh to download it.</p>';
+                '<p class="text-danger" style="padding:8px 0;">xterm.js not found — run install.sh to download it.</p>';
         };
         document.head.appendChild(script);
     }
