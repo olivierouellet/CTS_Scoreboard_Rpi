@@ -135,19 +135,15 @@ function onPasswordInput(form) {
                 <div class="app-quicklinks">
                     <div class="text-secondary text-uppercase small mb-1" style="letter-spacing:0.05em;">Open</div>
                     <div class="d-flex flex-wrap gap-1">
-                        <a href="/live"        target="_blank" class="btn btn-secondary">Live</a>
-                        <a href="/operator"    target="_blank" class="btn btn-secondary">Operator</a>
-                        <a href="/mobile"      target="_blank" class="btn btn-secondary">Mobile</a>
-                        <a href="/live-mobile" target="_blank" class="btn btn-secondary">Live Mobile</a>
-                        <a href="/results"     target="_blank" class="btn btn-secondary">Results</a>
-                        <a href="/schedule"    target="_blank" class="btn btn-secondary">Schedule</a>
-                        <a href="/meet"        target="_blank" class="btn btn-secondary">Meet</a>
-                        <a href="/console"     target="_blank" class="btn btn-secondary">Console</a>
+                        <a href="/live"     target="_blank" class="btn btn-secondary">Live</a>
+                        <a href="/operator" target="_blank" class="btn btn-secondary">Operator</a>
+                        <a href="/mobile"   target="_blank" class="btn btn-secondary">Mobile</a>
                     </div>
-                    <div class="d-flex gap-1 mt-1">
-                        <a href="/help" class="btn btn-secondary flex-fill">Help</a>
-                        <a href="/info" class="btn btn-secondary flex-fill">Info</a>
-                    </div>
+                </div>
+                <hr>
+                <div class="app-help d-flex gap-1">
+                    <a href="/help" class="btn btn-secondary btn-sm flex-fill"><i class="bi bi-question-circle me-1"></i>Help</a>
+                    <a href="/info" class="btn btn-secondary btn-sm flex-fill"><i class="bi bi-info-circle me-1"></i>Info</a>
                 </div>
                 <hr>
                 <div class="app-theme">
@@ -525,6 +521,7 @@ function onPasswordInput(form) {
                 <div class="card"><div class="card-body">
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <span class="fw-bold flex-fill">Serial Monitor</span>
+                        <a href="/console" target="_blank" class="btn btn-secondary btn-sm" title="Open full serial console"><i class="bi bi-terminal me-1"></i>Console</a>
                         <button id="btn-debug-toggle" class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugToggle()">Enable</button>
                         <button class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugClear()">Clear</button>
                     </div>
