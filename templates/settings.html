@@ -128,6 +128,8 @@ function onPasswordInput(form) {
                         <a class="nav-link sub" data-target="#tab-test"><i class="bi bi-play-circle me-2"></i>Test</a>
                         <a class="nav-link sub" data-target="#tab-terminal"><i class="bi bi-terminal me-2"></i>Terminal</a>
                     </div>
+
+                    <a class="nav-link" data-target="#tab-power"><i class="bi bi-power me-2"></i>Power</a>
                 </nav>
                 <hr>
                 <div class="app-quicklinks">
@@ -146,15 +148,6 @@ function onPasswordInput(form) {
                         <a href="/help" class="btn btn-secondary flex-fill">Help</a>
                         <a href="/info" class="btn btn-secondary flex-fill">Info</a>
                     </div>
-                </div>
-                <hr>
-                <div class="app-system">
-                    <div class="text-secondary text-uppercase small mb-1" style="letter-spacing:0.05em;">System</div>
-                    <div class="d-flex flex-wrap gap-1">
-                        <button type="button" class="btn btn-warning btn-sm" data-hold data-hold-fn="systemReboot" data-hold-label="Hold to reboot…">Reboot</button>
-                        <button type="button" class="btn btn-danger btn-sm" data-hold data-hold-fn="systemShutdown" data-hold-label="Hold to shut down…">Shutdown</button>
-                    </div>
-                    <div id="system-power-status" class="small text-body-secondary mt-1"></div>
                 </div>
                 <hr>
                 <div class="app-theme">
@@ -1116,6 +1109,21 @@ function onPasswordInput(form) {
                     </div></div>
                 </div>
             </div>
+        </div>
+
+        <!-- ── Power ───────────────────────────────────────────────── -->
+        <div class="tab-pane" id="tab-power">
+            <div class="row"><div class="col-lg-8">
+                <div class="card"><div class="card-body">
+                    <p class="text-body-secondary small mb-3">Reboot or shut down the Raspberry Pi. Press and <strong>hold</strong> a button to confirm.</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-warning" data-hold data-hold-fn="systemReboot" data-hold-label="Hold to reboot…">Reboot</button>
+                        <button type="button" class="btn btn-danger" data-hold data-hold-fn="systemShutdown" data-hold-label="Hold to shut down…">Shutdown</button>
+                    </div>
+                    <div id="system-power-status" class="small text-body-secondary mt-2"></div>
+                    <p class="small text-body-secondary mt-3 mb-0">After shutdown you'll need to physically power-cycle the Pi (or use a smart plug) to turn it back on.</p>
+                </div></div>
+            </div></div>
         </div>
 
             </div><!-- tab-content -->
