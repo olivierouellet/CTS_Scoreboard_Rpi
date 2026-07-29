@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tremplin — Settings</title>
 <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
+<script>
+// Apply the saved colour theme before first paint (no flash). Default: dark.
+(function () {
+    var pref = localStorage.getItem('cts_theme') || 'dark';
+    var mode = (pref === 'auto')
+        ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : pref;
+    document.documentElement.setAttribute('data-bs-theme', mode);
+})();
+</script>
 <style>
 :root {
     --color-bg:         {{ theme_colors.bg }};
@@ -42,9 +52,9 @@ input[type="time"]::-webkit-datetime-edit { padding: 0; line-height: 1.4; }
 .tab-content { padding-top: 0; }
 #app-sidebar { width: 240px; }
 #app-sidebar .offcanvas-body { padding: 10px; }
-.app-nav .nav-link { color: #bbb; border-radius: 6px; padding: 6px 12px; font-size: 0.9em; cursor: pointer; }
-.app-nav .nav-link:hover { background: #1e1e1e; color: #fff; }
-.app-nav .nav-link.active { background: #2563eb; color: #fff; }
+.app-nav .nav-link { color: var(--bs-secondary-color); border-radius: 6px; padding: 6px 12px; font-size: 0.9em; cursor: pointer; }
+.app-nav .nav-link:hover { background: var(--bs-secondary-bg); color: var(--bs-body-color); }
+.app-nav .nav-link.active { background: var(--bs-primary); color: #fff; }
 .app-nav .nav-link.sub { padding-left: 28px; font-size: 0.86em; }
 .app-nav .group-toggle { display: flex; align-items: center; justify-content: space-between; }
 .app-nav .group-toggle .caret { transition: transform 0.15s; font-size: 0.8em; }
@@ -142,6 +152,15 @@ function onPasswordInput(form) {
                         <a href="/schedule"    target="_blank" class="btn btn-secondary">Schedule</a>
                         <a href="/meet"        target="_blank" class="btn btn-secondary">Meet</a>
                         <a href="/console"     target="_blank" class="btn btn-secondary">Console</a>
+                    </div>
+                </div>
+                <hr>
+                <div class="app-theme">
+                    <div class="text-secondary text-uppercase small mb-1" style="letter-spacing:0.05em;">Theme</div>
+                    <div class="btn-group btn-group-sm w-100" role="group" aria-label="Colour theme">
+                        <button type="button" class="btn btn-outline-secondary" data-theme-set="light" title="Light">☀</button>
+                        <button type="button" class="btn btn-outline-secondary" data-theme-set="dark" title="Dark">🌙</button>
+                        <button type="button" class="btn btn-outline-secondary" data-theme-set="auto" title="Auto (follow system)">Auto</button>
                     </div>
                 </div>
             </div>
@@ -1082,6 +1101,30 @@ function onPasswordInput(form) {
     <script src="/static/js/htmx-2.0.4.min.js"></script>
     <script src="/static/js/ws.js"></script>
     <script>
+    // ── Colour theme toggle (Light / Dark / Auto) ─────────────────────────────
+    (function () {
+        var KEY = 'cts_theme';
+        var mq  = matchMedia('(prefers-color-scheme: dark)');
+        function apply(pref) {
+            var mode = (pref === 'auto') ? (mq.matches ? 'dark' : 'light') : pref;
+            document.documentElement.setAttribute('data-bs-theme', mode);
+            document.querySelectorAll('[data-theme-set]').forEach(function (b) {
+                b.classList.toggle('active', b.getAttribute('data-theme-set') === pref);
+            });
+        }
+        apply(localStorage.getItem(KEY) || 'dark');
+        document.querySelectorAll('[data-theme-set]').forEach(function (b) {
+            b.addEventListener('click', function () {
+                var pref = b.getAttribute('data-theme-set');
+                localStorage.setItem(KEY, pref);
+                apply(pref);
+            });
+        });
+        mq.addEventListener('change', function () {
+            if ((localStorage.getItem(KEY) || 'dark') === 'auto') apply('auto');
+        });
+    })();
+
     // ── Restore tab + flash button after form submit ──────────────────────────
     // Deferred so all tab-init functions are defined first
     function _refreshMeetTab() {
