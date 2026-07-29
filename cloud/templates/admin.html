@@ -6,6 +6,16 @@
     <title>{{ t.admin_title }}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.ico">
     <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
+    <script>
+    // Apply the saved colour theme before first paint (no flash). Default: dark.
+    (function () {
+        var pref = localStorage.getItem('cts_theme') || 'dark';
+        var mode = (pref === 'auto')
+            ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+            : pref;
+        document.documentElement.setAttribute('data-bs-theme', mode);
+    })();
+    </script>
     <style>
         /* Field labels: compact uppercase (matches the server panel). */
         .form-label { text-transform: uppercase; font-size: 0.78rem; letter-spacing: 0.03em; color: var(--bs-secondary-color); margin-bottom: 0.25rem; }
@@ -29,9 +39,9 @@
         /* ── BS5 responsive sidebar shell ── */
         #app-sidebar { width: 240px; }
         #app-sidebar .offcanvas-body { padding: 10px; }
-        .app-nav .nav-link { color:#bbb; border-radius:6px; padding:6px 12px; font-size:0.9em; cursor:pointer; }
-        .app-nav .nav-link:hover { background:#1e1e1e; color:#fff; }
-        .app-nav .nav-link.active { background:#2563eb; color:#fff; }
+        .app-nav .nav-link { color:var(--bs-secondary-color); border-radius:6px; padding:6px 12px; font-size:0.9em; cursor:pointer; }
+        .app-nav .nav-link:hover { background:var(--bs-secondary-bg); color:var(--bs-body-color); }
+        .app-nav .nav-link.active { background:var(--bs-primary); color:#fff; }
         @media (min-width:992px) { #app-sidebar { min-height: calc(100vh - 57px); flex:0 0 auto; } }
     </style>
 </head>
@@ -61,6 +71,15 @@
                     <a class="nav-link" data-target="#tab-debug">{{ t.get('tab_debug', 'Debug') }}</a>
                     <a class="nav-link" data-target="#tab-account">{{ t.get('tab_account', 'Account') }}</a>
                 </nav>
+                <hr>
+                <div class="app-theme">
+                    <div class="text-secondary text-uppercase small mb-1" style="letter-spacing:0.05em;">{{ t.get('theme', 'Theme') }}</div>
+                    <div class="btn-group btn-group-sm w-100" role="group" aria-label="Colour theme">
+                        <button type="button" class="btn btn-outline-secondary" data-theme-set="light" title="Light">☀</button>
+                        <button type="button" class="btn btn-outline-secondary" data-theme-set="dark" title="Dark">🌙</button>
+                        <button type="button" class="btn btn-outline-secondary" data-theme-set="auto" title="Auto (follow system)">Auto</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -369,6 +388,30 @@
     <script src="/static/js/bootstrap.bundle-5.3.3.min.js"></script>
     <script src="/static/js/htmx-2.0.4.min.js"></script>
     <script>
+        // ── Colour theme toggle (Light / Dark / Auto) ──────────────────────────
+        (function () {
+            var KEY = 'cts_theme';
+            var mq  = matchMedia('(prefers-color-scheme: dark)');
+            function apply(pref) {
+                var mode = (pref === 'auto') ? (mq.matches ? 'dark' : 'light') : pref;
+                document.documentElement.setAttribute('data-bs-theme', mode);
+                document.querySelectorAll('[data-theme-set]').forEach(function (b) {
+                    b.classList.toggle('active', b.getAttribute('data-theme-set') === pref);
+                });
+            }
+            apply(localStorage.getItem(KEY) || 'dark');
+            document.querySelectorAll('[data-theme-set]').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    var pref = b.getAttribute('data-theme-set');
+                    localStorage.setItem(KEY, pref);
+                    apply(pref);
+                });
+            });
+            mq.addEventListener('change', function () {
+                if ((localStorage.getItem(KEY) || 'dark') === 'auto') apply('auto');
+            });
+        })();
+
         // ── Attendance counts ──────────────────────────────────────────────────
         function refreshAttendees(span, win) {
             const meetId = span.getAttribute('data-meet');
