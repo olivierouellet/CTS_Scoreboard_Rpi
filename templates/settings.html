@@ -1115,13 +1115,14 @@ function onPasswordInput(form) {
         <div class="tab-pane" id="tab-power">
             <div class="row"><div class="col-lg-8">
                 <div class="card"><div class="card-body">
-                    <p class="text-body-secondary small mb-3">Reboot or shut down the Raspberry Pi. Press and <strong>hold</strong> a button to confirm.</p>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-warning" data-hold data-hold-fn="systemReboot" data-hold-label="Hold to reboot…">Reboot</button>
-                        <button type="button" class="btn btn-danger" data-hold data-hold-fn="systemShutdown" data-hold-label="Hold to shut down…">Shutdown</button>
+                    <p class="text-body-secondary small mb-3">Restart just the app, reboot, or shut down the Raspberry Pi. Press and <strong>hold</strong> a button to confirm.</p>
+                    <div class="d-flex flex-column align-items-start gap-2">
+                        <button type="button" class="btn btn-secondary" data-hold data-hold-fn="serviceRestart" data-hold-label="Hold to restart…"><i class="bi bi-arrow-clockwise me-2"></i>Restart service</button>
+                        <button type="button" class="btn btn-warning" data-hold data-hold-fn="systemReboot" data-hold-label="Hold to reboot…"><i class="bi bi-arrow-repeat me-2"></i>Reboot</button>
+                        <button type="button" class="btn btn-danger" data-hold data-hold-fn="systemShutdown" data-hold-label="Hold to shut down…"><i class="bi bi-power me-2"></i>Shutdown</button>
                     </div>
                     <div id="system-power-status" class="small text-body-secondary mt-2"></div>
-                    <p class="small text-body-secondary mt-3 mb-0">After shutdown you'll need to physically power-cycle the Pi (or use a smart plug) to turn it back on.</p>
+                    <p class="small text-body-secondary mt-3 mb-0"><strong>Restart service</strong> relaunches the app in a few seconds (this page will briefly reconnect). <strong>Shutdown</strong> requires physically power-cycling the Pi (or a smart plug) to turn it back on.</p>
                 </div></div>
             </div></div>
         </div>
@@ -2100,6 +2101,15 @@ function onPasswordInput(form) {
     }
 
     // ── System power ─────────────────────────────────────────────────────────
+    function serviceRestart() {
+        var status = document.getElementById('system-power-status');
+        status.textContent = 'Restarting service…';
+        fetch('/system_service_restart', {method: 'POST'});
+        // The app (which serves this page) goes down briefly; nudge a reload so
+        // the panel reconnects once it's back.
+        setTimeout(function() { location.reload(); }, 5000);
+    }
+
     function systemReboot() {
         document.getElementById('system-power-status').textContent = 'Rebooting…';
         fetch('/system_reboot', {method: 'POST'});

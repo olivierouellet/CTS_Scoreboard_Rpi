@@ -450,6 +450,19 @@ def route_system_shutdown():
     return {'ok': True}
 
 
+@router.post('/system_service_restart', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+def route_service_restart():
+    # Restart just the app (tremplin.service) — far faster than a full reboot,
+    # and the same command the updater runs. Deferred so this response returns
+    # before systemd kills the process serving it.
+    def _restart():
+        time.sleep(1)
+        subprocess.run(['sudo', 'systemctl', 'restart', 'tremplin'])
+    bus.run_bg(_restart)
+    return {'ok': True}
+
+
 @router.get('/backup_download', dependencies=[Depends(require_login)])
 def route_backup_download():
     buf = io.BytesIO()
