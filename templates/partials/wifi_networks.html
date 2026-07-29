@@ -1,0 +1,20 @@
+{% if error %}
+<span class="text-danger">{{ error }}</span>
+{% elif not networks %}
+<span class="text-body-secondary">No networks found.</span>
+{% else %}
+{% for n in networks %}
+{% set bars = ['▂░░░', '▂▄░░', '▂▄▆░', '▂▄▆█'][ [3, n.signal // 26] | min ] %}
+<div class="d-flex align-items-center border-bottom py-1 gap-1">
+    <span class="flex-fill text-break" style="min-width:0;">{{ n.ssid }}{% if n.security %} <small class="text-body-secondary">{{ n.security }}</small>{% endif %}</span>
+    <span class="text-body-secondary text-nowrap" style="font-family:monospace;">{{ bars }}</span>
+    <div class="flex-shrink-0" style="min-width:80px; text-align:center;">
+        {% if n.active %}
+        <button class="btn btn-success btn-sm text-nowrap" style="min-width:80px;" disabled>Connected</button>
+        {% else %}
+        <button class="btn btn-secondary btn-sm text-nowrap" style="min-width:80px;" onclick='showJoinForm({{ n.ssid | tojson }}, {{ 'true' if n.security else 'false' }})'>Connect</button>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+{% endif %}

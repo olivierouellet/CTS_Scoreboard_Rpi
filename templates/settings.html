@@ -915,7 +915,9 @@ function onPasswordInput(form) {
                         <!-- Network list -->
                         <div class="d-flex align-items-center mb-2">
                             <span class="fw-bold flex-fill">WiFi Networks</span>
-                            <button class="btn btn-secondary btn-sm" onclick="scanWifi()" style="width:80px;">Scan</button>
+                            <button class="btn btn-secondary btn-sm" style="width:80px;"
+                                    hx-get="/wifi_scan" hx-target="#wifi-net-list" hx-disabled-elt="this"
+                                    hx-on::before-request="document.getElementById('wifi-net-list').innerHTML = '<span class=&quot;text-body-secondary&quot;>Scanning…</span>'">Scan</button>
                         </div>
                         <div id="wifi-net-list" class="small" style="min-height:32px;"><span class="text-body-secondary">Click Scan to search for networks.</span></div>
 
@@ -1561,30 +1563,9 @@ function onPasswordInput(form) {
         btn.addEventListener('pointercancel', function() { release(false); });
     })();
 
-    function scanWifi() {
-        var list = document.getElementById('wifi-net-list');
-        list.innerHTML = '<span class="text-body-secondary">Scanning…</span>';
-        fetch('/wifi_scan').then(function(r){ return r.json(); }).then(function(d){
-            if (d.error) { list.innerHTML = '<span class="text-danger">' + d.error + '</span>'; return; }
-            if (!d.networks.length) { list.innerHTML = '<span class="text-body-secondary">No networks found.</span>'; return; }
-            var html = '';
-            d.networks.forEach(function(n){
-                var bars = ['▂░░░','▂▄░░','▂▄▆░','▂▄▆█'][Math.min(3, Math.floor(n.signal / 26))];
-                var lock = n.security ? ' <small class="text-body-secondary">' + n.security + '</small>' : '';
-                var action = n.active
-                    ? '<button class="btn btn-success btn-sm text-nowrap" style="min-width:80px;" disabled>Connected</button>'
-                    : '<button class="btn btn-secondary btn-sm text-nowrap" style="min-width:80px;" onclick="showJoinForm(' +
-                      JSON.stringify(n.ssid).replace(/"/g, '&quot;') + ',' + (n.security ? 'true' : 'false') +
-                      ')">Connect</button>';
-                html += '<div class="d-flex align-items-center border-bottom py-1 gap-1">' +
-                        '<span class="flex-fill text-break" style="min-width:0;">' + n.ssid + lock + '</span>' +
-                        '<span class="text-body-secondary text-nowrap" style="font-family:monospace;">' + bars + '</span>' +
-                        '<div class="flex-shrink-0" style="min-width:80px; text-align:center;">' + action + '</div>' +
-                        '</div>';
-            });
-            list.innerHTML = html;
-        }).catch(function(){ document.getElementById('wifi-net-list').innerHTML = '<span class="text-danger">Scan failed.</span>'; });
-    }
+    // WiFi network list is HTMX-driven: the Scan button does hx-get="/wifi_scan"
+    // (renders partials/wifi_networks.html into #wifi-net-list). The "Connect"
+    // buttons in that fragment call showJoinForm() below.
 
     function showJoinForm(ssid, needsPassword) {
         _joinSsid = ssid;
@@ -1614,7 +1595,7 @@ function onPasswordInput(form) {
             if (d.ok) {
                 _statusColor(status, 'ok');
                 status.textContent = 'Connected!';
-                setTimeout(function(){ cancelJoin(); _netTabActive(); scanWifi(); }, 1500);
+                setTimeout(function(){ cancelJoin(); _netTabActive(); if (window.htmx) htmx.ajax('GET', '/wifi_scan', '#wifi-net-list'); }, 1500);
             } else {
                 _statusColor(status, 'err');
                 status.textContent = d.error || 'Connection failed.';
