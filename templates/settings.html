@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tremplin — Settings</title>
 <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
+<link rel="stylesheet" href="/static/css/bootstrap-icons.min.css">
 <script>
 // Apply the saved colour theme before first paint (no flash). Default: dark.
 (function () {
@@ -103,29 +104,29 @@ function onPasswordInput(form) {
             </div>
             <div class="offcanvas-body d-flex flex-column">
                 <nav class="nav flex-column app-nav">
-                    <a class="nav-link" data-target="#tab-meet">Meet Setup</a>
-                    <a class="nav-link" data-target="#tab-debug">Timing</a>
-                    <a class="nav-link" data-target="#tab-time">Clock</a>
+                    <a class="nav-link" data-target="#tab-meet"><i class="bi bi-water me-2"></i>Meet Setup</a>
+                    <a class="nav-link" data-target="#tab-debug"><i class="bi bi-stopwatch me-2"></i>Timing</a>
+                    <a class="nav-link" data-target="#tab-time"><i class="bi bi-clock me-2"></i>Clock</a>
 
-                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-appearance" role="button" aria-expanded="false" aria-controls="grp-appearance"><span>Appearance</span><span class="caret">▸</span></a>
+                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-appearance" role="button" aria-expanded="false" aria-controls="grp-appearance"><span><i class="bi bi-palette me-2"></i>Appearance</span><span class="caret">▸</span></a>
                     <div class="collapse" id="grp-appearance">
-                        <a class="nav-link sub" data-target="#tab-flow">Flow</a>
-                        <a class="nav-link sub" data-target="#tab-display">Display</a>
-                        <a class="nav-link sub" data-target="#tab-theme">Theme</a>
+                        <a class="nav-link sub" data-target="#tab-flow"><i class="bi bi-diagram-3 me-2"></i>Flow</a>
+                        <a class="nav-link sub" data-target="#tab-display"><i class="bi bi-display me-2"></i>Display</a>
+                        <a class="nav-link sub" data-target="#tab-theme"><i class="bi bi-brush me-2"></i>Theme</a>
                     </div>
 
-                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-network" role="button" aria-expanded="false" aria-controls="grp-network"><span>Network</span><span class="caret">▸</span></a>
+                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-network" role="button" aria-expanded="false" aria-controls="grp-network"><span><i class="bi bi-wifi me-2"></i>Network</span><span class="caret">▸</span></a>
                     <div class="collapse" id="grp-network">
-                        <a class="nav-link sub" data-target="#tab-network">Local</a>
-                        <a class="nav-link sub" data-target="#tab-cloud">Cloud</a>
+                        <a class="nav-link sub" data-target="#tab-network"><i class="bi bi-ethernet me-2"></i>Local</a>
+                        <a class="nav-link sub" data-target="#tab-cloud"><i class="bi bi-cloud me-2"></i>Cloud</a>
                     </div>
 
-                    <a class="nav-link" data-target="#tab-update">Update &amp; Backup</a>
+                    <a class="nav-link" data-target="#tab-update"><i class="bi bi-arrow-repeat me-2"></i>Update &amp; Backup</a>
 
-                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-debug" role="button" aria-expanded="false" aria-controls="grp-debug"><span>Debug</span><span class="caret">▸</span></a>
+                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-debug" role="button" aria-expanded="false" aria-controls="grp-debug"><span><i class="bi bi-bug me-2"></i>Debug</span><span class="caret">▸</span></a>
                     <div class="collapse" id="grp-debug">
-                        <a class="nav-link sub" data-target="#tab-test">Test</a>
-                        <a class="nav-link sub" data-target="#tab-terminal">Terminal</a>
+                        <a class="nav-link sub" data-target="#tab-test"><i class="bi bi-play-circle me-2"></i>Test</a>
+                        <a class="nav-link sub" data-target="#tab-terminal"><i class="bi bi-terminal me-2"></i>Terminal</a>
                     </div>
                 </nav>
                 <hr>
