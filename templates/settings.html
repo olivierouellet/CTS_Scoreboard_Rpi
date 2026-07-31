@@ -105,21 +105,18 @@ function onPasswordInput(form) {
             <div class="offcanvas-body d-flex flex-column">
                 <nav class="nav flex-column app-nav">
                     <a class="nav-link" data-target="#tab-meet"><i class="bi bi-water me-2"></i>Meet Setup</a>
+                    <a class="nav-link" data-target="#tab-cloud"><i class="bi bi-cloud me-2"></i>Cloud</a>
                     <a class="nav-link" data-target="#tab-debug"><i class="bi bi-stopwatch me-2"></i>Timing</a>
                     <a class="nav-link" data-target="#tab-time"><i class="bi bi-clock me-2"></i>Clock</a>
 
-                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-appearance" role="button" aria-expanded="false" aria-controls="grp-appearance"><span><i class="bi bi-palette me-2"></i>Appearance</span><span class="caret">▸</span></a>
+                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-appearance" role="button" aria-expanded="false" aria-controls="grp-appearance"><span><i class="bi bi-palette me-2"></i>Scoreboard</span><span class="caret">▸</span></a>
                     <div class="collapse" id="grp-appearance">
                         <a class="nav-link sub" data-target="#tab-flow"><i class="bi bi-diagram-3 me-2"></i>Flow</a>
                         <a class="nav-link sub" data-target="#tab-display"><i class="bi bi-display me-2"></i>Display</a>
                         <a class="nav-link sub" data-target="#tab-theme"><i class="bi bi-brush me-2"></i>Theme</a>
                     </div>
 
-                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-network" role="button" aria-expanded="false" aria-controls="grp-network"><span><i class="bi bi-wifi me-2"></i>Network</span><span class="caret">▸</span></a>
-                    <div class="collapse" id="grp-network">
-                        <a class="nav-link sub" data-target="#tab-network"><i class="bi bi-ethernet me-2"></i>Local</a>
-                        <a class="nav-link sub" data-target="#tab-cloud"><i class="bi bi-cloud me-2"></i>Cloud</a>
-                    </div>
+                    <a class="nav-link" data-target="#tab-network"><i class="bi bi-wifi me-2"></i>Network</a>
 
                     <a class="nav-link" data-target="#tab-update"><i class="bi bi-arrow-repeat me-2"></i>Update &amp; Backup</a>
 
@@ -255,110 +252,6 @@ function onPasswordInput(form) {
                     {% endif %}
                 </form>
             </div></div>
-
-            <!-- ── Cloud appearance (per loaded meet) ──────────────────── -->
-            {% if active_meet_file %}
-            <div class="card mt-3"><div class="card-body">
-                <form action="/settings" method="post" enctype="multipart/form-data">
-                <input type="hidden" name="meet_appearance_submit" value="1">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <label class="form-label fw-bold mb-0">Cloud appearance — this meet</label>
-                    <button id="btn-update-meet" type="submit" class="btn btn-secondary btn-sm">Save</button>
-                </div>
-                <p class="small text-body-secondary mb-2">Saved separately for each meet file, so each day of a split meet keeps its own title, image and icon.</p>
-
-                <div class="mb-2">
-                    <label class="form-label mb-1">Picker title</label>
-                    <input type="text" name="cloud_meet_title" id="cloud_meet_title" value="{{ cloud_meet_title }}"
-                           class="form-control form-control-sm" placeholder="{{ meet_title or 'Meet title' }}">
-                </div>
-                <div class="mb-2">
-                    <label class="form-label mb-1">Location</label>
-                    <input type="text" name="meet_location" value="{{ meet_location }}"
-                           class="form-control form-control-sm" placeholder="City or venue (auto from Lenex if blank)">
-                </div>
-                <div class="mb-2">
-                    <label class="form-label mb-1">Sport</label>
-                    <input type="text" name="meet_sport" value="{{ meet_sport }}"
-                           class="form-control form-control-sm" placeholder="e.g. Swimming (optional)">
-                </div>
-                <div class="mb-2">
-                    <label class="form-label mb-1">App / window title</label>
-                    <input type="text" name="app_window_title" id="app_window_title" value="{{ app_window_title }}"
-                           class="form-control form-control-sm" placeholder="Tremplin (blank = meet name)">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label mb-1">Column label style</label>
-                    <select name="cloud_label_style" class="form-select form-select-sm" style="width:auto;">
-                        <option value="short" {% if cloud_label_style == 'short' %}selected{% endif %}>Short (EV, HT, LN…)</option>
-                        <option value="long"  {% if cloud_label_style == 'long'  %}selected{% endif %}>Long (EVENT, HEAT, LANE…)</option>
-                    </select>
-                </div>
-
-                <!-- Picker image -->
-                <label class="form-label mb-1">Picker image <small class="text-body-secondary">(shown on the meet card)</small></label>
-                {% if picker_image_error %}<p class="text-danger small mb-1">{{ picker_image_error }}</p>{% endif %}
-                <select name="selected_picker_image" class="form-select form-select-sm mb-1" onchange="_fsubmit(this.closest('form'))">
-                    <option value="" {% if not active_picker_image %}selected{% endif %}>— None —</option>
-                    {% for img in picker_image_list %}
-                    <option value="{{ img }}" {% if img == active_picker_image %}selected{% endif %}>{{ img }}</option>
-                    {% endfor %}
-                </select>
-                <div class="d-flex flex-wrap align-items-center gap-1 mb-3">
-                    <div class="file-picker flex-shrink-0">
-                        <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
-                            Add Image
-                            <input type="file" name="picker_image" accept="image/*" style="display:none;"
-                                   onchange="var m=this.closest('.file-picker').querySelector('.file-msg');m.style.opacity='1';m.style.transition='none';m.textContent='Uploading…';_fsubmit(this.closest('form'))">
-                        </label>
-                        <span class="file-msg small text-body-secondary ms-1"></span>
-                    </div>
-                    {% if active_picker_image %}
-                    <a href="/picker_image_delete?file={{ active_picker_image }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_picker_image }}?')">Delete</a>
-                    {% endif %}
-                    {% if picker_image_list %}
-                    <a href="/picker_image_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="Hold to delete all…">Delete All</a>
-                    {% endif %}
-                    {% if active_picker_image %}
-                    <img src="/picker_image" style="height:28px; border-radius:4px; border:1px solid #ccc; flex-shrink:0;">
-                    {% endif %}
-                </div>
-
-                <!-- Home screen icon -->
-                <label class="form-label mb-1">Home screen icon <small class="text-body-secondary">(square PNG, 512 or 1024 px)</small></label>
-                {% if icon_error %}<p class="text-danger small mb-1">{{ icon_error }}</p>{% endif %}
-                <select name="selected_home_icon" class="form-select form-select-sm mb-1" onchange="_fsubmit(this.closest('form'))">
-                    <option value="" {% if not active_home_icon %}selected{% endif %}>— None —</option>
-                    {% for icon in icon_list %}
-                    <option value="{{ icon }}" {% if icon == active_home_icon %}selected{% endif %}>{{ icon }}</option>
-                    {% endfor %}
-                </select>
-                <div class="d-flex flex-wrap align-items-center gap-1">
-                    <div class="file-picker flex-shrink-0">
-                        <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
-                            Add Icon
-                            <input type="file" name="home_icon" accept="image/png" style="display:none;"
-                                   onchange="var m=this.closest('.file-picker').querySelector('.file-msg');m.style.opacity='1';m.style.transition='none';m.textContent='Resizing…';_fsubmit(this.closest('form'))">
-                        </label>
-                        <span class="file-msg small text-body-secondary ms-1"></span>
-                    </div>
-                    {% if active_home_icon %}
-                    <a href="/icon_delete?file={{ active_home_icon }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_home_icon }}?')">Delete</a>
-                    {% endif %}
-                    {% if icon_list %}
-                    <a href="/icon_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="Hold to delete all…">Delete All</a>
-                    {% endif %}
-                    {% if has_home_icon %}
-                    <img src="/home_icon" style="height:28px; width:28px; border-radius:6px; border:1px solid #ccc; flex-shrink:0;">
-                    {% endif %}
-                </div>
-                </form>
-            </div></div>
-            {% else %}
-            <div class="card mt-3"><div class="card-body text-body-secondary small">
-                Load a meet file to set its cloud picker title, image and icon.
-            </div></div>
-            {% endif %}
         </div></div>
         </div>
 
@@ -974,9 +867,9 @@ function onPasswordInput(form) {
 
                 <!-- ── Cloud tab (Pi-global connection only) ─────────────────── -->
                 <div class="tab-pane" id="tab-cloud">
-                    <form action="/settings" method="post">
-                    <input type="hidden" name="cloud_settings_submit" value="1">
                     <div class="row"><div class="col-lg-8">
+                    <form id="cloud_settings_form" action="/settings" method="post">
+                    <input type="hidden" name="cloud_settings_submit" value="1">
                         <div class="card mb-3"><div class="card-body">
                             <div class="d-flex align-items-center gap-2 mb-3">
                                 <span class="text-body-secondary small" style="min-width:70px;">Status</span>
@@ -998,9 +891,112 @@ function onPasswordInput(form) {
                                 <button id="btn-update-cloud" type="submit" class="btn btn-secondary btn-sm">Save</button>
                             </div>
                         </div></div>
-                        <p class="small text-body-secondary">Per-meet appearance — picker title, image, home icon, location, sport — is set in the <strong>Meet&nbsp;Setup</strong> tab and saved separately for each loaded meet.</p>
-                    </div></div>
                     </form>
+
+                        <!-- Per-meet cloud appearance (moved from Meet Setup) -->
+            {% if active_meet_file %}
+            <div class="card mt-3"><div class="card-body">
+                <form id="cloud_appearance_form" action="/settings" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="meet_appearance_submit" value="1">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label fw-bold mb-0">Cloud appearance — this meet</label>
+                    <button id="btn-update-meet" type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </div>
+                <p class="small text-body-secondary mb-2">Saved separately for each meet file, so each day of a split meet keeps its own title, image and icon.</p>
+
+                <div class="mb-2">
+                    <label class="form-label mb-1">Picker title</label>
+                    <input type="text" name="cloud_meet_title" id="cloud_meet_title" value="{{ cloud_meet_title }}"
+                           class="form-control form-control-sm" placeholder="{{ meet_title or 'Meet title' }}">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label mb-1">Location</label>
+                    <input type="text" name="meet_location" value="{{ meet_location }}"
+                           class="form-control form-control-sm" placeholder="City or venue (auto from Lenex if blank)">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label mb-1">Sport</label>
+                    <input type="text" name="meet_sport" value="{{ meet_sport }}"
+                           class="form-control form-control-sm" placeholder="e.g. Swimming (optional)">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label mb-1">App / window title</label>
+                    <input type="text" name="app_window_title" id="app_window_title" value="{{ app_window_title }}"
+                           class="form-control form-control-sm" placeholder="Tremplin (blank = meet name)">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label mb-1">Column label style</label>
+                    <select name="cloud_label_style" class="form-select form-select-sm" style="width:auto;">
+                        <option value="short" {% if cloud_label_style == 'short' %}selected{% endif %}>Short (EV, HT, LN…)</option>
+                        <option value="long"  {% if cloud_label_style == 'long'  %}selected{% endif %}>Long (EVENT, HEAT, LANE…)</option>
+                    </select>
+                </div>
+
+                <!-- Picker image -->
+                <label class="form-label mb-1">Picker image <small class="text-body-secondary">(shown on the meet card)</small></label>
+                {% if picker_image_error %}<p class="text-danger small mb-1">{{ picker_image_error }}</p>{% endif %}
+                <select name="selected_picker_image" class="form-select form-select-sm mb-1" onchange="_fsubmit(this.closest('form'))">
+                    <option value="" {% if not active_picker_image %}selected{% endif %}>— None —</option>
+                    {% for img in picker_image_list %}
+                    <option value="{{ img }}" {% if img == active_picker_image %}selected{% endif %}>{{ img }}</option>
+                    {% endfor %}
+                </select>
+                <div class="d-flex flex-wrap align-items-center gap-1 mb-3">
+                    <div class="file-picker flex-shrink-0">
+                        <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
+                            Add Image
+                            <input type="file" name="picker_image" accept="image/*" style="display:none;"
+                                   onchange="var m=this.closest('.file-picker').querySelector('.file-msg');m.style.opacity='1';m.style.transition='none';m.textContent='Uploading…';_fsubmit(this.closest('form'))">
+                        </label>
+                        <span class="file-msg small text-body-secondary ms-1"></span>
+                    </div>
+                    {% if active_picker_image %}
+                    <a href="/picker_image_delete?file={{ active_picker_image }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_picker_image }}?')">Delete</a>
+                    {% endif %}
+                    {% if picker_image_list %}
+                    <a href="/picker_image_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="Hold to delete all…">Delete All</a>
+                    {% endif %}
+                    {% if active_picker_image %}
+                    <img src="/picker_image" style="height:28px; border-radius:4px; border:1px solid #ccc; flex-shrink:0;">
+                    {% endif %}
+                </div>
+
+                <!-- Home screen icon -->
+                <label class="form-label mb-1">Home screen icon <small class="text-body-secondary">(square PNG, 512 or 1024 px)</small></label>
+                {% if icon_error %}<p class="text-danger small mb-1">{{ icon_error }}</p>{% endif %}
+                <select name="selected_home_icon" class="form-select form-select-sm mb-1" onchange="_fsubmit(this.closest('form'))">
+                    <option value="" {% if not active_home_icon %}selected{% endif %}>— None —</option>
+                    {% for icon in icon_list %}
+                    <option value="{{ icon }}" {% if icon == active_home_icon %}selected{% endif %}>{{ icon }}</option>
+                    {% endfor %}
+                </select>
+                <div class="d-flex flex-wrap align-items-center gap-1">
+                    <div class="file-picker flex-shrink-0">
+                        <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
+                            Add Icon
+                            <input type="file" name="home_icon" accept="image/png" style="display:none;"
+                                   onchange="var m=this.closest('.file-picker').querySelector('.file-msg');m.style.opacity='1';m.style.transition='none';m.textContent='Resizing…';_fsubmit(this.closest('form'))">
+                        </label>
+                        <span class="file-msg small text-body-secondary ms-1"></span>
+                    </div>
+                    {% if active_home_icon %}
+                    <a href="/icon_delete?file={{ active_home_icon }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_home_icon }}?')">Delete</a>
+                    {% endif %}
+                    {% if icon_list %}
+                    <a href="/icon_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="Hold to delete all…">Delete All</a>
+                    {% endif %}
+                    {% if has_home_icon %}
+                    <img src="/home_icon" style="height:28px; width:28px; border-radius:6px; border:1px solid #ccc; flex-shrink:0;">
+                    {% endif %}
+                </div>
+                </form>
+            </div></div>
+            {% else %}
+            <div class="card mt-3"><div class="card-body text-body-secondary small">
+                Load a meet file to set its cloud picker title, image and icon.
+            </div></div>
+            {% endif %}
+                    </div></div>
                 </div>
             </div>
         </div>
@@ -1338,9 +1334,9 @@ function onPasswordInput(form) {
         });
     }
     markDirty('tab-flow',    'btn-update-flow');
-    markDirty('tab-cloud',   'btn-update-cloud');
+    markDirty('cloud_settings_form', 'btn-update-cloud');
     markDirty('display-settings-form', 'btn-update-display');
-    markDirty('tab-meet',    'btn-update-meet');
+    markDirty('cloud_appearance_form', 'btn-update-meet');
     markDirty('tab-account', 'btn-update-account');
     markDirty('tab-theme', 'btn-update-theme');
 
