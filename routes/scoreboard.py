@@ -111,8 +111,3 @@ def route_next_heats(request: Request):
 @router.get('/info')
 def route_info(request: Request):
     return render(request, 'info.html')
-
-
-@router.get('/help')
-def route_help(request: Request):
-    return render(request, 'help.html')

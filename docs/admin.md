@@ -98,3 +98,29 @@ name  = { short = "NAME", long = "NAME"  }
 ```
 
 Add any `.toml` with the same structure to `locales/` (or upload via the Display tab) and it appears in the Language dropdown automatically. Files placed in `~/TremplinData/locale/` take priority over the built-in ones.
+
+---
+
+## Service management (SSH into Pi #1)
+
+The app runs as a systemd service named **`tremplin`**. Most of this is also available from the admin UI — the **Power** tab does restart / reboot / shutdown, and **Terminal** has a "Scoreboard logs" launcher and a "Save Logs" button — but from an SSH session:
+
+```sh
+sudo systemctl restart tremplin    # restart after manual changes (same as the Power tab)
+sudo systemctl stop tremplin       # stop the service
+sudo systemctl start tremplin      # start it again
+systemctl status tremplin          # current state
+journalctl -u tremplin -f          # follow live logs
+```
+
+---
+
+## CLI troubleshooting
+
+Most issues are handled in the UI — serial port + Serial Monitor in **Timing**, WiFi and clock tabs, meet-file upload in **Meet Setup**. For the rest:
+
+**The service won't start.** Run `journalctl -u tremplin -f` to see the error. Common causes: wrong serial port, missing Python dependencies (run `uv sync` in the repo directory), or another process already bound to port 5000.
+
+**Serial adapter not detected.** Run `ls /dev/ttyUSB*` on Pi #1 to list adapters. The service user must be in the `dialout` group — check with `groups`; if missing, `sudo usermod -aG dialout <user>` and reboot. (The installer normally handles this.)
+
+**`tremplin.local` unreachable.** See [troubleshooting-tremplin-local-unreachable.md](troubleshooting-tremplin-local-unreachable.md).
