@@ -6,6 +6,7 @@
 <title>Tremplin — Settings</title>
 <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
 <link rel="stylesheet" href="/static/css/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/css/panel.css">
 <script>
 // Apply the saved colour theme before first paint (no flash). Default: dark.
 (function () {
@@ -17,6 +18,8 @@
 })();
 </script>
 <style>
+/* Page-specific styling only. Shared shell (form-label, code chip, sidebar,
+   tabs, hold-to-confirm, autofill) lives in /static/css/panel.css. */
 :root {
     --color-bg:         {{ theme_colors.bg }};
     --color-row-odd:    {{ theme_colors.row_odd }};
@@ -25,17 +28,7 @@
     --font-family:      '{{ theme_fonts.family }}';
     --font-digits:      '{{ theme_fonts.digits }}';
     --font-timing:      '{{ theme_fonts.timing }}';
-    /* Inline <code> defaults to pink in Bootstrap; follow the theme's emphasis
-       colour instead (white in dark, near-black in light). */
-    --bs-code-color:    var(--bs-body-emphasis-color);
 }
-/* ── Intentional base styling (BS5-native, no overrides) ── */
-/* Field labels keep the compact uppercase operator-panel look. */
-.form-label { text-transform: uppercase; font-size: 0.78rem; letter-spacing: 0.03em; color: var(--bs-secondary-color); margin-bottom: 0.25rem; }
-
-/* Inline <code> as a subtle theme-aware chip (background + padding) instead of
-   Bootstrap's pink text — stands out from body text and follows light/dark. */
-code:not(pre code) { background: var(--bs-secondary-bg); border: 1px solid var(--bs-border-color); padding: 0.1em 0.4em; border-radius: 4px; }
 
 /* Theme tab — colour pickers aligned in a grid so swatches line up in columns. */
 .color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.4rem 0.75rem; }
@@ -48,55 +41,12 @@ code:not(pre code) { background: var(--bs-secondary-bg); border: 1px solid var(-
 .cs.changed .cs-name { color: var(--bs-warning); font-weight: 600; }
 .cs.changed .cs-reset { display: inline-block; }
 
-/* Keep autofilled inputs dark instead of the browser's white/yellow box. */
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus {
-    -webkit-box-shadow: 0 0 0 30px var(--bs-body-bg) inset !important;
-    -webkit-text-fill-color: var(--bs-body-color) !important;
-    caret-color: var(--bs-body-color);
-}
-
-/* Vertically center the native time-picker text (webkit). */
-input[type="time"]::-webkit-datetime-edit { padding: 0; line-height: 1.4; }
-
 @font-face { font-family:'Overpass Mono';  src:url('/static/fonts/OverpassMono-Regular.woff2')  format('woff2'); }
 @font-face { font-family:'DSEG7Classic';   src:url('/static/fonts/DSEG7Classic-Regular.woff2')   format('woff2'); }
 @font-face { font-family:'DSEG14Classic';  src:url('/static/fonts/DSEG14Classic-Regular.woff2')  format('woff2'); }
 @font-face { font-family:'Share Tech Mono';src:url('/static/fonts/ShareTechMono-Regular.woff2')  format('woff2'); }
 @font-face { font-family:'Orbitron';       src:url('/static/fonts/Orbitron-Regular.woff2')        format('woff2'); }
 @font-face { font-family:'Roboto Mono';    src:url('/static/fonts/RobotoMono-Regular.woff2')      format('woff2'); }
-
-/* ── BS5 responsive sidebar shell ── */
-.tab-content { padding-top: 0; }
-#app-sidebar { width: 240px; }
-#app-sidebar .offcanvas-body { padding: 10px; }
-.app-nav .nav-link { color: var(--bs-secondary-color); border-radius: 6px; padding: 6px 12px; font-size: 0.9em; cursor: pointer; }
-.app-nav .nav-link:hover { background: var(--bs-secondary-bg); color: var(--bs-body-color); }
-.app-nav .nav-link.active { background: var(--bs-primary); color: #fff; }
-.app-nav .nav-link.sub { padding-left: 28px; font-size: 0.86em; }
-.app-nav .group-toggle { display: flex; align-items: center; justify-content: space-between; }
-.app-nav .group-toggle .caret { transition: transform 0.15s; font-size: 0.8em; }
-.app-nav .group-toggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
-.app-quicklinks .btn { --bs-btn-padding-y: 2px; --bs-btn-padding-x: 8px; --bs-btn-font-size: 0.78em; }
-/* Hold-to-confirm: during the hold the button becomes solid red with a white
-   bar sweeping across as a progress indicator. Forcing the base colour (with
-   !important, beating BS5's :active state) makes it show identically on solid
-   and outline buttons alike. */
-.btn-holding {
-    color: #fff !important;
-    background-color: var(--bs-danger) !important;
-    border-color: var(--bs-danger) !important;
-    background-image: linear-gradient(to right, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.55));
-    background-repeat: no-repeat;
-    background-size: 0% 100%;
-    animation: holdfill 1.2s linear forwards;
-}
-@keyframes holdfill { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }
-[data-hold] { touch-action: none; }
-@media (min-width: 992px) {
-    #app-sidebar { min-height: calc(100vh - 57px); flex: 0 0 auto; }
-}
 </style>
 <script>
 function onPasswordInput(form) {
@@ -150,7 +100,7 @@ function onPasswordInput(form) {
                 </nav>
                 <hr>
                 <div class="app-quicklinks">
-                    <div class="text-secondary text-uppercase small mb-1" style="letter-spacing:0.05em;">Open</div>
+                    <div class="panel-eyebrow">Open</div>
                     <div class="d-flex flex-wrap gap-1">
                         <a href="/live"     target="_blank" class="btn btn-secondary">Live</a>
                         <a href="/operator" target="_blank" class="btn btn-secondary">Operator</a>
@@ -159,7 +109,7 @@ function onPasswordInput(form) {
                 </div>
                 <hr>
                 <div class="app-theme">
-                    <div class="text-secondary text-uppercase small mb-1" style="letter-spacing:0.05em;">Theme</div>
+                    <div class="panel-eyebrow">Theme</div>
                     <div class="btn-group btn-group-sm w-100" role="group" aria-label="Colour theme">
                         <button type="button" class="btn btn-outline-secondary" data-theme-set="light" title="Light">☀</button>
                         <button type="button" class="btn btn-outline-secondary" data-theme-set="dark" title="Dark">🌙</button>
@@ -172,7 +122,7 @@ function onPasswordInput(form) {
                         <strong class="text-truncate">{{ user_name }}</strong>
                     </a>
                     <ul class="dropdown-menu shadow w-100">
-                        <li><a class="dropdown-item" href="#" onclick="_switchTab('#tab-account'); var oc=document.getElementById('app-sidebar'); if(window.bootstrap){var i=bootstrap.Offcanvas.getInstance(oc); if(i) i.hide();} return false;">Change password</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="panelShowTab('#tab-account'); var oc=document.getElementById('app-sidebar'); if(window.bootstrap){var i=bootstrap.Offcanvas.getInstance(oc); if(i) i.hide();} return false;">Change password</a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><form action="/logout" class="m-0"><button type="submit" class="dropdown-item">Sign out</button></form></li>
                     </ul>
@@ -328,7 +278,7 @@ function onPasswordInput(form) {
             <div class="row"><div class="col-lg-8">
                 <div class="card"><div class="card-body">
 
-                    <div class="fw-bold mb-2">Current Time</div>
+                    <div class="panel-title">Current Time</div>
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <span id="time-display" class="flex-fill" style="font-size:1.4em; font-family:monospace;">—</span>
                         <span id="time-tz" class="text-secondary small"></span>
@@ -340,7 +290,7 @@ function onPasswordInput(form) {
 
                     <hr>
 
-                    <div class="fw-bold mb-1">Set Time Manually</div>
+                    <div class="panel-title mb-1">Set Time Manually</div>
                     <p class="text-secondary small mb-2">Disables NTP synchronization.</p>
                     <div class="d-flex flex-wrap align-items-center gap-1">
                         <input type="text" id="time-set-date" class="form-control form-control-sm" style="flex:1; min-width:130px;" placeholder="YYYY/MM/DD" maxlength="10">
@@ -351,7 +301,7 @@ function onPasswordInput(form) {
 
                     <hr>
 
-                    <div class="fw-bold mb-1">Real-Time Clock (Adafruit PiRTC DS3231)</div>
+                    <div class="panel-title mb-1">Real-Time Clock (Adafruit PiRTC DS3231)</div>
                     <p class="text-secondary small mb-2">
                         Keeps accurate time without a network connection.
                         <a href="https://learn.adafruit.com/adding-a-real-time-clock-to-raspberry-pi" target="_blank" rel="noopener">Setup guide</a>
@@ -506,7 +456,7 @@ function onPasswordInput(form) {
                     <div class="card"><div class="card-body">
 
                         <!-- State diagram -->
-                        <div class="fw-bold mb-2">Screen Modes</div>
+                        <div class="panel-title">Screen Modes</div>
                         <p class="small text-body-secondary mb-2" style="line-height:1.8;">
                             The scoreboard switches modes automatically based on what the CTS console is sending.
                         </p>
@@ -523,7 +473,7 @@ function onPasswordInput(form) {
                         <hr>
 
                         <!-- Timeout inputs -->
-                        <div class="fw-bold mb-1">Splash timeouts <small class="fw-normal text-body-secondary">(scoreboard.html only)</small></div>
+                        <div class="panel-title mb-1">Splash timeouts <small class="fw-normal text-body-secondary">(scoreboard.html only)</small></div>
                         <p class="small text-body-secondary mb-2">These apply only to <code>scoreboard.html</code>, which has a Splash mode. <code>live.html</code> has no splash.</p>
 
                         <div class="mb-3">
@@ -551,7 +501,7 @@ function onPasswordInput(form) {
 
                         <hr>
 
-                        <div class="fw-bold mb-2">Timing</div>
+                        <div class="panel-title">Timing</div>
                         <div class="mb-3">
                             <label class="form-label mb-1">Finish debounce</label>
                             <div class="input-group input-group-sm" style="max-width:220px;">
@@ -625,7 +575,7 @@ function onPasswordInput(form) {
                         </div>
                         <hr>
                         <div class="mb-3">
-                            <div class="form-label mb-1">Column titles</div>
+                            <div class="panel-eyebrow">Column titles</div>
                             <div class="row row-cols-2 row-cols-sm-3 g-1">
                                 <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_lane_h"  name="show_lane_header"     value="1" {% if show_lane_header %}checked{% endif %}><label class="form-check-label" for="cb_lane_h">Lane</label></div></div>
                                 <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_name_h"  name="show_name_header"     value="1" {% if show_name_header %}checked{% endif %}><label class="form-check-label" for="cb_name_h">Name</label></div></div>
@@ -636,7 +586,7 @@ function onPasswordInput(form) {
                             </div>
                         </div>
                         <div class="mb-3">
-                            <div class="form-label mb-1">Columns shown</div>
+                            <div class="panel-eyebrow">Columns shown</div>
                             <div class="row row-cols-2 row-cols-sm-3 g-1">
                                 <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_name"  name="show_name"     value="1" {% if show_name %}checked{% endif %}><label class="form-check-label" for="cb_name">Name</label></div></div>
                                 <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_club"  name="show_club"     value="1" {% if show_club %}checked{% endif %}><label class="form-check-label" for="cb_club">Club</label></div></div>
@@ -645,11 +595,11 @@ function onPasswordInput(form) {
                             </div>
                         </div>
                         <div class="mb-3">
-                            <div class="form-label mb-1">Features</div>
+                            <div class="panel-eyebrow">Features</div>
                             <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_podium" name="show_podium" value="1" {% if show_podium %}checked{% endif %}><label class="form-check-label" for="cb_podium">Podium colors</label></div>
                         </div>
                         <div class="mb-3">
-                            <div class="form-label mb-1">Results order</div>
+                            <div class="panel-eyebrow">Results order</div>
                             <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="rs_lane"  name="results_sort" value="lane"  {% if results_sort == 'lane' %}checked{% endif %}><label class="form-check-label" for="rs_lane">By lane</label></div>
                             <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="rs_place" name="results_sort" value="place" {% if results_sort == 'place' %}checked{% endif %}><label class="form-check-label" for="rs_place">By position</label></div>
                         </div>
@@ -740,16 +690,16 @@ function onPasswordInput(form) {
                                     </div>
                                 </div>
                                 <hr>
-                                <div class="fw-bold mb-2">Custom overrides</div>
+                                <div class="panel-title">Custom overrides</div>
 
                                 <div class="mb-3">
-                                    <div class="form-label mb-1">Background</div>
+                                    <div class="panel-eyebrow">Background</div>
                                     <div class="color-grid">
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_bg" value="{{ theme_colors.bg }}" data-default="{{ theme_color_defaults.bg }}"><span class="cs-name small">Background</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="form-label mb-1">Header bar</div>
+                                    <div class="panel-eyebrow">Header bar</div>
                                     <div class="color-grid">
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_header_bg" value="{{ theme_colors.header_bg }}" data-default="{{ theme_color_defaults.header_bg }}"><span class="cs-name small">Background</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_header_border" value="{{ theme_colors.header_border }}" data-default="{{ theme_color_defaults.header_border }}"><span class="cs-name small">Border</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
@@ -758,14 +708,14 @@ function onPasswordInput(form) {
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="form-label mb-1">Table header</div>
+                                    <div class="panel-eyebrow">Table header</div>
                                     <div class="color-grid">
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_th_bg" value="{{ theme_colors.th_bg }}" data-default="{{ theme_color_defaults.th_bg }}"><span class="cs-name small">Background</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_th_text" value="{{ theme_colors.th_text }}" data-default="{{ theme_color_defaults.th_text }}"><span class="cs-name small">Text</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="form-label mb-1">Rows</div>
+                                    <div class="panel-eyebrow">Rows</div>
                                     <div class="color-grid">
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_row_odd" value="{{ theme_colors.row_odd }}" data-default="{{ theme_color_defaults.row_odd }}"><span class="cs-name small">Odd</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_row_even" value="{{ theme_colors.row_even }}" data-default="{{ theme_color_defaults.row_even }}"><span class="cs-name small">Even</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
@@ -773,7 +723,7 @@ function onPasswordInput(form) {
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="form-label mb-1">Timing</div>
+                                    <div class="panel-eyebrow">Timing</div>
                                     <div class="color-grid">
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_time" value="{{ theme_colors.time }}" data-default="{{ theme_color_defaults.time }}"><span class="cs-name small">Time</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_delta_better" value="{{ theme_colors.delta_better }}" data-default="{{ theme_color_defaults.delta_better }}"><span class="cs-name small">Faster</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
@@ -781,28 +731,28 @@ function onPasswordInput(form) {
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="form-label mb-1">Podium</div>
+                                    <div class="panel-eyebrow">Podium</div>
                                     <div class="color-grid">
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_podium_gold" value="{{ theme_colors.podium_gold }}" data-default="{{ theme_color_defaults.podium_gold }}"><span class="cs-name small">Gold</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_podium_silver" value="{{ theme_colors.podium_silver }}" data-default="{{ theme_color_defaults.podium_silver }}"><span class="cs-name small">Silver</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_podium_bronze" value="{{ theme_colors.podium_bronze }}" data-default="{{ theme_color_defaults.podium_bronze }}"><span class="cs-name small">Bronze</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                     </div>
                                 </div>
-                                <div class="text-uppercase small mb-2" style="color:var(--bs-secondary-color); letter-spacing:0.06em;">Schedule</div>
+                                <div class="panel-eyebrow mb-2">Schedule</div>
                                 <div class="mb-3">
-                                    <div class="form-label mb-1">Event / Heat</div>
+                                    <div class="panel-eyebrow">Event / Heat</div>
                                     <div class="color-grid">
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_event" value="{{ theme_colors.schedule_event }}" data-default="{{ theme_color_defaults.schedule_event }}"><span class="cs-name small">Text</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="form-label mb-1">Time</div>
+                                    <div class="panel-eyebrow">Time</div>
                                     <div class="color-grid">
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_time" value="{{ theme_colors.schedule_time }}" data-default="{{ theme_color_defaults.schedule_time }}"><span class="cs-name small">Text</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="form-label mb-1">Swimmer</div>
+                                    <div class="panel-eyebrow">Swimmer</div>
                                     <div class="color-grid">
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_name" value="{{ theme_colors.schedule_name }}" data-default="{{ theme_color_defaults.schedule_name }}"><span class="cs-name small">Name</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_club" value="{{ theme_colors.schedule_club }}" data-default="{{ theme_color_defaults.schedule_club }}"><span class="cs-name small">Club</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
@@ -870,7 +820,7 @@ function onPasswordInput(form) {
                 <div class="row"><div class="col-lg-8">
                     <!-- Status block -->
                     <div class="card mb-3"><div class="card-body">
-                        <div class="fw-bold mb-2">Status</div>
+                        <div class="panel-title">Status</div>
                         <div class="d-flex align-items-center gap-2 mb-2">
                             <span class="text-body-secondary small" style="min-width:70px;">Ethernet</span>
                             <span id="eth-ip-text" class="flex-fill small"></span>
@@ -884,7 +834,7 @@ function onPasswordInput(form) {
 
                     <!-- Ethernet block -->
                     <div class="card mb-3"><div class="card-body">
-                        <div class="fw-bold mb-2">Ethernet Static IP</div>
+                        <div class="panel-title">Ethernet Static IP</div>
                         <div class="d-flex flex-wrap align-items-center gap-1 mb-2">
                             <input id="eth-ip-input" type="text" class="form-control form-control-sm" placeholder="10.10.10.10" maxlength="15" style="width:140px; flex:none;">
                             <span class="text-body-secondary">/</span>
@@ -1121,7 +1071,7 @@ function onPasswordInput(form) {
                         <hr>
 
                         <!-- Record -->
-                        <div class="fw-bold mb-2">Record Live Session</div>
+                        <div class="panel-title">Record Live Session</div>
                         <div class="d-flex align-items-center gap-1">
                             <input id="test-record-name" type="text" class="form-control form-control-sm" placeholder="Session name" style="flex:1;">
                             <button id="btn-record" class="btn btn-secondary btn-sm" style="width:70px;" onclick="testRecordToggle()">Start</button>
@@ -1197,32 +1147,12 @@ function onPasswordInput(form) {
     </div><!-- d-flex -->
 </div><!-- container-fluid -->
     <script src="/static/js/bootstrap.bundle-5.3.3.min.js"></script>
+    <script src="/static/js/panel.js"></script>
     <script src="/static/js/htmx-2.0.4.min.js"></script>
     <script src="/static/js/ws.js"></script>
     <script>
-    // ── Colour theme toggle (Light / Dark / Auto) ─────────────────────────────
-    (function () {
-        var KEY = 'cts_theme';
-        var mq  = matchMedia('(prefers-color-scheme: dark)');
-        function apply(pref) {
-            var mode = (pref === 'auto') ? (mq.matches ? 'dark' : 'light') : pref;
-            document.documentElement.setAttribute('data-bs-theme', mode);
-            document.querySelectorAll('[data-theme-set]').forEach(function (b) {
-                b.classList.toggle('active', b.getAttribute('data-theme-set') === pref);
-            });
-        }
-        apply(localStorage.getItem(KEY) || 'dark');
-        document.querySelectorAll('[data-theme-set]').forEach(function (b) {
-            b.addEventListener('click', function () {
-                var pref = b.getAttribute('data-theme-set');
-                localStorage.setItem(KEY, pref);
-                apply(pref);
-            });
-        });
-        mq.addEventListener('change', function () {
-            if ((localStorage.getItem(KEY) || 'dark') === 'auto') apply('auto');
-        });
-    })();
+    // Shared shell (theme toggle, tab switcher window.panelShowTab, hold-to-confirm,
+    // copyKey) lives in /static/js/panel.js. Page-specific logic follows.
 
     // ── Restore tab + flash button after form submit ──────────────────────────
     // Deferred so all tab-init functions are defined first
@@ -1277,39 +1207,9 @@ function onPasswordInput(form) {
         if (fns[tabHref]) fns[tabHref]();
     }
 
-    // Sidebar navigation: show the target pane and every .tab-pane ancestor
-    // (nested panes stay nested in the DOM), mark the sidebar link active, and
-    // expand the collapse group that contains it.
-    function _switchTab(target) {
-        var pane = document.querySelector(target);
-        if (!pane) return;
-        document.querySelectorAll('.tab-content .tab-pane').forEach(function(p) { p.classList.remove('active'); });
-        var el = pane;
-        while (el) {
-            if (el.classList && el.classList.contains('tab-pane')) el.classList.add('active');
-            el = el.parentElement;
-        }
-        document.querySelectorAll('.app-nav .nav-link').forEach(function(a) { a.classList.remove('active'); });
-        var link = document.querySelector('.app-nav .nav-link[data-target="' + target + '"]');
-        if (link) {
-            link.classList.add('active');
-            var grp = link.closest('.collapse');
-            if (grp && window.bootstrap) bootstrap.Collapse.getOrCreateInstance(grp, { toggle: false }).show();
-        }
-    }
-
-    document.querySelectorAll('.app-nav .nav-link[data-target]').forEach(function(link) {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            var target = link.getAttribute('data-target');
-            _switchTab(target);
-            var oc = document.getElementById('app-sidebar');
-            if (window.bootstrap && oc) {
-                var inst = bootstrap.Offcanvas.getInstance(oc);
-                if (inst) inst.hide();
-            }
-        });
-    });
+    // The generic sidebar tab switcher lives in panel.js as window.panelShowTab;
+    // per-tab side effects are wired via each tab's own click listener below and
+    // _tabInitFor() on the post-submit restore path.
 
     (function() {
         var state = JSON.parse(localStorage.getItem('cts_tab_restore') || 'null');
@@ -1317,7 +1217,7 @@ function onPasswordInput(form) {
             localStorage.removeItem('cts_tab_restore');
             var target = state.nested || state.tab;
             if (target) {
-                _switchTab(target);
+                panelShowTab(target);
                 setTimeout(function(){ _tabInitFor(target); }, 0);
             }
             if (state.btn) {
@@ -1333,7 +1233,7 @@ function onPasswordInput(form) {
             }
         } else {
             // Fresh load: activate the default section (Meet Setup) in the sidebar.
-            _switchTab('#tab-meet');
+            panelShowTab('#tab-meet');
         }
     })();
 
@@ -2207,53 +2107,7 @@ function onPasswordInput(form) {
         fetch('/system_shutdown', {method: 'POST'});
     }
 
-    // ── Press-and-hold confirmation for destructive actions ──────────────────
-    // Any element with [data-hold] needs a ~1.2 s press-and-hold instead of a
-    // click (the button fills red as feedback). On completion it runs the action:
-    // the global function named in data-hold-fn, else navigates to
-    // data-hold-href / href. Delegated, so it also covers dynamically-added
-    // buttons (e.g. the meet "Delete All" rebuilt by _refreshMeetTab).
-    (function() {
-        var HOLD_MS = 1200;
-        var active = null, timer = null, origLabel = null;
-
-        function reset(el) {
-            el.classList.remove('btn-holding');
-            if (origLabel !== null) { el.textContent = origLabel; origLabel = null; }
-        }
-        function run(el) {
-            var fn = el.getAttribute('data-hold-fn');
-            var href = el.getAttribute('data-hold-href') || el.getAttribute('href');
-            if (fn && typeof window[fn] === 'function') window[fn]();
-            else if (href) window.location.href = href;
-        }
-        function cancel() {
-            if (timer) { clearTimeout(timer); timer = null; }
-            if (active) { reset(active); active = null; }
-        }
-        document.addEventListener('click', function(e) {
-            if (e.target.closest('[data-hold]')) e.preventDefault();  // no plain-click action
-        }, true);
-        document.addEventListener('pointerdown', function(e) {
-            var el = e.target.closest('[data-hold]');
-            if (!el || el.disabled || el.classList.contains('disabled')) return;
-            e.preventDefault();
-            active = el;
-            el.classList.add('btn-holding');
-            var lbl = el.getAttribute('data-hold-label');
-            if (lbl !== null) { origLabel = el.textContent; el.textContent = lbl; }
-            timer = setTimeout(function() {
-                timer = null;
-                var el2 = active; active = null;
-                if (el2) { reset(el2); run(el2); }
-            }, HOLD_MS);
-        });
-        document.addEventListener('pointerup', cancel);
-        document.addEventListener('pointercancel', cancel);
-        document.addEventListener('pointermove', function(e) {
-            if (active && e.target.closest('[data-hold]') !== active) cancel();
-        });
-    })();
+    // (Press-and-hold confirmation for [data-hold] destructive actions is in panel.js.)
 
     // ── Terminal tab ─────────────────────────────────────────────────────────
     var _term = null;
