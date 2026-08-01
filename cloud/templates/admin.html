@@ -26,6 +26,19 @@
         :root { --bs-code-color: var(--bs-body-emphasis-color); }
         code:not(pre code) { background: var(--bs-secondary-bg); border: 1px solid var(--bs-border-color); padding: 0.1em 0.4em; border-radius: 4px; }
 
+        /* Wide tables (meets, organizer keys) stack into labelled cards on phones
+           instead of scrolling/overflowing horizontally. Real table above sm. */
+        @media (max-width: 575.98px) {
+            .table-stack thead { display: none; }
+            .table-stack, .table-stack tbody, .table-stack tr, .table-stack td { display: block; width: 100%; }
+            .table-stack tr { border: 1px solid var(--bs-border-color); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; }
+            .table-stack td { border: 0; padding: 3px 0; }
+            .table-stack td::before { content: attr(data-label); display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--bs-secondary-color); }
+            .table-stack td:first-child { font-weight: 600; font-size: 1.05em; padding-top: 0; }        /* row title */
+            .table-stack td:first-child::before, .table-stack td:not([data-label])::before { display: none; }
+            .table-stack td:empty { display: none; }
+        }
+
         /* Tab panes toggled by the sidebar switcher. */
         .tab-pane { display: none; }
         .tab-pane.active { display: block; }
@@ -133,19 +146,19 @@
             </div></div>
 
             <div class="table-responsive">
-            <table class="table table-sm align-middle">
+            <table class="table table-sm align-middle table-stack">
                 <thead><tr><th>{{ t.col_meet }}</th><th>{{ t.col_location }}</th><th>{{ t.col_sport }}</th><th>{{ t.col_organizer }}</th><th>{{ t.col_language }}</th>{% if analytics_enabled %}<th>{{ t.get('col_attendees', 'Attendees') }}</th>{% endif %}<th>{{ t.col_status or 'Status' }}</th><th></th></tr></thead>
                 <tbody>
                 {% if active_meets %}
                     {% for m in active_meets %}
                     <tr>
                         <td>{{ m.name or '—' }}</td>
-                        <td>{{ m.location or '—' }}</td>
-                        <td>{{ m.sport or '—' }}</td>
-                        <td>{{ m.organizer }}</td>
-                        <td>{{ m.language or '—' }}</td>
+                        <td data-label="{{ t.col_location }}">{{ m.location or '—' }}</td>
+                        <td data-label="{{ t.col_sport }}">{{ m.sport or '—' }}</td>
+                        <td data-label="{{ t.col_organizer }}">{{ m.organizer }}</td>
+                        <td data-label="{{ t.col_language }}">{{ m.language or '—' }}</td>
                         {% if analytics_enabled %}
-                        <td class="text-nowrap">
+                        <td class="text-nowrap" data-label="{{ t.get('col_attendees', 'Attendees') }}">
                             <select onchange="loadAttendees(this)" class="form-select form-select-sm d-inline-block w-auto">
                                 <option value="1h">{{ t.get('win_1h', 'Last hour') }}</option>
                                 <option value="3h">{{ t.get('win_3h', 'Last 3 hours') }}</option>
@@ -158,10 +171,10 @@
                         </td>
                         {% endif %}
                         {% if m.live %}
-                        <td><span class="badge rounded-pill text-bg-info">{{ t.badge_live }}</span><br><span class="small text-body-secondary">{{ t.col_since or 'since' }} {{ m.connected_at }}</span></td>
+                        <td data-label="{{ t.col_status or 'Status' }}"><span class="badge rounded-pill text-bg-info">{{ t.badge_live }}</span><br><span class="small text-body-secondary">{{ t.col_since or 'since' }} {{ m.connected_at }}</span></td>
                         <td></td>
                         {% else %}
-                        <td><span class="badge rounded-pill text-bg-warning">{{ t.badge_retained or 'Offline' }}</span><br><span class="small text-body-secondary">{{ t.expires_label or 'until' }} {{ m.expires_display }}</span></td>
+                        <td data-label="{{ t.col_status or 'Status' }}"><span class="badge rounded-pill text-bg-warning">{{ t.badge_retained or 'Offline' }}</span><br><span class="small text-body-secondary">{{ t.expires_label or 'until' }} {{ m.expires_display }}</span></td>
                         <td class="text-nowrap">
                             <form method="post" class="d-inline-flex gap-1 align-items-center">
                                 <input type="hidden" name="action" value="set_expiry">
@@ -189,19 +202,19 @@
         <!-- ── Organizers ── -->
         <div class="tab-pane" id="tab-organizers">
             <div class="table-responsive">
-            <table class="table table-sm align-middle">
+            <table class="table table-sm align-middle table-stack">
                 <thead><tr><th>{{ t.col_organizer }}</th><th>{{ t.col_key }}</th><th>{{ t.col_created }}</th><th>{{ t.col_status }}</th><th></th></tr></thead>
                 <tbody>
                 {% if keys %}
                     {% for key, info in keys.items() %}
                     <tr>
                         <td>{{ info.organizer }}</td>
-                        <td>
+                        <td data-label="{{ t.col_key }}">
                             <span class="font-monospace small text-body-secondary text-break">{{ key[:12] }}…</span>
                             <button class="btn btn-outline-secondary btn-sm copy" data-copied="{{ t['copied'] }}" onclick="copyKey(this, '{{ key }}')">{{ t['copy'] }}</button>
                         </td>
-                        <td>{{ info.created }}</td>
-                        <td><span class="badge rounded-pill {{ 'text-bg-success' if info.active else 'text-bg-secondary' }}">{{ t.badge_active if info.active else t.badge_revoked }}</span></td>
+                        <td data-label="{{ t.col_created }}">{{ info.created }}</td>
+                        <td data-label="{{ t.col_status }}"><span class="badge rounded-pill {{ 'text-bg-success' if info.active else 'text-bg-secondary' }}">{{ t.badge_active if info.active else t.badge_revoked }}</span></td>
                         <td class="text-nowrap">
                             {% if info.active %}
                             <form method="post" class="d-inline">
