@@ -418,29 +418,11 @@ function onPasswordInput(form) {
                                 <option value="{{port}}" {% if port == serial_port %}selected{% endif %}>{{desc}}</option>
                             {% endfor %}
                             </select>
-                            <div class="form-text">No times on the scoreboard? Confirm this matches your console's adapter, and watch the <strong>Serial Monitor</strong> below for incoming packets.</div>
                         </div>
                     </form>
                 </div></div>
-                <div class="card mb-3"><div class="card-body">
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="fw-bold flex-fill">Connection</span>
-                        <span id="serial-status-badge" class="badge rounded-pill text-bg-secondary">—</span>
-                    </div>
-                    <pre id="serial-log" class="border rounded p-2 mb-0" style="background:#111; color:#ccc; font-size:0.78em; height:90px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;"></pre>
-                </div></div>
-                <div class="card"><div class="card-body">
-                    <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="fw-bold flex-fill">Serial Monitor</span>
-                        <a href="/console" target="_blank" class="btn btn-secondary btn-sm" title="Open full serial console"><i class="bi bi-terminal me-1"></i>Console</a>
-                        <button id="btn-debug-toggle" class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugToggle()">Enable</button>
-                        <button class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugClear()">Clear</button>
-                    </div>
-                    <pre id="debug-output" class="border rounded p-2 mb-0" style="background:#111; color:#e0e0e0; font-size:0.8em; height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;"></pre>
-                </div></div>
-
                 <!-- ── Hardware & wiring for the selected console ─────────── -->
-                <div class="accordion mt-3" id="consoleInfoAcc">
+                <div class="accordion mb-3" id="consoleInfoAcc">
                     <div class="accordion-item">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#consoleInfo" aria-expanded="false" aria-controls="consoleInfo">
@@ -464,12 +446,34 @@ function onPasswordInput(form) {
                                 </dl>
                                 <a href="{{ console_info.doc_url }}" target="_blank" rel="noopener">Full setup guide <i class="bi bi-box-arrow-up-right ms-1"></i></a>
                                 {% else %}
-                                <p class="small text-body-secondary mb-0">No setup notes for this console. Set the <strong>Serial Port</strong> above and watch the Serial Monitor for incoming packets.</p>
+                                <p class="small text-body-secondary mb-1">No setup notes for this console.</p>
                                 {% endif %}
+                                <div class="form-text mt-2">No times on the scoreboard? Confirm this matches your console's adapter, and watch the <strong>Serial Monitor</strong> below for incoming packets.</div>
                             </div>
                         </div>
                     </div>
                 </div>
+                <div class="card mb-3"><div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="fw-bold flex-fill">Connection</span>
+                        <span id="serial-status-badge" class="badge rounded-pill text-bg-secondary">—</span>
+                    </div>
+                    <pre id="serial-log" class="border rounded p-2 mb-0" style="background:#111; color:#ccc; font-size:0.78em; height:90px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;"></pre>
+                </div></div>
+                <div class="card mb-3"><div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="fw-bold flex-fill">Serial Monitor</span>
+                        <button id="btn-debug-toggle" class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugToggle()">Enable</button>
+                        <button class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugClear()">Clear</button>
+                    </div>
+                    <pre id="debug-output" class="border rounded p-2 mb-0" style="background:#111; color:#e0e0e0; font-size:0.8em; height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;"></pre>
+                </div></div>
+                <div class="card"><div class="card-body">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="fw-bold flex-fill">Raw data on a scoreboard</span>
+                        <a href="/console" target="_blank" class="btn btn-secondary btn-sm" title="Open the raw serial data view on a separate display"><i class="bi bi-tv me-1"></i>Raw data Scoreboard</a>
+                    </div>
+                </div></div>
             </div></div>
         </div>
 
