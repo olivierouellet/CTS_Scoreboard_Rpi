@@ -145,8 +145,8 @@
                 </details>
             </div></div>
 
-            <div class="table-responsive">
-            <table class="table table-sm align-middle table-stack">
+            <div class="table-responsive d-none d-sm-block">
+            <table class="table table-sm align-middle">
                 <thead><tr><th>{{ t.col_meet }}</th><th>{{ t.col_location }}</th><th>{{ t.col_sport }}</th><th>{{ t.col_organizer }}</th><th>{{ t.col_language }}</th>{% if analytics_enabled %}<th>{{ t.get('col_attendees', 'Attendees') }}</th>{% endif %}<th>{{ t.col_status or 'Status' }}</th><th></th></tr></thead>
                 <tbody>
                 {% if active_meets %}
@@ -159,7 +159,7 @@
                         <td data-label="{{ t.col_language }}">{{ m.language or '—' }}</td>
                         {% if analytics_enabled %}
                         <td class="text-nowrap" data-label="{{ t.get('col_attendees', 'Attendees') }}">
-                            <select onchange="loadAttendees(this)" class="form-select form-select-sm d-inline-block w-auto">
+                            <select onchange="loadAttendees(this)" data-meet="{{ m.id }}" class="form-select form-select-sm d-inline-block w-auto">
                                 <option value="1h">{{ t.get('win_1h', 'Last hour') }}</option>
                                 <option value="3h">{{ t.get('win_3h', 'Last 3 hours') }}</option>
                                 <option value="12h">{{ t.get('win_12h', 'Last 12 hours') }}</option>
@@ -196,6 +196,75 @@
                 {% endif %}
                 </tbody>
             </table>
+            </div>
+
+            <!-- Phone view (<576px): one accordion item per meet. -->
+            <div class="accordion d-sm-none" id="meetAcc">
+            {% if active_meets %}
+                {% for m in active_meets %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#meet-{{ m.id }}" aria-expanded="false" aria-controls="meet-{{ m.id }}">
+                            <div class="w-100 pe-2">
+                                <div class="d-flex justify-content-between align-items-center gap-2">
+                                    <span class="fw-semibold text-truncate">{{ m.name or '—' }}</span>
+                                    {% if m.live %}
+                                    <span class="badge rounded-pill text-bg-info flex-shrink-0">{{ t.badge_live }}</span>
+                                    {% else %}
+                                    <span class="badge rounded-pill text-bg-warning flex-shrink-0">{{ t.badge_retained or 'Offline' }}</span>
+                                    {% endif %}
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center gap-2 small text-body-secondary mt-1">
+                                    <span class="text-truncate">{{ m.location or '—' }}</span>
+                                    {% if analytics_enabled %}
+                                    <span class="flex-shrink-0">{{ t.get('col_attendees', 'Attendees') }}: <span class="att-count fw-bold" data-meet="{{ m.id }}">…</span></span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="meet-{{ m.id }}" class="accordion-collapse collapse">
+                        <div class="accordion-body">
+                            <dl class="row mb-2 small">
+                                <dt class="col-5 text-body-secondary fw-normal">{{ t.col_organizer }}</dt><dd class="col-7 mb-1">{{ m.organizer }}</dd>
+                                <dt class="col-5 text-body-secondary fw-normal">{{ t.col_sport }}</dt><dd class="col-7 mb-1">{{ m.sport or '—' }}</dd>
+                                <dt class="col-5 text-body-secondary fw-normal">{{ t.col_language }}</dt><dd class="col-7 mb-1">{{ m.language or '—' }}</dd>
+                                <dt class="col-5 text-body-secondary fw-normal">{{ t.col_status or 'Status' }}</dt>
+                                <dd class="col-7 mb-1">{% if m.live %}{{ t.col_since or 'since' }} {{ m.connected_at }}{% else %}{{ t.expires_label or 'until' }} {{ m.expires_display }}{% endif %}</dd>
+                            </dl>
+                            {% if analytics_enabled %}
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <select onchange="loadAttendees(this)" data-meet="{{ m.id }}" class="form-select form-select-sm w-auto">
+                                    <option value="1h">{{ t.get('win_1h', 'Last hour') }}</option>
+                                    <option value="3h">{{ t.get('win_3h', 'Last 3 hours') }}</option>
+                                    <option value="12h">{{ t.get('win_12h', 'Last 12 hours') }}</option>
+                                    <option value="24h" selected>{{ t.get('win_24h', 'Last 24 hours') }}</option>
+                                    <option value="7d">{{ t.get('win_7d', 'Last 7 days') }}</option>
+                                    <option value="all">{{ t.get('win_all', 'Whole meet') }}</option>
+                                </select>
+                                <span class="att-count fw-bold" data-meet="{{ m.id }}">…</span>
+                            </div>
+                            {% endif %}
+                            {% if not m.live %}
+                            <form method="post" class="d-flex flex-wrap gap-1 align-items-center mb-2">
+                                <input type="hidden" name="action" value="set_expiry">
+                                <input type="hidden" name="meet_id" value="{{ m.id }}">
+                                <input type="datetime-local" name="expires_at" value="{{ m.expires_input }}" class="form-control form-control-sm w-auto">
+                                <button type="submit" class="btn btn-secondary btn-sm">{{ t.set_expiry or 'Set' }}</button>
+                            </form>
+                            <form method="post" onsubmit="return confirm('{{ t.confirm_delete_meet or 'Remove this meet now?' }}');">
+                                <input type="hidden" name="action" value="delete_meet">
+                                <input type="hidden" name="meet_id" value="{{ m.id }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">{{ t.delete or 'Delete' }}</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-body-secondary fst-italic">{{ t.no_meets_admin }}</div>
+            {% endif %}
             </div>
         </div>
 
@@ -441,22 +510,27 @@
         })();
 
         // ── Attendance counts ──────────────────────────────────────────────────
-        function refreshAttendees(span, win) {
-            const meetId = span.getAttribute('data-meet');
-            span.textContent = '…';
+        // A meet may have more than one count span (desktop table cell, and on
+        // phones both the accordion header and body) — update them all by meet id.
+        function refreshAttendees(meetId, win) {
+            const spans = document.querySelectorAll('.att-count[data-meet="' + meetId + '"]');
+            spans.forEach(s => { s.textContent = '…'; });
             fetch('/admin/stats?meet_id=' + encodeURIComponent(meetId) + '&window=' + win)
                 .then(r => r.json())
-                .then(d => { span.textContent = (d.count != null) ? d.count : '–'; })
-                .catch(() => { span.textContent = '–'; });
+                .then(d => spans.forEach(s => { s.textContent = (d.count != null) ? d.count : '–'; }))
+                .catch(() => spans.forEach(s => { s.textContent = '–'; }));
         }
         function loadAttendees(sel) {
-            const span = sel.closest('td').querySelector('.att-count');
-            if (span) refreshAttendees(span, sel.value);
+            refreshAttendees(sel.getAttribute('data-meet'), sel.value);
         }
         window.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('.att-count').forEach(function(span) {
-                const sel = span.closest('td').querySelector('select');
-                refreshAttendees(span, sel ? sel.value : '24h');
+            const seen = {};
+            document.querySelectorAll('.att-count[data-meet]').forEach(function(span) {
+                const id = span.getAttribute('data-meet');
+                if (seen[id]) return;
+                seen[id] = true;
+                const sel = document.querySelector('select[data-meet="' + id + '"]');
+                refreshAttendees(id, sel ? sel.value : '24h');
             });
         });
 
