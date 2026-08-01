@@ -145,6 +145,20 @@
                 </details>
             </div></div>
 
+            {% if analytics_enabled %}
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <label for="att-window" class="mb-0 small text-body-secondary">{{ t.get('col_attendees', 'Attendees') }}</label>
+                <select id="att-window" class="form-select form-select-sm w-auto" onchange="refreshAllAttendees()">
+                    <option value="1h">{{ t.get('win_1h', 'Last hour') }}</option>
+                    <option value="3h">{{ t.get('win_3h', 'Last 3 hours') }}</option>
+                    <option value="12h">{{ t.get('win_12h', 'Last 12 hours') }}</option>
+                    <option value="24h" selected>{{ t.get('win_24h', 'Last 24 hours') }}</option>
+                    <option value="7d">{{ t.get('win_7d', 'Last 7 days') }}</option>
+                    <option value="all">{{ t.get('win_all', 'Whole meet') }}</option>
+                </select>
+            </div>
+            {% endif %}
+
             <div class="table-responsive d-none d-sm-block">
             <table class="table table-sm align-middle">
                 <thead><tr><th>{{ t.col_meet }}</th><th>{{ t.col_location }}</th><th>{{ t.col_sport }}</th><th>{{ t.col_organizer }}</th><th>{{ t.col_language }}</th>{% if analytics_enabled %}<th>{{ t.get('col_attendees', 'Attendees') }}</th>{% endif %}<th>{{ t.col_status or 'Status' }}</th><th></th></tr></thead>
@@ -159,15 +173,7 @@
                         <td data-label="{{ t.col_language }}">{{ m.language or '—' }}</td>
                         {% if analytics_enabled %}
                         <td class="text-nowrap" data-label="{{ t.get('col_attendees', 'Attendees') }}">
-                            <select onchange="loadAttendees(this)" data-meet="{{ m.id }}" class="form-select form-select-sm d-inline-block w-auto">
-                                <option value="1h">{{ t.get('win_1h', 'Last hour') }}</option>
-                                <option value="3h">{{ t.get('win_3h', 'Last 3 hours') }}</option>
-                                <option value="12h">{{ t.get('win_12h', 'Last 12 hours') }}</option>
-                                <option value="24h" selected>{{ t.get('win_24h', 'Last 24 hours') }}</option>
-                                <option value="7d">{{ t.get('win_7d', 'Last 7 days') }}</option>
-                                <option value="all">{{ t.get('win_all', 'Whole meet') }}</option>
-                            </select>
-                            <span class="att-count fw-bold ms-2" data-meet="{{ m.id }}">…</span>
+                            <span class="att-count fw-bold" data-meet="{{ m.id }}">…</span>
                         </td>
                         {% endif %}
                         {% if m.live %}
@@ -232,19 +238,6 @@
                                 <dt class="col-5 text-body-secondary fw-normal">{{ t.col_status or 'Status' }}</dt>
                                 <dd class="col-7 mb-1">{% if m.live %}{{ t.col_since or 'since' }} {{ m.connected_at }}{% else %}{{ t.expires_label or 'until' }} {{ m.expires_display }}{% endif %}</dd>
                             </dl>
-                            {% if analytics_enabled %}
-                            <div class="d-flex align-items-center gap-2 mb-2">
-                                <select onchange="loadAttendees(this)" data-meet="{{ m.id }}" class="form-select form-select-sm w-auto">
-                                    <option value="1h">{{ t.get('win_1h', 'Last hour') }}</option>
-                                    <option value="3h">{{ t.get('win_3h', 'Last 3 hours') }}</option>
-                                    <option value="12h">{{ t.get('win_12h', 'Last 12 hours') }}</option>
-                                    <option value="24h" selected>{{ t.get('win_24h', 'Last 24 hours') }}</option>
-                                    <option value="7d">{{ t.get('win_7d', 'Last 7 days') }}</option>
-                                    <option value="all">{{ t.get('win_all', 'Whole meet') }}</option>
-                                </select>
-                                <span class="att-count fw-bold" data-meet="{{ m.id }}">…</span>
-                            </div>
-                            {% endif %}
                             {% if not m.live %}
                             <form method="post" class="d-flex flex-wrap gap-1 align-items-center mb-2">
                                 <input type="hidden" name="action" value="set_expiry">
@@ -520,19 +513,19 @@
                 .then(d => spans.forEach(s => { s.textContent = (d.count != null) ? d.count : '–'; }))
                 .catch(() => spans.forEach(s => { s.textContent = '–'; }));
         }
-        function loadAttendees(sel) {
-            refreshAttendees(sel.getAttribute('data-meet'), sel.value);
-        }
-        window.addEventListener('DOMContentLoaded', function() {
+        // One global dropdown drives the window for every meet's count.
+        function refreshAllAttendees() {
+            const wsel = document.getElementById('att-window');
+            const win = wsel ? wsel.value : '24h';
             const seen = {};
             document.querySelectorAll('.att-count[data-meet]').forEach(function(span) {
                 const id = span.getAttribute('data-meet');
                 if (seen[id]) return;
                 seen[id] = true;
-                const sel = document.querySelector('select[data-meet="' + id + '"]');
-                refreshAttendees(id, sel ? sel.value : '24h');
+                refreshAttendees(id, win);
             });
-        });
+        }
+        window.addEventListener('DOMContentLoaded', refreshAllAttendees);
 
         // ── Sidebar navigation ──────────────────────────────────────────────────
         function showTab(target) {
