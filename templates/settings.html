@@ -140,10 +140,6 @@ function onPasswordInput(form) {
                     </div>
                 </div>
                 <hr>
-                <div class="app-help d-flex gap-1">
-                    <a href="/info" class="btn btn-secondary btn-sm flex-fill"><i class="bi bi-info-circle me-1"></i>Setup Info</a>
-                </div>
-                <hr>
                 <div class="app-theme">
                     <div class="text-secondary text-uppercase small mb-1" style="letter-spacing:0.05em;">Theme</div>
                     <div class="btn-group btn-group-sm w-100" role="group" aria-label="Colour theme">
@@ -422,7 +418,7 @@ function onPasswordInput(form) {
                                 <option value="{{port}}" {% if port == serial_port %}selected{% endif %}>{{desc}}</option>
                             {% endfor %}
                             </select>
-                            <div class="form-text">No times on the scoreboard? Confirm this matches your CTS adapter, and watch the <strong>Serial Monitor</strong> below for incoming packets.</div>
+                            <div class="form-text">No times on the scoreboard? Confirm this matches your console's adapter, and watch the <strong>Serial Monitor</strong> below for incoming packets.</div>
                         </div>
                     </form>
                 </div></div>
@@ -442,6 +438,38 @@ function onPasswordInput(form) {
                     </div>
                     <pre id="debug-output" class="border rounded p-2 mb-0" style="background:#111; color:#e0e0e0; font-size:0.8em; height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;"></pre>
                 </div></div>
+
+                <!-- ── Hardware & wiring for the selected console ─────────── -->
+                <div class="accordion mt-3" id="consoleInfoAcc">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#consoleInfo" aria-expanded="false" aria-controls="consoleInfo">
+                                <i class="bi bi-plug me-2"></i>Hardware &amp; wiring{% if console_info %} — {{ console_info.label }}{% endif %}
+                            </button>
+                        </h2>
+                        <div id="consoleInfo" class="accordion-collapse collapse" data-bs-parent="#consoleInfoAcc">
+                            <div class="accordion-body">
+                                {% if console_info %}
+                                <div class="mb-2">
+                                    {% if console_info.tested %}
+                                    <span class="badge text-bg-success">✓ Tested on real hardware</span>
+                                    {% else %}
+                                    <span class="badge text-bg-warning">Not tested on real hardware</span>
+                                    {% endif %}
+                                </div>
+                                <dl class="row mb-2 small">
+                                    <dt class="col-sm-3 text-body-secondary">Adapter</dt><dd class="col-sm-9">{{ console_info.adapter }}</dd>
+                                    <dt class="col-sm-3 text-body-secondary">Wiring</dt><dd class="col-sm-9">{{ console_info.wiring }}</dd>
+                                    <dt class="col-sm-3 text-body-secondary">Protocol</dt><dd class="col-sm-9">{{ console_info.protocol }}</dd>
+                                </dl>
+                                <a href="{{ console_info.doc_url }}" target="_blank" rel="noopener">Full setup guide <i class="bi bi-box-arrow-up-right ms-1"></i></a>
+                                {% else %}
+                                <p class="small text-body-secondary mb-0">No setup notes for this console. Set the <strong>Serial Port</strong> above and watch the Serial Monitor for incoming packets.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div></div>
         </div>
 

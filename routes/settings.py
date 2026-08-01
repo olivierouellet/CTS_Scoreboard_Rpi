@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 import bus
 import relay
 import state
-from console_decoders import CONSOLE_OPTIONS, load_custom_decoders, make_decoder
+from console_decoders import CONSOLE_OPTIONS, console_info_for, load_custom_decoders, make_decoder
 from meet_data import send_event_info
 from parsers.lenex_parser import load_lenex
 from web import render, require_login, save_upload
@@ -451,6 +451,7 @@ def _settings_view(request, form):
         serial_port_list=comm_port_list,
         console_type=state.settings.get('console_type', 'cts_gen6'),
         console_options=[(key, label) for key, label, _ in CONSOLE_OPTIONS],
+        console_info=console_info_for(state.settings.get('console_type', 'cts_gen6')),
         user_name=state.settings['username'],
         splash_url_list=splash_url_list,
         splash_url=state.settings.get('splash_url', ''),
