@@ -154,20 +154,20 @@
                     {% for m in active_meets %}
                     <tr>
                         <td>{{ m.name or '—' }}</td>
-                        <td data-label="{{ t.col_location }}">{{ m.location or '—' }}</td>
-                        <td data-label="{{ t.col_sport }}">{{ m.sport or '—' }}</td>
-                        <td data-label="{{ t.col_organizer }}">{{ m.organizer }}</td>
-                        <td data-label="{{ t.col_language }}">{{ m.language or '—' }}</td>
+                        <td>{{ m.location or '—' }}</td>
+                        <td>{{ m.sport or '—' }}</td>
+                        <td>{{ m.organizer }}</td>
+                        <td>{{ m.language or '—' }}</td>
                         {% if analytics_enabled %}
-                        <td class="text-nowrap" data-label="{{ t.get('col_attendees', 'Attendees') }}">
+                        <td class="text-nowrap">
                             <span class="att-count fw-bold" data-meet="{{ m.id }}">…</span>
                         </td>
                         {% endif %}
                         {% if m.live %}
-                        <td data-label="{{ t.col_status or 'Status' }}"><span class="badge rounded-pill text-bg-info">{{ t.badge_live }}</span><br><span class="small text-body-secondary">{{ t.col_since or 'since' }} {{ m.connected_at }}</span></td>
+                        <td><span class="badge rounded-pill text-bg-info">{{ t.badge_live }}</span><br><span class="small text-body-secondary">{{ t.col_since or 'since' }} {{ m.connected_at }}</span></td>
                         <td></td>
                         {% else %}
-                        <td data-label="{{ t.col_status or 'Status' }}"><span class="badge rounded-pill text-bg-warning">{{ t.badge_retained or 'Offline' }}</span><br><span class="small text-body-secondary">{{ t.expires_label or 'until' }} {{ m.expires_display }}</span></td>
+                        <td><span class="badge rounded-pill text-bg-warning">{{ t.badge_retained or 'Offline' }}</span><br><span class="small text-body-secondary">{{ t.expires_label or 'until' }} {{ m.expires_display }}</span></td>
                         <td class="text-nowrap">
                             <form method="post" class="d-inline-flex gap-1 align-items-center">
                                 <input type="hidden" name="action" value="set_expiry">
@@ -258,12 +258,12 @@
                     {% for key, info in keys.items() %}
                     <tr>
                         <td>{{ info.organizer }}</td>
-                        <td data-label="{{ t.col_key }}">
+                        <td>
                             <span class="font-monospace small text-body-secondary text-break">{{ key[:12] }}…</span>
                             <button class="btn btn-outline-secondary btn-sm copy" data-copied="{{ t['copied'] }}" onclick="copyKey(this, '{{ key }}')">{{ t['copy'] }}</button>
                         </td>
-                        <td data-label="{{ t.col_created }}">{{ info.created }}</td>
-                        <td data-label="{{ t.col_status }}"><span class="badge rounded-pill {{ 'text-bg-success' if info.active else 'text-bg-secondary' }}">{{ t.badge_active if info.active else t.badge_revoked }}</span></td>
+                        <td>{{ info.created }}</td>
+                        <td><span class="badge rounded-pill {{ 'text-bg-success' if info.active else 'text-bg-secondary' }}">{{ t.badge_active if info.active else t.badge_revoked }}</span></td>
                         <td class="text-nowrap">
                             {% if info.active %}
                             <form method="post" class="d-inline">
