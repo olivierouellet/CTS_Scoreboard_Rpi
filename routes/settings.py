@@ -478,6 +478,9 @@ def _settings_view(request, form):
         custom_theme_list=state.list_custom_themes(),
         custom_theme_codes=[c for c, _ in state.list_custom_themes()],
         theme_colors={**state.DEFAULT_THEME_COLORS, **state.settings.get('theme_colors', {})},
+        # Baseline for the "changed from default" hint: the active theme's own
+        # colours (built-in default theme → factory DEFAULT_THEME_COLORS).
+        theme_color_defaults=state.load_theme(state.settings.get('active_theme', 'default'))[0],
         theme_fonts={**state.DEFAULT_THEME_FONTS,  **state.settings.get('theme_fonts', {})},
         cloud_relay_url=state.settings.get('cloud_relay_url', ''),
         cloud_relay_key=state.settings.get('cloud_relay_key', ''),
