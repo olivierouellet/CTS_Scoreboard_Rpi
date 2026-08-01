@@ -25,6 +25,9 @@
     --font-family:      '{{ theme_fonts.family }}';
     --font-digits:      '{{ theme_fonts.digits }}';
     --font-timing:      '{{ theme_fonts.timing }}';
+    /* Inline <code> defaults to pink in Bootstrap; follow the theme's emphasis
+       colour instead (white in dark, near-black in light). */
+    --bs-code-color:    var(--bs-body-emphasis-color);
 }
 /* ── Intentional base styling (BS5-native, no overrides) ── */
 /* Field labels keep the compact uppercase operator-panel look. */
