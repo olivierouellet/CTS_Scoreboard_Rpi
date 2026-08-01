@@ -21,6 +21,11 @@
         /* Field labels: compact uppercase (matches the server panel). */
         .form-label { text-transform: uppercase; font-size: 0.78rem; letter-spacing: 0.03em; color: var(--bs-secondary-color); margin-bottom: 0.25rem; }
 
+        /* Inline <code>: follow the theme's emphasis colour (not Bootstrap's pink)
+           and render as a subtle theme-aware chip — matches the server panel. */
+        :root { --bs-code-color: var(--bs-body-emphasis-color); }
+        code:not(pre code) { background: var(--bs-secondary-bg); border: 1px solid var(--bs-border-color); padding: 0.1em 0.4em; border-radius: 4px; }
+
         /* Tab panes toggled by the sidebar switcher. */
         .tab-pane { display: none; }
         .tab-pane.active { display: block; }
