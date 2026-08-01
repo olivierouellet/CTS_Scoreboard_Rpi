@@ -26,19 +26,6 @@
         :root { --bs-code-color: var(--bs-body-emphasis-color); }
         code:not(pre code) { background: var(--bs-secondary-bg); border: 1px solid var(--bs-border-color); padding: 0.1em 0.4em; border-radius: 4px; }
 
-        /* Wide tables (meets, organizer keys) stack into labelled cards on phones
-           instead of scrolling/overflowing horizontally. Real table above sm. */
-        @media (max-width: 575.98px) {
-            .table-stack thead { display: none; }
-            .table-stack, .table-stack tbody, .table-stack tr, .table-stack td { display: block; width: 100%; }
-            .table-stack tr { border: 1px solid var(--bs-border-color); border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; }
-            .table-stack td { border: 0; padding: 3px 0; }
-            .table-stack td::before { content: attr(data-label); display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--bs-secondary-color); }
-            .table-stack td:first-child { font-weight: 600; font-size: 1.05em; padding-top: 0; }        /* row title */
-            .table-stack td:first-child::before, .table-stack td:not([data-label])::before { display: none; }
-            .table-stack td:empty { display: none; }
-        }
-
         /* Tab panes toggled by the sidebar switcher. */
         .tab-pane { display: none; }
         .tab-pane.active { display: block; }
@@ -263,8 +250,8 @@
 
         <!-- ── Organizers ── -->
         <div class="tab-pane" id="tab-organizers">
-            <div class="table-responsive">
-            <table class="table table-sm align-middle table-stack">
+            <div class="table-responsive d-none d-sm-block">
+            <table class="table table-sm align-middle">
                 <thead><tr><th>{{ t.col_organizer }}</th><th>{{ t.col_key }}</th><th>{{ t.col_created }}</th><th>{{ t.col_status }}</th><th></th></tr></thead>
                 <tbody>
                 {% if keys %}
@@ -298,6 +285,54 @@
                 {% endif %}
                 </tbody>
             </table>
+            </div>
+
+            <!-- Phone view (<576px): one accordion item per organizer key. -->
+            <div class="accordion d-sm-none" id="orgAcc">
+            {% if keys %}
+                {% for key, info in keys.items() %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#org-{{ loop.index }}" aria-expanded="false" aria-controls="org-{{ loop.index }}">
+                            <div class="w-100 pe-2">
+                                <div class="d-flex justify-content-between align-items-center gap-2">
+                                    <span class="fw-semibold text-truncate">{{ info.organizer }}</span>
+                                    <span class="badge rounded-pill {{ 'text-bg-success' if info.active else 'text-bg-secondary' }} flex-shrink-0">{{ t.badge_active if info.active else t.badge_revoked }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center gap-2 small text-body-secondary mt-1">
+                                    <span class="text-truncate">{{ t.col_created }}: {{ info.created }}</span>
+                                </div>
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="org-{{ loop.index }}" class="accordion-collapse collapse">
+                        <div class="accordion-body">
+                            <div class="small text-body-secondary mb-1">{{ t.col_key }}</div>
+                            <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+                                <span class="font-monospace small text-body-secondary text-break">{{ key[:12] }}…</span>
+                                <button class="btn btn-outline-secondary btn-sm copy" data-copied="{{ t['copied'] }}" onclick="copyKey(this, '{{ key }}')">{{ t['copy'] }}</button>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% if info.active %}
+                                <form method="post" class="d-inline">
+                                    <input type="hidden" name="action" value="revoke">
+                                    <input type="hidden" name="key" value="{{ key }}">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">{{ t.revoke }}</button>
+                                </form>
+                                {% endif %}
+                                <form method="post" class="d-inline">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="key" value="{{ key }}">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">{{ t.delete }}</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-body-secondary fst-italic">{{ t.no_organizers }}</div>
+            {% endif %}
             </div>
 
             <h2 class="h6 text-uppercase text-body-secondary mt-2">{{ t.add_organizer }}</h2>
