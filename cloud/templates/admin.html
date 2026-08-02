@@ -54,17 +54,14 @@
                     </div>
                 </div>
                 <div class="app-lang mt-3">
-                    <div class="panel-eyebrow">{{ t.language }}</div>
-                    <!-- Server-side setting (creds), so each button posts change_locale; empty = Auto. -->
-                    <form method="post">
-                        <input type="hidden" name="action" value="change_locale">
-                        <div class="btn-group btn-group-sm w-100" role="group" aria-label="{{ t.language }}">
-                            <button type="submit" name="locale" value="" class="btn btn-outline-secondary {% if not current_locale %}active{% endif %}" title="{{ t.language_auto }}">Auto</button>
-                            {% for code, name in locales %}
-                            <button type="submit" name="locale" value="{{ code }}" class="btn btn-outline-secondary {% if current_locale == code %}active{% endif %}" title="{{ name }}">{{ code|upper }}</button>
-                            {% endfor %}
-                        </div>
-                    </form>
+                    <div class="panel-eyebrow">{{ t.get('panel_language', 'Panel language') }}</div>
+                    <!-- Per-device: sets the ui_lang cookie via the shared panel.js handler. -->
+                    <div class="btn-group btn-group-sm w-100" role="group" aria-label="{{ t.get('panel_language', 'Panel language') }}">
+                        <button type="button" class="btn btn-outline-secondary {% if not ui_lang_cookie %}active{% endif %}" data-ui-lang-set="auto" title="{{ t.language_auto }}">Auto</button>
+                        {% for code, name in locales %}
+                        <button type="button" class="btn btn-outline-secondary {% if code == ui_lang_cookie %}active{% endif %}" data-ui-lang-set="{{ code }}" title="{{ name }}">{{ code|upper }}</button>
+                        {% endfor %}
+                    </div>
                 </div>
                 <div class="dropup mt-auto pt-3 border-top">
                     <a href="#" class="d-flex align-items-center text-body-secondary text-decoration-none dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -328,9 +325,23 @@
 
         <!-- ── Appearance ── -->
         <div class="tab-pane" id="tab-appearance">
-            <!-- Panel language now lives in the sidebar, under the theme toggle. -->
+            <!-- The admin-panel language is per-device (sidebar). This box's language
+                 selector is the server-wide default for the PUBLIC picker page. -->
             <div class="card"><div class="card-body">
                 <h2 class="panel-eyebrow mb-3">Picker Page</h2>
+                <div class="mb-3">
+                    <label class="form-label">{{ t.get('page_language', 'Public page language') }}</label>
+                    <form method="post" id="locale-form">
+                        <input type="hidden" name="action" value="change_locale">
+                        <select name="locale" class="form-select form-select-sm" style="max-width:280px;" onchange="this.form.submit()">
+                            <option value="" {% if not current_locale %}selected{% endif %}>{{ t.language_auto }}</option>
+                            {% for code, name in locales %}
+                            <option value="{{ code }}" {% if current_locale == code %}selected{% endif %}>{{ name }}</option>
+                            {% endfor %}
+                        </select>
+                    </form>
+                    <div class="form-text">{{ t.get('page_language_hint', 'Default language for the public picker page, used when a visitor’s browser language isn’t available. Each visitor still sees their own browser language when possible.') }}</div>
+                </div>
                 <form id="picker-form" onsubmit="savePickerAppearance(this); return false;" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label class="form-label">Window Title</label>

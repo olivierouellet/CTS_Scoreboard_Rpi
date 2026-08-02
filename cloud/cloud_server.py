@@ -112,12 +112,30 @@ def _server_lang(request):
     return _browser_lang(request) or 'en'
 
 def _picker_lang(request):
-    # Public picker: each visitor's browser language wins; the admin/default
-    # locale is only a fallback when the browser language isn't available.
+    # Public picker: each visitor's browser language wins; the server-wide
+    # default (creds['locale']) is only a fallback when the browser language
+    # isn't available. Set from the Appearance tab — see change_locale.
     return _browser_lang(request) or _server_lang(request)
 
+def _admin_lang(request):
+    # The admin panel language is per-device, independent of the server-wide
+    # public-page locale above: the ui_lang cookie wins, else the browser, else
+    # English. Same contract as the operator Settings panel.
+    available = {code for code, _ in _available_locales()}
+    cookie = request.cookies.get('ui_lang', '')
+    if cookie in available:
+        return cookie
+    return _browser_lang(request) or 'en'
+
+def _ui_lang_cookie(request):
+    # The explicitly-pinned panel language, or '' for "Auto" — so a stale cookie
+    # for a removed locale reads as Auto, matching _admin_lang() resolution.
+    available = {code for code, _ in _available_locales()}
+    cookie = request.cookies.get('ui_lang', '')
+    return cookie if cookie in available else ''
+
 def _load_cloud_strings(request):
-    return _strings(_server_lang(request), 'cloud')
+    return _strings(_admin_lang(request), 'cloud')
 
 def _meet_lang(meet):
     return meet.get('settings', {}).get('locale') or 'en'
@@ -1320,6 +1338,7 @@ async def route_admin(request: Request):
                           user_name=_load_creds().get('user', 'Admin'),
                           locales=_available_locales(),
                           current_locale=_load_creds().get('locale', ''),
+                          ui_lang_cookie=_ui_lang_cookie(request),
                           has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
                           analytics_enabled=_analytics_enabled(),
                           **_picker_appearance())
@@ -1332,6 +1351,7 @@ async def route_admin(request: Request):
                   user_name=_load_creds().get('user', 'Admin'),
                   locales=_available_locales(),
                   current_locale=_load_creds().get('locale', ''),
+                  ui_lang_cookie=_ui_lang_cookie(request),
                   has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
                   analytics_enabled=_analytics_enabled(),
                   **_picker_appearance())
