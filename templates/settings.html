@@ -1158,6 +1158,10 @@ function onPasswordInput(form) {
     <script src="/static/js/htmx-2.0.4.min.js"></script>
     <script src="/static/js/ws.js"></script>
     <script>
+    // Localised UI strings for JS-generated content (same [settings] table as the
+    // server-rendered {{ t.key }}, exposed to the browser as T.key).
+    var T = {{ t | tojson }};   // global (window.T) so inline handlers can read it too
+
     // Shared shell (theme toggle, tab switcher window.panelShowTab, hold-to-confirm,
     // copyKey) lives in /static/js/panel.js. Page-specific logic follows.
 
@@ -1167,7 +1171,7 @@ function onPasswordInput(form) {
         fetch('/meet_status').then(function(r){ return r.json(); }).then(function(d){
             var sel = document.getElementById('meet-file-select');
             if (sel) {
-                sel.innerHTML = '<option value="">— No file loaded —</option>';
+                sel.innerHTML = '<option value="">' + T.meet_no_file + '</option>';
                 (d.file_list || []).forEach(function(f) {
                     var opt = document.createElement('option');
                     opt.value = f; opt.textContent = f;
@@ -1181,10 +1185,10 @@ function onPasswordInput(form) {
             var actions = document.getElementById('meet-file-actions');
             if (d.active) {
                 actions.innerHTML =
-                    '<a id="meet-preview-btn" href="' + d.preview_url + '" class="btn btn-secondary btn-sm flex-shrink-0">Preview</a>' +
-                    '<label class="btn btn-secondary btn-sm m-0 flex-shrink-0" style="cursor:pointer; white-space:nowrap;">Update File<input id="meet_update_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="updateMeetFile(this)"></label>' +
-                    '<button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="var f=document.getElementById(\'meet-file-select\').value;if(f&&confirm(\'Delete \'+f+\'?\'))location.href=\'/meet_delete?file=\'+encodeURIComponent(f);">Delete</button>' +
-                    '<button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" data-hold data-hold-href="/meet_clear" data-hold-label="Hold to delete all…">Delete All</button>';
+                    '<a id="meet-preview-btn" href="' + d.preview_url + '" class="btn btn-secondary btn-sm flex-shrink-0">' + T.btn_preview + '</a>' +
+                    '<label class="btn btn-secondary btn-sm m-0 flex-shrink-0" style="cursor:pointer; white-space:nowrap;">' + T.meet_update_file_btn + '<input id="meet_update_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="updateMeetFile(this)"></label>' +
+                    '<button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="var f=document.getElementById(\'meet-file-select\').value;if(f&&confirm(T.js_delete_c+f+\'?\'))location.href=\'/meet_delete?file=\'+encodeURIComponent(f);">' + T.btn_delete + '</button>' +
+                    '<button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" data-hold data-hold-href="/meet_clear" data-hold-label="' + T.hold_delete_all + '">' + T.btn_delete_all + '</button>';
             } else {
                 actions.innerHTML = '';
             }
@@ -1267,7 +1271,7 @@ function onPasswordInput(form) {
         var msg = document.getElementById('meet-update-msg');
         msg.style.display = 'block';
         _statusColor(msg, 'muted');
-        msg.textContent = 'Checking…';
+        msg.textContent = T.js_checking;
         var fd = new FormData();
         fd.append('meet_file', file);
         fetch('/meet_update_file', { method: 'POST', body: fd })
@@ -1275,16 +1279,16 @@ function onPasswordInput(form) {
             .then(function(d) {
                 if (d.ok) {
                     _statusColor(msg, 'ok');
-                    msg.textContent = 'Updated — reloading…';
+                    msg.textContent = T.js_updated_reloading;
                     setTimeout(function() { location.reload(); }, 3000);
                 } else {
                     _statusColor(msg, 'err');
-                    msg.textContent = d.error || 'Update failed.';
+                    msg.textContent = d.error || T.js_update_failed;
                 }
             })
             .catch(function() {
                 _statusColor(msg, 'err');
-                msg.textContent = 'Update failed.';
+                msg.textContent = T.js_update_failed;
             });
         input.value = '';
     }
@@ -1352,7 +1356,7 @@ function onPasswordInput(form) {
             if (d.playing) {
                 bar.style.display = 'flex';
                 hr.style.display  = '';
-                text.textContent  = 'Playing: ' + d.session;
+                text.textContent  = T.js_playing_c + d.session;
             } else {
                 bar.style.display = 'none';
                 hr.style.display  = 'none';
@@ -1361,7 +1365,7 @@ function onPasswordInput(form) {
             if (d.speed !== undefined) _highlightSpeed(d.speed);
             _recording = d.recording;
             var btn = document.getElementById('btn-record');
-            btn.textContent = _recording ? 'Stop' : 'Start';
+            btn.textContent = _recording ? T.test_stop : T.test_start;
             btn.className   = _recording ? 'btn btn-danger btn-sm' : 'btn btn-secondary btn-sm';
             btn.disabled    = d.playing;
             document.getElementById('test-record-name').disabled = d.playing;
@@ -1383,7 +1387,7 @@ function onPasswordInput(form) {
                     // Only show manual upload for custom sessions (built-ins auto-load their companion)
                     var isBuiltin = d.sessions.some(function(s){ return s.name === d.session && s.source === 'builtin'; });
                     meetSection.style.display = isBuiltin ? 'none' : '';
-                    meetStatus.textContent = 'No meet file loaded — load one to show swimmer names during the test.';
+                    meetStatus.textContent = T.test_no_meet_hint;
                     _statusColor(meetStatus, 'muted');
                     meetUploadBtn.style.display = '';
                 }
@@ -1405,16 +1409,16 @@ function onPasswordInput(form) {
         if (!sessions.length) { div.innerHTML = '<span class="text-body-secondary">No sessions found.</span>'; return; }
         var html = '';
         sessions.forEach(function(s) {
-            var isPlaying = document.getElementById('test-status-text').textContent === 'Playing: ' + s.name;
+            var isPlaying = document.getElementById('test-status-text').textContent === T.js_playing_c + s.name;
             var W = 'width:70px;';
             var playBtn = isPlaying
-                ? '<button class="btn btn-success btn-sm text-nowrap" style="' + W + '" disabled>Playing</button>'
-                : '<button class="btn btn-secondary btn-sm" style="' + W + '" onclick="testPlay(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')"' + (anyPlaying || hasMeet ? ' disabled' : '') + '>Play</button>';
+                ? '<button class="btn btn-success btn-sm text-nowrap" style="' + W + '" disabled>' + T.js_playing + '</button>'
+                : '<button class="btn btn-secondary btn-sm" style="' + W + '" onclick="testPlay(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')"' + (anyPlaying || hasMeet ? ' disabled' : '') + '>' + T.js_play + '</button>';
             var delBtn = s.source === 'custom'
-                ? '<button class="btn btn-secondary btn-sm me-1" style="' + W + '" onclick="testDelete(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')">Delete</button>'
+                ? '<button class="btn btn-secondary btn-sm me-1" style="' + W + '" onclick="testDelete(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')">' + T.btn_delete + '</button>'
                 : '<span class="me-1" style="display:inline-block; ' + W + '"></span>';
             var badge = s.source === 'builtin'
-                ? '<span class="small text-body-secondary ms-1">built-in</span>' : '';
+                ? '<span class="small text-body-secondary ms-1">' + T.js_builtin + '</span>' : '';
             html += '<div class="d-flex align-items-center border-bottom py-1 gap-1">' +
                     '<span class="flex-fill text-break" style="min-width:0;">' + s.name + badge + '</span>' +
                     '<div class="d-flex flex-shrink-0">' + delBtn + playBtn + '</div>' +
@@ -1474,13 +1478,13 @@ function onPasswordInput(form) {
         fd.append('meet_file', input.files[0]);
         var status = document.getElementById('test-meet-status');
         _statusColor(status, 'muted');
-        status.textContent = 'Loading…';
+        status.textContent = T.loading;
         fetch('/test_meet_upload', {method:'POST', body:fd}).then(function(r){ return r.json(); }).then(function(d){
             if (d.ok) {
                 setTimeout(_loadTestStatus, 300);
             } else {
                 _statusColor(status, 'err');
-                status.textContent = d.error || 'Upload failed.';
+                status.textContent = d.error || T.js_upload_failed;
             }
         });
     }
@@ -1510,10 +1514,10 @@ function onPasswordInput(form) {
         var wtext = document.getElementById('wifi-status-text');
         var eip   = document.getElementById('eth-ip-text');
         btn.disabled = false;
-        btn.textContent = d.enabled ? 'Disable WiFi' : 'Enable WiFi';
+        btn.textContent = d.enabled ? T.js_disable_wifi : T.js_enable_wifi;
         if (!d.enabled) {
             _statusColor(wtext, 'muted');
-            wtext.textContent = 'Disabled';
+            wtext.textContent = T.js_disabled;
         } else if (d.wifi_ip) {
             _statusColor(wtext, 'ok');
             wtext.textContent = d.ssid ? d.ssid + ' · ' + d.wifi_ip : d.wifi_ip;
@@ -1522,14 +1526,14 @@ function onPasswordInput(form) {
             wtext.textContent = d.ssid + ' · no IP';
         } else {
             _statusColor(wtext, 'muted');
-            wtext.textContent = 'Not connected';
+            wtext.textContent = T.js_not_connected;
         }
         if (d.eth_ip) {
             _statusColor(eip, 'ok');
             eip.textContent = d.eth_ip;
         } else {
             _statusColor(eip, 'muted');
-            eip.textContent = 'Not connected';
+            eip.textContent = T.js_not_connected;
         }
         if (d.eth_ip) {
             document.getElementById('eth-ip-input').value = d.eth_ip.split('/')[0];
@@ -1538,16 +1542,16 @@ function onPasswordInput(form) {
 
     function setEthDhcp() {
         var status = document.getElementById('eth-ip-status');
-        if (!confirm('Switch Ethernet to DHCP?\n\nThe IP address will change and your current session will disconnect.')) return;
+        if (!confirm(T.js_dhcp_confirm)) return;
         _statusColor(status, 'muted');
-        status.textContent = 'Applying…';
+        status.textContent = T.js_applying;
         fetch('/eth_dhcp_set', {method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
             if (d.ok) {
                 _statusColor(status, 'ok');
-                status.textContent = 'Switched to DHCP. Check your router for the new IP.';
+                status.textContent = T.js_dhcp_switched;
             } else {
                 _statusColor(status, 'err');
-                status.textContent = d.error || 'Failed.';
+                status.textContent = d.error || T.js_failed;
             }
         });
     }
@@ -1556,19 +1560,19 @@ function onPasswordInput(form) {
         var ip     = document.getElementById('eth-ip-input').value.trim();
         var prefix = document.getElementById('eth-prefix-input').value.trim();
         var status = document.getElementById('eth-ip-status');
-        if (!ip) { _statusColor(status, 'err'); status.textContent = 'Enter an IP address.'; return; }
-        if (!confirm('Change Ethernet IP to ' + ip + '/' + prefix + '?\n\nThis will disconnect your current session.')) return;
+        if (!ip) { _statusColor(status, 'err'); status.textContent = T.js_enter_ip; return; }
+        if (!confirm(T.js_change_ip_c + ip + '/' + prefix + '?\n\nThis will disconnect your current session.')) return;
         _statusColor(status, 'muted');
-        status.textContent = 'Applying…';
+        status.textContent = T.js_applying;
         fetch('/eth_ip_set', {method:'POST', headers:{'Content-Type':'application/json'},
                               body:JSON.stringify({ip:ip, prefix:prefix})})
             .then(function(r){ return r.json(); }).then(function(d){
                 if (d.ok) {
                     _statusColor(status, 'ok');
-                    status.textContent = 'Applied. Reconnect at http://' + ip + ':5000/settings';
+                    status.textContent = T.js_applied_reconnect_c + ip + ':5000/settings';
                 } else {
                     _statusColor(status, 'err');
-                    status.textContent = d.error || 'Failed.';
+                    status.textContent = d.error || T.js_failed;
                 }
             });
     }
@@ -1580,7 +1584,7 @@ function onPasswordInput(form) {
                 return;
             }
             _applyWifiStatus(d);
-        }).catch(function(){ document.getElementById('wifi-status-text').textContent = 'Error loading status.'; });
+        }).catch(function(){ document.getElementById('wifi-status-text').textContent = T.js_error_loading_status; });
     }
 
     function toggleWifi() {
@@ -1610,7 +1614,7 @@ function onPasswordInput(form) {
             if (isDisable) {
                 origLabel = btn.textContent;
                 btn.classList.add('btn-holding');
-                btn.textContent = 'Hold to disable…';
+                btn.textContent = T.js_hold_disable;
                 timer = setTimeout(function() {
                     timer = null; armed = false; isDisable = false; origLabel = '';
                     btn.classList.remove('btn-holding');
@@ -1657,7 +1661,7 @@ function onPasswordInput(form) {
         var pw     = document.getElementById('wifi-join-pw').value;
         var status = document.getElementById('wifi-join-status');
         _statusColor(status, 'muted');
-        status.textContent = 'Connecting…';
+        status.textContent = T.js_connecting;
         fetch('/wifi_connect', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -1665,13 +1669,13 @@ function onPasswordInput(form) {
         }).then(function(r){ return r.json(); }).then(function(d){
             if (d.ok) {
                 _statusColor(status, 'ok');
-                status.textContent = 'Connected!';
+                status.textContent = T.js_connected_excl;
                 setTimeout(function(){ cancelJoin(); _netTabActive(); if (window.htmx) htmx.ajax('GET', '/wifi_scan', '#wifi-net-list'); }, 1500);
             } else {
                 _statusColor(status, 'err');
-                status.textContent = d.error || 'Connection failed.';
+                status.textContent = d.error || T.js_connection_failed;
             }
-        }).catch(function(){ _statusColor(status, 'err'); status.textContent = 'Request failed.'; });
+        }).catch(function(){ _statusColor(status, 'err'); status.textContent = T.js_request_failed; });
     }
 
     // Connected-clients list is now HTMX-driven (hx-get="/clients_fragment",
@@ -1693,11 +1697,11 @@ function onPasswordInput(form) {
         _ensureUpdateSock();
         var sel = document.getElementById('version-select');
         var cur = document.getElementById('current-version');
-        cur.textContent = 'Loading…';
+        cur.textContent = T.loading;
         sel.disabled = true;
         fetch('/version_list').then(function(r){ return r.json(); }).then(function(d){
             sel.disabled = false;
-            if (!d.ok) { cur.textContent = d.error || 'Error'; return; }
+            if (!d.ok) { cur.textContent = d.error || T.js_error; return; }
             cur.textContent = d.current || 'untagged';
             sel.innerHTML = '';
             d.versions.forEach(function(v, i) {
@@ -1713,7 +1717,7 @@ function onPasswordInput(form) {
             sel.appendChild(sep);
             var mopt = document.createElement('option');
             mopt.value = 'master';
-            mopt.textContent = 'Development (master)';
+            mopt.textContent = T.js_dev_master;
             sel.appendChild(mopt);
             (d.branches || []).forEach(function(b) {
                 var opt = document.createElement('option');
@@ -1721,7 +1725,7 @@ function onPasswordInput(form) {
                 opt.textContent = b;
                 sel.appendChild(opt);
             });
-        }).catch(function(){ sel.disabled = false; cur.textContent = 'Error'; });
+        }).catch(function(){ sel.disabled = false; cur.textContent = T.js_error; });
     }
 
     function startUpdate() {
@@ -1734,7 +1738,7 @@ function onPasswordInput(form) {
         out.innerHTML = '';
         out.style.display = 'block';
         _statusColor(status, 'muted');
-        status.textContent = 'Running…';
+        status.textContent = T.js_running;
         var seen = 0;
         var poll = setInterval(function() {
             fetch('/update_log').then(function(r){ return r.json(); }).then(function(d) {
@@ -1751,11 +1755,11 @@ function onPasswordInput(form) {
                     document.getElementById('btn-os-update').disabled = false;
                     if (d.done) {
                         _statusColor(status, 'ok');
-                        status.textContent = 'Done — restarting, page will reload…';
+                        status.textContent = T.js_done_restarting;
                         setTimeout(function() { location.reload(); }, 6000);
                     } else {
                         _statusColor(status, 'err');
-                        status.textContent = 'Failed — see output above.';
+                        status.textContent = T.js_failed_see_output;
                         btn.disabled = false;
                     }
                 }
@@ -1766,14 +1770,14 @@ function onPasswordInput(form) {
             if (!r.ok) {
                 clearInterval(poll);
                 _statusColor(status, 'err');
-                status.textContent = 'Could not start update.';
+                status.textContent = T.js_could_not_start_update;
                 btn.disabled = false;
                 document.getElementById('btn-os-update').disabled = false;
             }
         }).catch(function(e) {
             clearInterval(poll);
             _statusColor(status, 'err');
-            status.textContent = 'Request failed: ' + e;
+            status.textContent = T.js_request_failed_c + e;
             btn.disabled = false;
             document.getElementById('btn-os-update').disabled = false;
         });
@@ -1788,7 +1792,7 @@ function onPasswordInput(form) {
         out.innerHTML = '';
         out.style.display = 'block';
         _statusColor(status, 'muted');
-        status.textContent = 'Running…';
+        status.textContent = T.js_running;
         var seen = 0;
         var poll = setInterval(function() {
             fetch('/os_update_log').then(function(r){ return r.json(); }).then(function(d) {
@@ -1805,10 +1809,10 @@ function onPasswordInput(form) {
                     document.getElementById('btn-run-update').disabled = false;
                     if (d.done) {
                         _statusColor(status, 'ok');
-                        status.textContent = 'Done.';
+                        status.textContent = T.js_done;
                     } else {
                         _statusColor(status, 'err');
-                        status.textContent = 'Failed — see output above.';
+                        status.textContent = T.js_failed_see_output;
                     }
                     btn.disabled = false;
                 }
@@ -1818,14 +1822,14 @@ function onPasswordInput(form) {
             if (!r.ok) {
                 clearInterval(poll);
                 _statusColor(status, 'err');
-                status.textContent = 'Could not start OS update.';
+                status.textContent = T.js_could_not_start_os;
                 btn.disabled = false;
                 document.getElementById('btn-run-update').disabled = false;
             }
         }).catch(function(e) {
             clearInterval(poll);
             _statusColor(status, 'err');
-            status.textContent = 'Request failed: ' + e;
+            status.textContent = T.js_request_failed_c + e;
             btn.disabled = false;
             document.getElementById('btn-run-update').disabled = false;
         });
@@ -1837,29 +1841,29 @@ function onPasswordInput(form) {
         input.value = '';
         var status = document.getElementById('restore-status');
         _statusColor(status, 'muted');
-        status.textContent = 'Uploading…';
+        status.textContent = T.cloud_uploading;
         var fd = new FormData();
         fd.append('backup_file', file);
         fetch('/backup_restore', {method: 'POST', body: fd}).then(function(r) { return r.json(); }).then(function(d) {
             if (!d.ok) {
                 _statusColor(status, 'err');
-                status.textContent = d.error || 'Restore failed.';
+                status.textContent = d.error || T.js_restore_failed;
                 return;
             }
             _statusColor(status, 'muted');
-            status.textContent = 'Restored — restarting…';
+            status.textContent = T.js_restored_restarting;
             var tries = 0;
             var poll = setInterval(function() {
                 tries++;
                 fetch('/settings').then(function(r) {
                     if (r.ok) { clearInterval(poll); location.reload(); }
                 }).catch(function() {
-                    if (tries > 60) { clearInterval(poll); status.textContent = 'Restart timed out.'; }
+                    if (tries > 60) { clearInterval(poll); status.textContent = T.js_restart_timeout; }
                 });
             }, 1000);
         }).catch(function() {
             _statusColor(status, 'err');
-            status.textContent = 'Upload failed.';
+            status.textContent = T.js_upload_failed;
         });
     }
 
@@ -1873,7 +1877,7 @@ function onPasswordInput(form) {
     }
 
     function saveCustomTheme() {
-        var n = prompt('Theme name:');
+        var n = prompt(T.js_theme_name_prompt);
         if (n && n.trim()) {
             document.getElementById('theme_save_name').value = n.trim();
             document.getElementById('theme_save_form').submit();
@@ -1922,35 +1926,35 @@ function onPasswordInput(form) {
         var ntpEl = document.getElementById('ntp-status');
         btn.disabled = true;
         _statusColor(ntpEl, 'muted');
-        ntpEl.textContent = 'Checking network…';
+        ntpEl.textContent = T.js_checking_network;
 
         function doSync() {
-            ntpEl.textContent = 'Syncing…';
+            ntpEl.textContent = T.js_syncing;
             fetch('/time_sync', {method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
                 btn.disabled = false;
                 if (d.ok) {
                     setTimeout(_loadTimeStatus, 2000);
                 } else {
                     _statusColor(ntpEl, 'err');
-                    ntpEl.textContent = 'Error: ' + (d.error || 'Sync failed');
+                    ntpEl.textContent = T.js_error_c + (d.error || T.js_sync_failed);
                 }
             });
         }
 
         fetch('/wifi_status').then(function(r){ return r.json(); }).then(function(net){
             var hasWifi = net.wifi_ip && net.wifi_ip.trim();
-            var hasEth  = net.eth_ip  && net.eth_ip.trim() && net.eth_ip !== 'Not connected';
+            var hasEth  = net.eth_ip  && net.eth_ip.trim() && net.eth_ip !== T.js_not_connected;
             if (!hasWifi && !hasEth) {
                 btn.disabled = false;
                 _statusColor(ntpEl, 'err');
                 var msg;
                 if (!net.enabled)
-                    msg = 'WiFi is disabled and Ethernet is not connected.';
+                    msg = T.js_no_eth_wifi_off;
                 else if (!net.ssid)
-                    msg = 'WiFi is not connected to a network and Ethernet is not connected.';
+                    msg = T.js_no_eth_wifi_disc;
                 else
-                    msg = 'No network connection — cannot reach NTP server.';
-                ntpEl.innerHTML = msg + ' <a href="#" onclick="document.querySelector(\'[href=\\\"#tab-netgroup\\\"]\').click();return false;">Go to Network tab</a>';
+                    msg = T.js_no_network_ntp;
+                ntpEl.innerHTML = msg + ' <a href="#" onclick="document.querySelector(\'[href=\\\"#tab-netgroup\\\"]\').click();return false;">' + T.js_go_to_network + '</a>';
                 return;
             }
             doSync();
@@ -1961,19 +1965,19 @@ function onPasswordInput(form) {
         var date   = document.getElementById('time-set-date').value.replace(/\//g, '-');
         var time   = document.getElementById('time-set-time').value;
         var status = document.getElementById('time-set-status');
-        if (!date || !time) { _statusColor(status, 'err'); status.textContent = 'Enter date and time.'; return; }
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { _statusColor(status, 'err'); status.textContent = 'Use YYYY/MM/DD format.'; return; }
+        if (!date || !time) { _statusColor(status, 'err'); status.textContent = T.js_enter_datetime; return; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { _statusColor(status, 'err'); status.textContent = T.js_use_date_format; return; }
         _statusColor(status, 'muted');
-        status.textContent = 'Setting…';
+        status.textContent = T.js_setting;
         fetch('/time_set', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({date:date, time:time})})
             .then(function(r){ return r.json(); }).then(function(d){
                 if (d.ok) {
                     _statusColor(status, 'ok');
-                    status.textContent = 'Time set.';
+                    status.textContent = T.js_time_set;
                     setTimeout(_loadTimeStatus, 500);
                 } else {
                     _statusColor(status, 'err');
-                    status.textContent = d.error || 'Failed.';
+                    status.textContent = d.error || T.js_failed;
                 }
             });
     }
@@ -2012,7 +2016,7 @@ function onPasswordInput(form) {
         out.innerHTML = '';
         out.style.display = 'block';
         _statusColor(status, 'muted');
-        status.textContent = 'Running…';
+        status.textContent = T.js_running;
         var seen = 0;
         var poll = setInterval(function() {
             fetch('/rtc_log').then(function(r){ return r.json(); }).then(function(d) {
@@ -2030,11 +2034,11 @@ function onPasswordInput(form) {
                     btnRemove.disabled  = false;
                     if (d.done) {
                         _statusColor(status, 'ok');
-                        status.textContent = 'Done.';
+                        status.textContent = T.js_done;
                         rebootRow.style.display = 'flex';
                     } else {
                         _statusColor(status, 'err');
-                        status.textContent = 'Failed — see output above.';
+                        status.textContent = T.js_failed_see_output;
                     }
                 }
             }).catch(function(){});
@@ -2043,14 +2047,14 @@ function onPasswordInput(form) {
             if (!r.ok) {
                 clearInterval(poll);
                 _statusColor(status, 'err');
-                status.textContent = 'Could not start.';
+                status.textContent = T.js_could_not_start;
                 btnInstall.disabled = false;
                 btnRemove.disabled  = false;
             }
         }).catch(function(e) {
             clearInterval(poll);
             _statusColor(status, 'err');
-            status.textContent = 'Request failed: ' + e;
+            status.textContent = T.js_request_failed_c + e;
             btnInstall.disabled = false;
             btnRemove.disabled  = false;
         });
@@ -2063,7 +2067,7 @@ function onPasswordInput(form) {
         var status = document.getElementById('rtc-status');
         document.getElementById('rtc-reboot-row').style.display = 'none';
         _statusColor(status, 'muted');
-        status.textContent = 'Rebooting…';
+        status.textContent = T.js_rebooting;
         fetch('/system_reboot', {method: 'POST'});
     }
 
@@ -2084,20 +2088,20 @@ function onPasswordInput(form) {
     function saveLogsToPi() {
         document.getElementById('log-menu').style.display = 'none';
         var status = document.getElementById('log-save-status');
-        status.textContent = 'Saving logs…';
+        status.textContent = T.js_saving_logs;
         fetch('/logs_save', {method: 'POST'})
             .then(function(r) { return r.json(); })
             .then(function(d) {
-                status.textContent = d.ok ? ('Saved: ' + d.path) : ('Save failed: ' + (d.error || ''));
+                status.textContent = d.ok ? (T.js_saved_c + d.path) : (T.js_save_failed_c + (d.error || ''));
                 setTimeout(function() { status.textContent = ''; }, 8000);
             })
-            .catch(function() { status.textContent = 'Save failed'; });
+            .catch(function() { status.textContent = T.js_save_failed; });
     }
 
     // ── System power ─────────────────────────────────────────────────────────
     function serviceRestart() {
         var status = document.getElementById('system-power-status');
-        status.textContent = 'Restarting service…';
+        status.textContent = T.js_restarting_service;
         fetch('/system_service_restart', {method: 'POST'});
         // The app (which serves this page) goes down briefly; nudge a reload so
         // the panel reconnects once it's back.
@@ -2105,12 +2109,12 @@ function onPasswordInput(form) {
     }
 
     function systemReboot() {
-        document.getElementById('system-power-status').textContent = 'Rebooting…';
+        document.getElementById('system-power-status').textContent = T.js_rebooting;
         fetch('/system_reboot', {method: 'POST'});
     }
 
     function systemShutdown() {
-        document.getElementById('system-power-status').textContent = 'Shutting down…';
+        document.getElementById('system-power-status').textContent = T.js_shutting_down;
         fetch('/system_shutdown', {method: 'POST'});
     }
 
@@ -2167,7 +2171,7 @@ function onPasswordInput(form) {
                         document.getElementById('btn-term-stop').style.display = '';
                         _termSock.emit('resize', {rows: _term.rows, cols: _term.cols});
                     } else {
-                        _term.write('\r\n\x1b[31mError: ' + (d.error || 'Failed to start') + '\x1b[0m\r\n');
+                        _term.write('\r\n\x1b[31mError: ' + (d.error || T.js_failed_to_start) + '\x1b[0m\r\n');
                     }
                 });
             }
@@ -2197,7 +2201,7 @@ function onPasswordInput(form) {
 
     function _applyDebugState(enabled) {
         var btn = document.getElementById('btn-debug-toggle');
-        btn.textContent = enabled ? 'Disable' : 'Enable';
+        btn.textContent = enabled ? T.js_disable : T.btn_enable;
         btn.className = 'btn btn-sm ' + (enabled ? 'btn-danger' : 'btn-secondary');
     }
 
@@ -2214,7 +2218,7 @@ function onPasswordInput(form) {
     function _applySerialStatus(d) {
         var badge = document.getElementById('serial-status-badge');
         if (!badge) return;
-        var labels   = {idle: '—', opening: 'Opening…', open: 'Connected', error: 'Error'};
+        var labels   = {idle: '—', opening: T.js_opening, open: T.js_connected, error: T.js_error};
         var variants = {idle: 'text-bg-secondary', opening: 'text-bg-warning', open: 'text-bg-success', error: 'text-bg-danger'};
         badge.textContent = labels[d.state] || d.state;
         badge.className = 'badge rounded-pill ' + (variants[d.state] || 'text-bg-secondary');
@@ -2271,23 +2275,23 @@ function onPasswordInput(form) {
         var btn  = document.getElementById('btn-cloud-toggle');
         if (!d.url) {
             _statusColor(text, 'muted');
-            text.textContent = 'Not configured';
-            btn.textContent  = 'Connect';
+            text.textContent = T.js_not_configured;
+            btn.textContent  = T.net_connect;
             btn.disabled     = true;
         } else if (d.connected) {
             _statusColor(text, 'ok');
-            text.textContent = 'Connected · ' + d.url;
-            btn.textContent  = 'Disconnect';
+            text.textContent = T.js_connected_c + d.url;
+            btn.textContent  = T.js_disconnect;
             btn.disabled     = false;
         } else if (d.running) {
             _statusColor(text, 'warn');
-            text.textContent = 'Connecting…';
-            btn.textContent  = 'Disconnect';
+            text.textContent = T.js_connecting;
+            btn.textContent  = T.js_disconnect;
             btn.disabled     = false;
         } else {
             _statusColor(text, 'muted');
-            text.textContent = 'Disconnected';
-            btn.textContent  = 'Connect';
+            text.textContent = T.js_disconnected;
+            btn.textContent  = T.net_connect;
             btn.disabled     = false;
         }
     }
