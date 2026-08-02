@@ -30,6 +30,70 @@ DECODERS: dict[str, type[ConsoleDecoder]] = {
     'omega_quantum':   QuantumDecoder,
 }
 
+# Base URL for the full per-console setup guides on GitHub.
+DOCS_BASE_URL = 'https://github.com/olivierouellet/Tremplin/blob/master/docs/consoles/'
+
+# Curated hardware/wiring summary per decoder, surfaced in Settings → Timing.
+# Keyed by decoder key (the three CTS models share one decoder, hence one entry).
+# The full per-console guide lives in docs/consoles/<doc>.
+CONSOLE_INFO: dict[str, dict] = {
+    'cts_gen6': {
+        'adapter':  'USB-to-RS232 (DB9)',
+        'wiring':   '1/4" Y-cable — tip → DB9 pin 2 (RX), sleeve → pin 5 (GND)',
+        'protocol': 'RS-232 · 9600 baud · 8-E-1',
+        'tested':   True,
+        'doc':      'cts-gen6.md',
+    },
+    'cts_gen7': {
+        'adapter':  'USB-to-RS485',
+        'wiring':   'Connect to the RS-485 port on the Gen7 console',
+        'protocol': 'RS-485 · 115200 baud · 8-N-1',
+        'tested':   False,
+        'doc':      'cts-gen7.md',
+    },
+    'dak_2000': {
+        'adapter':  'USB-to-RS232 (DB9)',
+        'wiring':   'DB9 to the J6 Results Port (or J5 RTD Port)',
+        'protocol': 'RS-232 · 19200 baud · 8-N-1',
+        'tested':   False,
+        'doc':      'omnisport-2000.md',
+    },
+    'omega_ares21': {
+        'adapter':  'USB-to-RS485',
+        'wiring':   'Non-standard DB9 pinout (RS-485) — see guide',
+        'protocol': 'RS-485 · 9600 baud · 8-N-1',
+        'tested':   False,
+        'doc':      'ares-21.md',
+    },
+    'omega_quantum': {
+        'adapter':  'USB-to-RS485',
+        'wiring':   'Quantum pin 3 → A- · pin 4 → B+',
+        'protocol': 'RS-485 · 9600 baud · 8-N-1',
+        'tested':   False,
+        'doc':      'quantum.md',
+    },
+}
+
+
+def console_info_for(console_type: str) -> dict | None:
+    """Return the hardware/wiring summary for *console_type*, or None if unknown.
+
+    Resolves the console key to its decoder key (via CONSOLE_OPTIONS) and looks
+    up CONSOLE_INFO. The returned dict adds the human label and a full doc_url
+    so templates can render a summary card plus a link to the complete guide.
+    """
+    match = next(
+        ((label, dec) for key, label, dec in CONSOLE_OPTIONS if key == console_type),
+        None,
+    )
+    if match is None:
+        return None
+    label, decoder_key = match
+    info = CONSOLE_INFO.get(decoder_key)
+    if info is None:
+        return None
+    return {**info, 'label': label, 'doc_url': DOCS_BASE_URL + info['doc']}
+
 
 def load_custom_decoders(folder: str) -> None:
     """Load decoder plugins from *folder* and merge them into CONSOLE_OPTIONS / DECODERS.

@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 import bus
 import relay
 import state
-from console_decoders import CONSOLE_OPTIONS, load_custom_decoders, make_decoder
+from console_decoders import CONSOLE_OPTIONS, console_info_for, load_custom_decoders, make_decoder
 from meet_data import send_event_info
 from parsers.lenex_parser import load_lenex
 from web import render, require_login, save_upload
@@ -441,9 +441,19 @@ def _settings_view(request, form):
     custom_locale_list  = state.list_custom_locales()
     custom_locale_codes = [c for c, _ in custom_locale_list]
 
+    ui_lang = state.ui_locale(request)
+    # Whether the user has explicitly pinned a panel language (vs. "Auto"). Only
+    # an installed locale counts, so a stale cookie for a removed locale reads as
+    # Auto — matching how ui_locale() resolves it.
+    installed_ui = {c for c, _ in state.list_locales()} | set(custom_locale_codes)
+    ui_lang_cookie = request.cookies.get('ui_lang', '')
+    ui_lang_cookie = ui_lang_cookie if ui_lang_cookie in installed_ui else ''
     return render(
         request,
         'settings.html',
+        t=state.settings_strings(ui_lang),
+        ui_locale=ui_lang,
+        ui_lang_cookie=ui_lang_cookie,
         meet_file_list=meet_file_list,
         active_meet_file=state._active_meet_file,
         meet_title=state.settings['meet_title'],
@@ -451,6 +461,7 @@ def _settings_view(request, form):
         serial_port_list=comm_port_list,
         console_type=state.settings.get('console_type', 'cts_gen6'),
         console_options=[(key, label) for key, label, _ in CONSOLE_OPTIONS],
+        console_info=console_info_for(state.settings.get('console_type', 'cts_gen6')),
         user_name=state.settings['username'],
         splash_url_list=splash_url_list,
         splash_url=state.settings.get('splash_url', ''),
@@ -477,6 +488,9 @@ def _settings_view(request, form):
         custom_theme_list=state.list_custom_themes(),
         custom_theme_codes=[c for c, _ in state.list_custom_themes()],
         theme_colors={**state.DEFAULT_THEME_COLORS, **state.settings.get('theme_colors', {})},
+        # Baseline for the "changed from default" hint: the active theme's own
+        # colours (built-in default theme → factory DEFAULT_THEME_COLORS).
+        theme_color_defaults=state.load_theme(state.settings.get('active_theme', 'default'))[0],
         theme_fonts={**state.DEFAULT_THEME_FONTS,  **state.settings.get('theme_fonts', {})},
         cloud_relay_url=state.settings.get('cloud_relay_url', ''),
         cloud_relay_key=state.settings.get('cloud_relay_key', ''),

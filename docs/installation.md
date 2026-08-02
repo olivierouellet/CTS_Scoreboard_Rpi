@@ -11,6 +11,48 @@ Earlier releases (Bookworm / Python 3.11) are not supported.
 
 ---
 
+## Hardware
+
+| Item | Purpose |
+| --- | --- |
+| Raspberry Pi 3B+ or 4 | **Pi #1** — serial decoder + scoreboard server + admin UI |
+| Raspberry Pi 4 | **Pi #2** — Chromium kiosk driving the TV |
+| Unmanaged network switch | Wired pool-deck network for all devices |
+| Cat5e cables | Pi #1 ↔ switch ↔ Pi #2 (and a laptop) |
+| Console serial adapter | Depends on your timing console — see the per-console guides in [`docs/consoles/`](consoles/) |
+
+The console-specific adapter and wiring (USB-to-RS232 vs RS-485, tap cable, pinout) live in
+the per-console guides, and a summary for the selected console is shown in **Settings →
+Timing**.
+
+Topology:
+
+```text
+Timing console
+      │  serial tap / adapter (see docs/consoles/)
+   Pi #1 ── eth0 ───┐
+                    ├── Unmanaged switch ── Pi #2 (TV kiosk)
+   Laptop ── eth0 ──┘                    └─ Laptop (admin browser)
+```
+
+---
+
+## Network & firewall
+
+All pool-deck devices talk over a dedicated wired network on `eth0`. Pi #1 also joins home /
+venue WiFi (`wlan0`) for internet access and remote management.
+
+| Device | IP address | Role |
+| --- | --- | --- |
+| Pi #1 | `10.10.10.10/24` (static, `eth0`) | Serial decoder + FastAPI server + admin UI |
+| Pi #2 | DHCP | Chromium kiosk — scoreboard on the TV |
+| Laptop | DHCP or static | Admin browser to `http://tremplin.local` (or `10.10.10.10:5000`) |
+
+**Firewall:** Pi #1 blocks incoming connections over WiFi — SSH and VNC are reachable only
+via `eth0`. Connect your laptop by Ethernet to reach the admin UI or terminal at the pool.
+
+---
+
 ## Pi #1 — Server
 
 Flash **Raspberry Pi OS Trixie** using Raspberry Pi Imager. Enable SSH during flash.

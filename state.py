@@ -392,6 +392,39 @@ def _mobile_strings():
     except Exception:
         return {}
 
+def _settings_section(code):
+    try:
+        with open(_locale_path(code), 'rb') as f:
+            return tomllib.load(f).get('settings', {})
+    except Exception:
+        return {}
+
+def settings_strings(code=None):
+    """UI strings for the operator Settings panel, English-merged so any
+    untranslated key falls back to English — templates can safely use
+    ``{{ t.key }}`` without risking a blank label."""
+    code = code or settings.get('locale', 'en')
+    base = _settings_section('en')
+    return base if code == 'en' else {**base, **_settings_section(code)}
+
+def ui_locale(request):
+    """Resolve the Settings-panel UI language, independently of the scoreboard
+    ``locale`` setting: the ``ui_lang`` cookie (the user's explicit override, set
+    by the sidebar Panel-language selector) → else the browser's Accept-Language
+    → else ``en``."""
+    installed = {c for c, _ in list_locales()} | {c for c, _ in list_custom_locales()}
+    cookie = request.cookies.get('ui_lang')
+    if cookie in installed:
+        return cookie
+    # Default to the browser's preferred language (first Accept-Language entry
+    # that matches an installed locale).
+    accept = request.headers.get('Accept-Language', '')
+    for part in accept.replace('-', '_').split(','):
+        code = part.split(';')[0].strip().split('_')[0].lower()
+        if code in installed:
+            return code
+    return 'en'
+
 def _read_locale_name(path, fallback):
     try:
         with open(path, 'rb') as f:

@@ -1,13 +1,13 @@
 import subprocess
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, IPvAnyAddress
 from starlette.concurrency import run_in_threadpool
 
 import state
-from web import ActionResult, EnabledFlag, require_login
+from web import ActionResult, EnabledFlag, render, require_login
 
 router = APIRouter(tags=['Network'])
 
@@ -29,30 +29,16 @@ class WifiStatus(BaseModel):
     eth_ip: str
 
 
-class WifiNetwork(BaseModel):
-    ssid: str
-    signal: int
-    security: str
-    active: bool
-
-
-class WifiScan(BaseModel):
-    networks: list[WifiNetwork]
-
-
 class CloudStatus(BaseModel):
     connected: bool
     running: bool
     url: str
+    # Attendance snapshot from the cloud: {'enabled': False} when analytics is
+    # off there, else {'enabled': True, 'counts': {window: n}}. None until the
+    # relay has heard back (or when disconnected).
+    stats: dict | None = None
 
 
-class ScoreboardClient(BaseModel):
-    ip: str
-    at: str
-
-
-class Clients(BaseModel):
-    clients: list[ScoreboardClient]
 
 
 def _nmcli(*args, timeout=8):
@@ -133,9 +119,9 @@ def route_wifi_status():
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
-@router.get('/wifi_scan', response_model=WifiScan,
-            dependencies=[Depends(require_login)])
-def route_wifi_scan():
+@router.get('/wifi_scan', dependencies=[Depends(require_login)])
+def route_wifi_scan(request: Request):
+    # Returns an HTML fragment (HTMX hx-get) for the Network tab's list.
     try:
         # `dev wifi list` returns the *cached* scan immediately — right after
         # connecting that cache often holds only the associated AP, which is
@@ -181,11 +167,12 @@ def route_wifi_scan():
                 net['active'] = net['active'] or ('*' in active)
         networks = sorted(by_ssid.values(),
                           key=lambda n: n['signal'], reverse=True)
-        return {'networks': networks}
+        return render(request, 'partials/wifi_networks.html', networks=networks)
     except FileNotFoundError:
-        return JSONResponse({'error': 'nmcli not found'}, status_code=503)
+        return render(request, 'partials/wifi_networks.html',
+                      error='WiFi not available (nmcli not found).')
     except Exception as e:
-        return JSONResponse({'error': str(e)}, status_code=500)
+        return render(request, 'partials/wifi_networks.html', error=str(e))
 
 
 @router.post('/wifi_toggle', response_model=EnabledFlag,
@@ -289,11 +276,11 @@ def _eth_ip_set(ip_str, prefix):
         return {'ok': False, 'error': str(e)}
 
 
-@router.get('/clients', response_model=Clients,
-            dependencies=[Depends(require_login)])
-async def route_clients():
-    # Browser tabs connected to the scoreboard WebSocket, shown in the Network tab.
-    # async so it runs on the event loop — the same context that mutates
-    # _scoreboard_clients (the WS connect/disconnect handlers) — so this snapshot
-    # can't be preempted mid-iteration by a connect/disconnect.
-    return {'clients': list(state._scoreboard_clients.values())}
+@router.get('/clients_fragment', dependencies=[Depends(require_login)])
+async def route_clients_fragment(request: Request):
+    # Browser tabs connected to the scoreboard WebSocket, shown (HTMX hx-get) in
+    # the Network tab. async so it runs on the event loop — the same context that
+    # mutates _scoreboard_clients (the WS connect/disconnect handlers) — so this
+    # snapshot can't be preempted mid-iteration by a connect/disconnect.
+    return render(request, 'partials/clients.html',
+                  clients=list(state._scoreboard_clients.values()))

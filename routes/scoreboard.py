@@ -106,13 +106,3 @@ def route_next_heats(request: Request):
                                **state.settings.get('theme_fonts', {})},
                   num_lanes=int(state.settings.get('num_lanes', 8)),
                   t=state._mobile_strings())
-
-
-@router.get('/info')
-def route_info(request: Request):
-    return render(request, 'info.html')
-
-
-@router.get('/help')
-def route_help(request: Request):
-    return render(request, 'help.html')

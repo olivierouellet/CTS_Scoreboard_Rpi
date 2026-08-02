@@ -16,6 +16,7 @@ import state
 _client    = None
 _connected = False
 _meet_id   = None   # cloud meet id assigned on 'registered', for diagnostics
+_stats     = None   # latest attendance snapshot from the cloud, or None
 _lock      = threading.Lock()
 _stop      = threading.Event()
 _thread    = None
@@ -191,10 +192,11 @@ def _serialise_start_list(sl):
 
 _PING_EVERY = 20   # recv() timeout: heartbeat cadence when the link is idle
 _STALE      = 50   # no inbound (incl. pong) for this long => dead link, reconnect
+_STATS_EVERY = 30  # how often to ask the cloud for its attendance counts
 
 
 def _run():
-    global _client, _connected, _meet_id
+    global _client, _connected, _meet_id, _stats
     from websocket import WebSocketTimeoutException, create_connection
 
     while not _stop.is_set():
@@ -223,8 +225,18 @@ def _run():
             # thread alive, detects a server-side close, and handles 'rejected'.
             # A heartbeat detects a silently-dead cloud link (mobile/proxy half-open)
             # and reconnects instead of blocking forever with no updates flowing.
-            last_rx = time.time()
+            last_rx    = time.time()
+            last_stats = 0.0
             while not _stop.is_set():
+                # Ask the cloud for fresh attendance counts on a slow cadence so
+                # the Settings → Cloud tab can show them. The cloud answers only
+                # for this relay's own meet, so there's nothing to spoof.
+                if time.time() - last_stats >= _STATS_EVERY:
+                    last_stats = time.time()
+                    try:
+                        _send_raw(ws, 'get_stats', {})
+                    except Exception:
+                        break
                 try:
                     raw = ws.recv()
                 except WebSocketTimeoutException:
@@ -248,6 +260,9 @@ def _run():
                     continue
                 elif ev == 'registered':
                     _meet_id = (obj.get('data') or {}).get('meet_id')
+                elif ev == 'stats':
+                    with _lock:
+                        _stats = obj.get('data') or {}
                 elif ev == 'rejected':
                     print(f'[relay] rejected: {obj.get("data", {}).get("reason")}', flush=True)
                     break
@@ -256,6 +271,7 @@ def _run():
         finally:
             with _lock:
                 _connected = False
+                _stats     = None   # numbers are stale once the link drops
                 if _client is ws:
                     _client = None
             try:
@@ -272,11 +288,13 @@ def _run():
 def status():
     with _lock:
         connected = _connected
+        stats     = _stats
     running = _thread is not None and _thread.is_alive()
     return {
         'connected': connected,
         'running':   running,
         'url':       state.settings.get('cloud_relay_url', '').strip(),
+        'stats':     stats,
     }
 
 

@@ -1,0 +1,12 @@
+{% if clients %}
+<div class="list-group list-group-flush">
+    {% for c in clients %}
+    <div class="list-group-item d-flex align-items-center px-0 py-1 bg-transparent">
+        <span class="flex-fill">{{ c.ip }}</span>
+        <span class="text-body-secondary">{{ c.at }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<span class="text-body-secondary">No clients connected.</span>
+{% endif %}

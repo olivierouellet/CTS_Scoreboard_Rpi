@@ -61,7 +61,17 @@ MEETS_FILE  = os.path.join(DATA_DIR, 'meets.json')   # legacy single-file store 
 RETAINED_DIR = os.path.join(DATA_DIR, 'retained')    # per-meet files: <id>.json + blobs
 ANALYTICS_FILE = os.path.join(DATA_DIR, 'analytics.db')
 _HERE       = os.path.dirname(__file__)
-LOCALES_DIR = os.path.join(_HERE, 'locales')
+# Locale files are the repo-root locales/ (single canonical source, shared with
+# the Pi app). The Docker image copies them next to cloud_server.py (COPY
+# locales/ locales/), so in-container they sit at _HERE/locales; running from
+# source they are one level up at the repo root. Use whichever exists so the
+# cloud server can be run and tested locally without Docker.
+LOCALES_DIR = next(
+    (p for p in (os.path.join(_HERE, 'locales'),
+                 os.path.join(_HERE, os.pardir, 'locales'))
+     if os.path.isdir(p)),
+    os.path.join(_HERE, 'locales'),
+)
 
 _locale_cache = {}
 
@@ -102,12 +112,30 @@ def _server_lang(request):
     return _browser_lang(request) or 'en'
 
 def _picker_lang(request):
-    # Public picker: each visitor's browser language wins; the admin/default
-    # locale is only a fallback when the browser language isn't available.
+    # Public picker: each visitor's browser language wins; the server-wide
+    # default (creds['locale']) is only a fallback when the browser language
+    # isn't available. Set from the Appearance tab — see change_locale.
     return _browser_lang(request) or _server_lang(request)
 
+def _admin_lang(request):
+    # The admin panel language is per-device, independent of the server-wide
+    # public-page locale above: the ui_lang cookie wins, else the browser, else
+    # English. Same contract as the operator Settings panel.
+    available = {code for code, _ in _available_locales()}
+    cookie = request.cookies.get('ui_lang', '')
+    if cookie in available:
+        return cookie
+    return _browser_lang(request) or 'en'
+
+def _ui_lang_cookie(request):
+    # The explicitly-pinned panel language, or '' for "Auto" — so a stale cookie
+    # for a removed locale reads as Auto, matching _admin_lang() resolution.
+    available = {code for code, _ in _available_locales()}
+    cookie = request.cookies.get('ui_lang', '')
+    return cookie if cookie in available else ''
+
 def _load_cloud_strings(request):
-    return _strings(_server_lang(request), 'cloud')
+    return _strings(_admin_lang(request), 'cloud')
 
 def _meet_lang(meet):
     return meet.get('settings', {}).get('locale') or 'en'
@@ -646,6 +674,23 @@ def _attendee_count(meet_id, since_ts):
         row = db.execute('SELECT COUNT(DISTINCT visitor_id) FROM connections '
                          'WHERE meet_id = ? AND ts >= ?', (meet_id, since_ts)).fetchone()
     return row[0] if row else 0
+
+
+def _attendee_counts(meet_id):
+    """Distinct-visitor counts for a meet across every analytics window plus
+    all-time, computed under a single lock so the relay gets one consistent
+    snapshot. Blocking (disk I/O) — run off the loop."""
+    now     = datetime.datetime.now()
+    windows = {k: int((now - d).timestamp()) for k, d in _ANALYTICS_WINDOWS.items()}
+    windows['all'] = 0
+    out = {}
+    with _analytics_lock:
+        db = _get_analytics_db()
+        for key, since in windows.items():
+            row = db.execute('SELECT COUNT(DISTINCT visitor_id) FROM connections '
+                             'WHERE meet_id = ? AND ts >= ?', (meet_id, since)).fetchone()
+            out[key] = row[0] if row else 0
+    return out
 
 
 def _analytics_prune():
@@ -1290,8 +1335,10 @@ async def route_admin(request: Request):
             return render(request, 'admin.html', keys=keys,
                           active_meets=_admin_meet_list(),
                           t=t, creds_error=error,
+                          user_name=_load_creds().get('user', 'Admin'),
                           locales=_available_locales(),
                           current_locale=_load_creds().get('locale', ''),
+                          ui_lang_cookie=_ui_lang_cookie(request),
                           has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
                           analytics_enabled=_analytics_enabled(),
                           **_picker_appearance())
@@ -1301,8 +1348,10 @@ async def route_admin(request: Request):
     return render(request, 'admin.html', keys=keys,
                   active_meets=_admin_meet_list(),
                   t=_load_cloud_strings(request), creds_error=None,
+                  user_name=_load_creds().get('user', 'Admin'),
                   locales=_available_locales(),
                   current_locale=_load_creds().get('locale', ''),
+                  ui_lang_cookie=_ui_lang_cookie(request),
                   has_deploy=bool(os.environ.get('DEPLOY_WEBHOOK_URL')),
                   analytics_enabled=_analytics_enabled(),
                   **_picker_appearance())
@@ -1430,6 +1479,22 @@ async def _on_relay_reload(sid):
     await manager.broadcast(_ch('results', meet_id), 'reload')
 
 
+async def _on_relay_stats(ws, sid):
+    """Reply to a relay's stats request with attendance counts for its *own*
+    meet. The meet id is taken from the socket's registration, so a relay can
+    only ever read its own numbers. Sends `{'enabled': False}` when the admin
+    hasn't turned analytics on, so the operator panel can say so."""
+    with _lock:
+        meet_id = _relay_sids.get(sid)
+    if not meet_id:
+        return
+    if not _analytics_enabled():
+        await manager.send(ws, 'stats', {'enabled': False})
+        return
+    counts = await run_in_threadpool(_attendee_counts, meet_id)
+    await manager.send(ws, 'stats', {'enabled': True, 'counts': counts})
+
+
 @app.websocket('/ws/relay')
 async def ws_relay(ws: WebSocket):
     await ws.accept()
@@ -1445,6 +1510,8 @@ async def ws_relay(ws: WebSocket):
                 await _forward(sid, event, data)
             elif event == 'reload':
                 await _on_relay_reload(sid)
+            elif event == 'get_stats':
+                await _on_relay_stats(ws, sid)
             elif event == 'ping':
                 await manager.send(ws, 'pong')
     except WebSocketDisconnect:
