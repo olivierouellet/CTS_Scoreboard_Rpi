@@ -10,8 +10,8 @@ import sys
 
 import tomllib
 
-from parsers.hytek_parser import HytekParser
-from parsers.lenex_parser import load_lenex
+from meet_parsers.hytek_parser import HytekParser
+from meet_parsers.lenex_parser import load_lenex
 from console_decoders import make_decoder
 
 try:
@@ -23,11 +23,16 @@ except ImportError:
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
 app_dir           = os.path.dirname(os.path.abspath(__file__))
+# Cross-component assets (static/, locales/) live in the sibling `shared/` dir,
+# one level up from server/ — they are also consumed by the cloud relay's build.
+SHARED_DIR        = os.path.join(os.path.dirname(app_dir), 'shared')
+STATIC_DIR        = os.path.join(SHARED_DIR, 'static')
+LOCALES_DIR       = os.path.join(SHARED_DIR, 'locales')
 SCOREBOARD_DIR    = os.path.expanduser('~/TremplinData')
 settings_file     = os.path.join(SCOREBOARD_DIR, 'settings.json')
 _settings_default = os.path.join(app_dir, 'settings.default.json')
 
-SESSIONS_FOLDER        = os.path.join(app_dir, 'recorded')
+SESSIONS_FOLDER        = os.path.join(app_dir, 'console_recordings')
 CUSTOM_SESSIONS_FOLDER = os.path.join(SCOREBOARD_DIR, 'recorded')
 IMAGES_DIR             = os.path.join(SCOREBOARD_DIR, 'images')
 ICONS_DIR              = os.path.join(SCOREBOARD_DIR, 'icons')
@@ -364,7 +369,7 @@ _ensure_data_dirs()
 
 def _locale_path(code):
     custom = os.path.join(CUSTOM_LOCALE_FOLDER, code + '.toml')
-    return custom if os.path.exists(custom) else os.path.join('locales', code + '.toml')
+    return custom if os.path.exists(custom) else os.path.join(LOCALES_DIR, code + '.toml')
 
 def load_locale(style=None):
     code  = settings.get('locale', 'fr')
@@ -434,7 +439,7 @@ def _read_locale_name(path, fallback):
 
 def list_locales():
     result = []
-    for path in sorted(glob.glob(os.path.join('locales', '*.toml'))):
+    for path in sorted(glob.glob(os.path.join(LOCALES_DIR, '*.toml'))):
         code = os.path.splitext(os.path.basename(path))[0]
         result.append((code, _read_locale_name(path, code)))
     return result

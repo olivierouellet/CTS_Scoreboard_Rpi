@@ -1,7 +1,7 @@
 import io
 import zipfile
 import pytest
-from parsers.lenex_parser import load_lenex, LenexData
+from meet_parsers.lenex_parser import load_lenex, LenexData
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 

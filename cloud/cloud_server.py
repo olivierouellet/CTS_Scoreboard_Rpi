@@ -61,16 +61,22 @@ MEETS_FILE  = os.path.join(DATA_DIR, 'meets.json')   # legacy single-file store 
 RETAINED_DIR = os.path.join(DATA_DIR, 'retained')    # per-meet files: <id>.json + blobs
 ANALYTICS_FILE = os.path.join(DATA_DIR, 'analytics.db')
 _HERE       = os.path.dirname(__file__)
-# Locale files are the repo-root locales/ (single canonical source, shared with
-# the Pi app). The Docker image copies them next to cloud_server.py (COPY
-# locales/ locales/), so in-container they sit at _HERE/locales; running from
-# source they are one level up at the repo root. Use whichever exists so the
-# cloud server can be run and tested locally without Docker.
+# Locales and static assets are the single canonical copies in the sibling
+# shared/ dir (also used by the Pi server). The Docker image copies them next to
+# cloud_server.py (COPY shared/locales/ locales/, COPY shared/static/ static/),
+# so in-container they sit at _HERE/{locales,static}; running from source they
+# live at ../shared/. Use whichever exists so cloud can be run/tested without Docker.
 LOCALES_DIR = next(
     (p for p in (os.path.join(_HERE, 'locales'),
-                 os.path.join(_HERE, os.pardir, 'locales'))
+                 os.path.join(_HERE, os.pardir, 'shared', 'locales'))
      if os.path.isdir(p)),
     os.path.join(_HERE, 'locales'),
+)
+STATIC_DIR = next(
+    (p for p in (os.path.join(_HERE, 'static'),
+                 os.path.join(_HERE, os.pardir, 'shared', 'static'))
+     if os.path.isdir(p)),
+    os.path.join(_HERE, 'static'),
 )
 
 _locale_cache = {}
@@ -169,7 +175,7 @@ async def lifespan(app):
 # Built-in docs are disabled here and re-served below behind `require_admin`, so
 # the OpenAPI schema and Swagger/ReDoc UIs require admin Basic-auth credentials.
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-app.mount('/static', StaticFiles(directory=os.path.join(_HERE, 'static'), check_dir=False),
+app.mount('/static', StaticFiles(directory=STATIC_DIR, check_dir=False),
           name='static')
 templates = Jinja2Templates(directory=os.path.join(_HERE, 'templates'))
 

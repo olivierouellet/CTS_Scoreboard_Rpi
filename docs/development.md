@@ -4,9 +4,13 @@
 
 ```bash
 uv sync
-uv run python Tremplin.py
+(cd server && uv run python app.py)      # or: cd server && uv run uvicorn app:app --port 5000
 uv run --with pytest pytest tests/
 ```
+
+The server runs from `server/` (its working directory), so its flat modules import each
+other by bare name. `static/` and `locales/` live in the sibling `shared/` dir (shared
+with the cloud relay); `themes/` and bundled `console_recordings/` stay under `server/`.
 
 ## Testing with a live console
 
@@ -29,7 +33,7 @@ Timing console
   │  Serial connection
   ▼
 Pi #1 /dev/ttyUSB0
-  │  console_decoders/ — parses raw bytes into lane/place/time events
+  │  server/console_decoders/ — parses raw bytes into lane/place/time events
   │
   ├── bus.py (plain-WebSocket message bus)
   │     emit → /scoreboard channel → all connected browsers
@@ -47,9 +51,9 @@ Pi #1 /dev/ttyUSB0
 
 ### Built-in decoder (committed to the repo)
 
-1. Create `console_decoders/<name>.py` implementing the `ConsoleDecoder` interface from `console_decoders/base.py`.
+1. Create `server/console_decoders/<name>.py` implementing the `ConsoleDecoder` interface from `server/console_decoders/base.py`.
 2. Add a `<name>_serial.md` protocol reference alongside it.
-3. Register the decoder in `console_decoders/__init__.py` by adding entries to `CONSOLE_OPTIONS` and `DECODERS`.
+3. Register the decoder in `server/console_decoders/__init__.py` by adding entries to `CONSOLE_OPTIONS` and `DECODERS`.
 
 ### Local-only decoder (not committed — e.g. for proprietary protocols)
 
@@ -96,7 +100,7 @@ The decoder appears in **Settings → Timing → Console type** immediately afte
 
 ## Bundled assets
 
-All frontend assets are served locally — no internet is required at the pool. The realtime client (`static/js/ws.js`) ships with the repo; xterm.js is downloaded during `install.sh`.
+All frontend assets are served locally — no internet is required at the pool. The realtime client (`shared/static/js/ws.js`) ships with the repo; xterm.js is downloaded during `install.sh`.
 
 | Asset | Licence |
 | --- | --- |

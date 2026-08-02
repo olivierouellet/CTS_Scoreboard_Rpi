@@ -157,9 +157,9 @@ if [[ "$ROLE" == "server" ]]; then
         fi
     done
 
-    if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/Tremplin.py" ]]; then
+    if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/../server/app.py" ]]; then
         info "Running from project directory — skipping clone"
-        INSTALL_DIR="$SCRIPT_DIR"
+        INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
     elif [[ -d "$INSTALL_DIR/.git" ]]; then
         info "Updating existing repo at $INSTALL_DIR"
         git -C "$INSTALL_DIR" fetch --tags
@@ -200,7 +200,7 @@ if [[ "$ROLE" == "server" ]]; then
     section "Sudo permissions"
     SUDOERS_FILE="/etc/sudoers.d/tremplin"
     sudo tee "$SUDOERS_FILE" > /dev/null <<EOF
-$USER ALL=(ALL) NOPASSWD: /usr/bin/timedatectl, /usr/bin/systemctl restart systemd-timesyncd, /usr/bin/nmcli, /usr/bin/apt-get, /usr/bin/systemctl restart tremplin, /usr/sbin/reboot, /usr/sbin/poweroff, $INSTALL_DIR/scripts/rtc_setup.sh *
+$USER ALL=(ALL) NOPASSWD: /usr/bin/timedatectl, /usr/bin/systemctl restart systemd-timesyncd, /usr/bin/nmcli, /usr/bin/apt-get, /usr/bin/systemctl restart tremplin, /usr/sbin/reboot, /usr/sbin/poweroff, $INSTALL_DIR/install/scripts/rtc_setup.sh *
 EOF
     sudo chmod 0440 "$SUDOERS_FILE"
     info "Sudoers rules written to $SUDOERS_FILE"
@@ -222,7 +222,7 @@ EOF
 
     section "Settings"
     if [[ ! -f "$HOME/TremplinData/settings.json" ]]; then
-        cp "$INSTALL_DIR/settings.default.json" "$HOME/TremplinData/settings.json"
+        cp "$INSTALL_DIR/server/settings.default.json" "$HOME/TremplinData/settings.json"
         info "settings.json copied from default."
     else
         info "settings.json already exists — skipping."
@@ -233,8 +233,8 @@ EOF
 
     section "xterm.js (browser terminal)"
     XTERM_VER="5.3.0"
-    XTERM_JS="$INSTALL_DIR/static/js/xterm.min.js"
-    XTERM_CSS="$INSTALL_DIR/static/css/xterm.min.css"
+    XTERM_JS="$INSTALL_DIR/shared/static/js/xterm.min.js"
+    XTERM_CSS="$INSTALL_DIR/shared/static/css/xterm.min.css"
     if [[ ! -f "$XTERM_JS" ]]; then
         curl -fsSL "https://cdn.jsdelivr.net/npm/xterm@${XTERM_VER}/lib/xterm.min.js" -o "$XTERM_JS"
         curl -fsSL "https://cdn.jsdelivr.net/npm/xterm@${XTERM_VER}/css/xterm.css"    -o "$XTERM_CSS"
@@ -285,7 +285,7 @@ Version=1.0
 Type=Application
 Name=Reinstall Tremplin
 Comment=Re-run the Tremplin install script
-Exec=lxterminal -e bash -c 'bash ${INSTALL_DIR}/install.sh; echo; read -rp "Press Enter to close…"'
+Exec=lxterminal -e bash -c 'bash ${INSTALL_DIR}/install/install.sh; echo; read -rp "Press Enter to close…"'
 Icon=system-software-install
 Terminal=false
 StartupNotify=false
@@ -365,7 +365,7 @@ print(f"Added {added} Chromium bookmark(s).")
 PYEOF
 
     section "Desktop wallpaper"
-    WALLPAPER="$INSTALL_DIR/static/img/scoreboard_bg.png"
+    WALLPAPER="$INSTALL_DIR/shared/static/img/scoreboard_bg.png"
     if [[ -f "$WALLPAPER" ]]; then
         PCMANFM_CONF="$HOME/.config/pcmanfm/LXDE-pi"
         mkdir -p "$PCMANFM_CONF"
@@ -394,8 +394,8 @@ After=network.target
 
 [Service]
 User=$USER
-WorkingDirectory=$INSTALL_DIR
-ExecStart=$UVICORN_BIN Tremplin:app --host 0.0.0.0 --port 5000
+WorkingDirectory=$INSTALL_DIR/server
+ExecStart=$UVICORN_BIN app:app --host 0.0.0.0 --port 5000
 Restart=always
 RestartSec=5
 
@@ -505,7 +505,7 @@ EOF
     section "Real-time clock (Adafruit PiRTC DS3231)"
     echo "Adds a hardware clock so the Pi keeps accurate time without network access."
     if confirm "Install Adafruit PiRTC (DS3231) support now?"; then
-        sudo bash "$INSTALL_DIR/scripts/rtc_setup.sh" enable
+        sudo bash "$INSTALL_DIR/install/scripts/rtc_setup.sh" enable
         info "RTC configured — will become active after reboot."
     else
         info "Skipping RTC setup — can be installed later from Settings → Clock."
@@ -586,7 +586,7 @@ EOF
     section "Desktop wallpaper"
     WALLPAPER="$HOME/.config/tremplin/scoreboard_bg.png"
     WALLPAPER_URL="${REPO_URL%.git}"
-    WALLPAPER_URL="${WALLPAPER_URL/github.com/raw.githubusercontent.com}/master/static/img/scoreboard_bg.png"
+    WALLPAPER_URL="${WALLPAPER_URL/github.com/raw.githubusercontent.com}/master/shared/static/img/scoreboard_bg.png"
     mkdir -p "$(dirname "$WALLPAPER")"
     if curl -fsSL "$WALLPAPER_URL" -o "$WALLPAPER"; then
         PCMANFM_CONF="$HOME/.config/pcmanfm/LXDE-pi"

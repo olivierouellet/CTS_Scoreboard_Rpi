@@ -62,7 +62,7 @@ Flash **Raspberry Pi OS Trixie** using Raspberry Pi Imager. Enable SSH during fl
 SSH in and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/olivierouellet/Tremplin/master/install.sh -o install.sh && bash install.sh server
+curl -fsSL https://raw.githubusercontent.com/olivierouellet/Tremplin/master/install/install.sh -o install.sh && bash install.sh server
 ```
 
 The script:
@@ -84,7 +84,7 @@ Flash **Raspberry Pi OS Trixie — Desktop** (not Lite — Chromium needs a desk
 SSH in and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/olivierouellet/Tremplin/master/install.sh -o install.sh && bash install.sh kiosk
+curl -fsSL https://raw.githubusercontent.com/olivierouellet/Tremplin/master/install/install.sh -o install.sh && bash install.sh kiosk
 ```
 
 The script enables desktop autologin and configures Chromium to open fullscreen on boot pointing at `http://tremplin.local`.

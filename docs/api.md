@@ -1,6 +1,6 @@
 # Tremplin API contract
 
-**Contract version: `v1`** · Server implementation: this repo (`Tremplin.py` local, `cloud/cloud_server.py` cloud).
+**Contract version: `v1`** · Server implementation: this repo (`server/app.py` local, `cloud/cloud_server.py` cloud).
 
 This is the source-of-truth contract that every non-browser client follows — the
 Qt/PySide TV display (`Tremplin-tv`), the iOS app (`Tremplin-ios`), and the

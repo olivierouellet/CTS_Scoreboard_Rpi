@@ -37,7 +37,7 @@ def _update_config():
     max_versions == 0 means no limit.
     """
     try:
-        with open(os.path.join(REPO, 'update_config.toml'), 'rb') as f:
+        with open(os.path.join(REPO, 'server', 'update_config.toml'), 'rb') as f:
             cfg = tomllib.load(f)
     except Exception:
         cfg = {}

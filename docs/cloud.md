@@ -29,7 +29,7 @@ Pi #1 ──── outbound WebSocket ────► Cloud VM (Docker + Caddy)
 SSH into the VM and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/olivierouellet/Tremplin/master/install.sh -o install.sh && bash install.sh cloud
+curl -fsSL https://raw.githubusercontent.com/olivierouellet/Tremplin/master/install/install.sh -o install.sh && bash install.sh cloud
 ```
 
 The script handles everything interactively:

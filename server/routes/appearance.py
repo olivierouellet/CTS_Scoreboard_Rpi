@@ -93,7 +93,7 @@ def route_locale_delete_all():
         if os.path.isfile(fp):
             os.remove(fp)
     builtin_codes = [os.path.splitext(os.path.basename(p))[0]
-                     for p in glob.glob(os.path.join('locales', '*.toml'))]
+                     for p in glob.glob(os.path.join(state.LOCALES_DIR, '*.toml'))]
     if state.settings.get('locale') not in builtin_codes:
         state.settings['locale'] = 'fr'
     state.save_settings()

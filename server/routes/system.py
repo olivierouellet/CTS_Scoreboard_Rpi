@@ -329,7 +329,7 @@ def route_os_update_log():
 
 # ── RTC (Adafruit PiRTC DS3231) ──────────────────────────────────────────────────
 
-_RTC_SCRIPT = os.path.join(state.app_dir, 'scripts', 'rtc_setup.sh')
+_RTC_SCRIPT = os.path.join(os.path.dirname(state.app_dir), 'install', 'scripts', 'rtc_setup.sh')
 
 
 @router.get('/rtc_status', response_model=RtcStatus,
@@ -366,7 +366,7 @@ def _run_rtc(action):
         state._rtc_log_lines.append({'text': text, 'error': error})
 
     try:
-        emit(f'$ sudo bash scripts/rtc_setup.sh {action}\n')
+        emit(f'$ sudo bash install/scripts/rtc_setup.sh {action}\n')
         out, rc = _run_cmd_blocking(['sudo', 'bash', _RTC_SCRIPT, action])
         if out:
             emit(out)

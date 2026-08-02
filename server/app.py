@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
 # the OpenAPI schema and Swagger/ReDoc UIs are only reachable once signed in.
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
-app.mount('/static', StaticFiles(directory=os.path.join(state.app_dir, 'static')), name='static')
+app.mount('/static', StaticFiles(directory=state.STATIC_DIR), name='static')
 
 app.include_router(scoreboard_router)
 app.include_router(meet_router)
@@ -227,7 +227,7 @@ async def ws_settings(ws: WebSocket):
 def _register_locale_aliases():
     import tomllib
     seen = set()
-    for path in glob.glob(os.path.join('locales', '*.toml')) + \
+    for path in glob.glob(os.path.join(state.LOCALES_DIR, '*.toml')) + \
                 glob.glob(os.path.join(state.CUSTOM_LOCALE_FOLDER, '*.toml')):
         try:
             with open(path, 'rb') as f:
