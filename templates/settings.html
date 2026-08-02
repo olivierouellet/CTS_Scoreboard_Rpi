@@ -154,23 +154,23 @@ function onPasswordInput(form) {
                     <div class="accordion-item">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#meetHowTo" aria-expanded="false" aria-controls="meetHowTo">
-                                <i class="bi bi-info-circle me-2"></i>How to run a meet
+                                <i class="bi bi-info-circle me-2"></i>{{ t.meet_howto_title }}
                             </button>
                         </h2>
                         <div id="meetHowTo" class="accordion-collapse collapse" data-bs-parent="#meetHowToAcc">
                             <div class="accordion-body">
                                 <ol class="mb-0 ps-3" style="line-height:1.8;">
-                                    <li>In <strong>Splash Meet Manager</strong>: <em>File → Export → Lenex</em> → save as a <code>.lxf</code> file.</li>
-                                    <li>Here in <strong>Meet Setup</strong>, click <strong>Add Meet File</strong> and upload the <code>.lxf</code> — swimmer &amp; club names go live on the scoreboard immediately. <em>Alternatively</em>, upload a Hytek <code>.csv</code> event schedule so event names show in the header.</li>
-                                    <li>Open the scoreboard on the TV: <a href="http://tremplin.local/" target="_blank" rel="noopener"><code>http://tremplin.local/</code></a> (the Pi's mDNS address).</li>
-                                    <li>Start the CTS console — times appear automatically as heats run.</li>
+                                    <li>{{ t.meet_howto_1 | safe }}</li>
+                                    <li>{{ t.meet_howto_2 | safe }}</li>
+                                    <li>{{ t.meet_howto_3 | safe }}</li>
+                                    <li>{{ t.meet_howto_4 }}</li>
                                 </ol>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div id="meet-test-warning" class="alert alert-warning py-2 px-3 small" style="display:none;">
-                    ⚠ A test session is running — meet file upload is disabled.
+                    {{ t.meet_test_warning }}
                 </div>
                 <div class="card"><div class="card-body">
                     <!-- Two non-nested forms: one for loading/unloading, one for uploading -->
@@ -180,9 +180,9 @@ function onPasswordInput(form) {
                     <form id="meet_upload_form" action="/settings" method="POST" enctype="multipart/form-data">
                         <input type="hidden" name="meet_setup_submit" value="1">
                     </form>
-                    <label class="form-label">Meet Files</label>
+                    <label class="form-label">{{ t.meet_files }}</label>
                     <select form="meet_load_form" id="meet-file-select" name="meet_file_select" class="form-select form-select-sm mb-1" onchange="_fsubmit(document.getElementById('meet_load_form'))">
-                        <option value="" {% if not active_meet_file %}selected{% endif %}>— No file loaded —</option>
+                        <option value="" {% if not active_meet_file %}selected{% endif %}>{{ t.meet_no_file }}</option>
                         {% for f in meet_file_list %}
                         <option value="{{ f }}" {% if f == active_meet_file %}selected{% endif %}>{{ f }}</option>
                         {% endfor %}
@@ -190,63 +190,60 @@ function onPasswordInput(form) {
                     <div class="d-flex flex-wrap align-items-center gap-1">
                         <div class="file-picker flex-shrink-0">
                             <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer; white-space:nowrap;">
-                                Add Meet File<input form="meet_upload_form" id="meet_file" name="meet_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="_fsubmit(document.getElementById('meet_upload_form'))">
+                                {{ t.meet_add_file }}<input form="meet_upload_form" id="meet_file" name="meet_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="_fsubmit(document.getElementById('meet_upload_form'))">
                             </label>
                             <span class="file-msg small text-body-secondary ms-1"></span>
                         </div>
                         <div id="meet-file-actions" style="display:contents;">
                             {% if active_meet_file %}
-                            <a id="meet-preview-btn" href="{{ '/hytek_preview' if active_meet_file.endswith('.csv') else '/lenex_preview' }}" class="btn btn-secondary btn-sm flex-shrink-0">Preview</a>
+                            <a id="meet-preview-btn" href="{{ '/hytek_preview' if active_meet_file.endswith('.csv') else '/lenex_preview' }}" class="btn btn-secondary btn-sm flex-shrink-0">{{ t.btn_preview }}</a>
                             <label class="btn btn-secondary btn-sm m-0 flex-shrink-0" style="cursor:pointer; white-space:nowrap;">
-                                Update File<input id="meet_update_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="updateMeetFile(this)">
+                                {{ t.meet_update_file_btn }}<input id="meet_update_file" type="file" accept=".csv,.lxf" style="display:none;" onchange="updateMeetFile(this)">
                             </label>
-                            <button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="var f=document.getElementById('meet-file-select').value;if(f&&confirm('Delete '+f+'?'))location.href='/meet_delete?file='+encodeURIComponent(f);">Delete</button>
-                            <button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" data-hold data-hold-href="/meet_clear" data-hold-label="Hold to delete all…">Delete All</button>
+                            <button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" onclick="var f=document.getElementById('meet-file-select').value;if(f&&confirm('Delete '+f+'?'))location.href='/meet_delete?file='+encodeURIComponent(f);">{{ t.btn_delete }}</button>
+                            <button class="btn btn-outline-danger btn-sm flex-shrink-0" type="button" data-hold data-hold-href="/meet_clear" data-hold-label="{{ t.hold_delete_all }}">{{ t.btn_delete_all }}</button>
                             {% endif %}
                         </div>
                     </div>
-                    <div class="form-text">No swimmer names on the scoreboard? Re-upload the meet's <code>.lxf</code> with <strong>Add Meet File</strong>.</div>
+                    <div class="form-text">{{ t.meet_no_names_hint | safe }}</div>
                     {% if active_meet_file %}
                     <div id="meet-update-msg" class="small mt-2" style="display:none;"></div>
-                    <p class="small text-body-secondary mt-1 mb-0">
-                        <strong>Update File</strong> replaces the current meet's file in place — keeping its cloud link so connected attendees stay attached.
-                        The new file must be the same meet (same name and session dates); otherwise it's rejected. To load a different meet, use <strong>Add Meet File</strong>.
-                    </p>
+                    <p class="small text-body-secondary mt-1 mb-0">{{ t.meet_update_hint | safe }}</p>
                     {% endif %}
                 </div></div>
             <div class="card mt-3"><div class="card-body">
                 <form id="pool_setup_form" action="/settings" method="POST">
                     <input type="hidden" name="pool_setup_submit" value="1">
                     <div class="mb-3">
-                        <label for="num_lanes" class="form-label mb-1">Number of Lanes</label>
+                        <label for="num_lanes" class="form-label mb-1">{{ t.pool_num_lanes }}</label>
                         <select id="num_lanes" name="num_lanes" class="form-select form-select-sm" style="width:auto;" onchange="_fsubmit(this.form)">
-                            <option value="12" {% if num_lanes == 12 %}selected{% endif %}>12 Lanes</option>
-                            <option value="10" {% if num_lanes == 10 %}selected{% endif %}>10 Lanes</option>
-                            <option value="8"  {% if num_lanes == 8  %}selected{% endif %}>8 Lanes</option>
-                            <option value="6"  {% if num_lanes == 6  %}selected{% endif %}>6 Lanes</option>
-                            <option value="4"  {% if num_lanes == 4  %}selected{% endif %}>4 Lanes</option>
+                            <option value="12" {% if num_lanes == 12 %}selected{% endif %}>12 {{ t.pool_lanes }}</option>
+                            <option value="10" {% if num_lanes == 10 %}selected{% endif %}>10 {{ t.pool_lanes }}</option>
+                            <option value="8"  {% if num_lanes == 8  %}selected{% endif %}>8 {{ t.pool_lanes }}</option>
+                            <option value="6"  {% if num_lanes == 6  %}selected{% endif %}>6 {{ t.pool_lanes }}</option>
+                            <option value="4"  {% if num_lanes == 4  %}selected{% endif %}>4 {{ t.pool_lanes }}</option>
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label mb-1">Pool length</label>
+                        <label class="form-label mb-1">{{ t.pool_length }}</label>
                         <select name="pool_length" class="form-select form-select-sm" style="width:auto;" onchange="_fsubmit(this.form)">
                             <option value="25" {% if pool_length == 25 %}selected{% endif %}>25 m</option>
                             <option value="33" {% if pool_length == 33 %}selected{% endif %}>33 m</option>
                             <option value="50" {% if pool_length == 50 %}selected{% endif %}>50 m</option>
                         </select>
-                        <div class="form-text">Used to calculate expected splits.</div>
+                        <div class="form-text">{{ t.pool_length_hint }}</div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label mb-1">Touchpads</label>
+                        <label class="form-label mb-1">{{ t.pool_touchpads }}</label>
                         <select name="touchpad_sides" class="form-select form-select-sm" style="width:auto;" onchange="_fsubmit(this.form)">
-                            <option value="2" {% if touchpad_sides == 2 %}selected{% endif %}>Both ends</option>
-                            <option value="1" {% if touchpad_sides == 1 %}selected{% endif %}>One end only</option>
+                            <option value="2" {% if touchpad_sides == 2 %}selected{% endif %}>{{ t.touchpads_both }}</option>
+                            <option value="1" {% if touchpad_sides == 1 %}selected{% endif %}>{{ t.touchpads_one }}</option>
                         </select>
-                        <div class="form-text">One end = each touch counts as 2 splits.</div>
+                        <div class="form-text">{{ t.touchpads_hint }}</div>
                     </div>
                     {% if lenex_pool_length and lenex_pool_length != pool_length %}
                     <div class="alert alert-warning py-1 px-2 mb-0 small">
-                        ⚠ Lenex file specifies {{ lenex_pool_length }} m — your setting ({{ pool_length }} m) will be used.
+                        {{ t.lenex_pool_warning.format(lenex=lenex_pool_length, pool=pool_length) }}
                     </div>
                     {% endif %}
                 </form>
@@ -262,24 +259,24 @@ function onPasswordInput(form) {
                         <form id="account_form" action="/settings" method="POST">
                             <div class="row g-3 mb-1">
                                 <div class="col-md-6">
-                                    <label for="user_name" class="form-label">User Name</label>
+                                    <label for="user_name" class="form-label">{{ t.account_user_name }}</label>
                                     <input name="user_name" id="user_name" value="{{ user_name }}" class="form-control">
                                 </div>
                             </div>
                             <hr>
                             <div class="row g-3">
                                 <div class="col-md-6">
-                                    <label for="password" class="form-label">Password</label>
-                                    <input name="password" id="password" type="password" placeholder="New Password"
+                                    <label for="password" class="form-label">{{ t.account_password }}</label>
+                                    <input name="password" id="password" type="password" placeholder="{{ t.account_new_password_ph }}"
                                         autocomplete="new-password" class="form-control" oninput="onPasswordInput(this.form);">
                                     <div id="pw-confirm-row" class="mt-2" style="visibility:hidden;">
-                                        <input name="password2" type="password" placeholder="Verify Password"
+                                        <input name="password2" type="password" placeholder="{{ t.account_verify_password_ph }}"
                                             autocomplete="new-password" class="form-control">
                                     </div>
                                 </div>
                             </div>
                             <div class="mt-3">
-                                <button id="btn-update-account" class="btn btn-secondary btn-sm" type="submit">Update</button>
+                                <button id="btn-update-account" class="btn btn-secondary btn-sm" type="submit">{{ t.btn_update }}</button>
                             </div>
                         </form>
                     </div>
@@ -292,43 +289,40 @@ function onPasswordInput(form) {
             <div class="row"><div class="col-lg-8">
                 <div class="card"><div class="card-body">
 
-                    <div class="panel-title">Current Time</div>
+                    <div class="panel-title">{{ t.clock_current_time }}</div>
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <span id="time-display" class="flex-fill" style="font-size:1.4em; font-family:monospace;">—</span>
                         <span id="time-tz" class="text-secondary small"></span>
                     </div>
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <span id="ntp-status" class="flex-fill text-secondary small">—</span>
-                        <button id="btn-time-sync" class="btn btn-secondary btn-sm" style="width:80px;" onclick="timeSync()">Sync NTP</button>
+                        <button id="btn-time-sync" class="btn btn-secondary btn-sm" style="width:80px;" onclick="timeSync()">{{ t.clock_sync_ntp }}</button>
                     </div>
 
                     <hr>
 
-                    <div class="panel-title mb-1">Set Time Manually</div>
-                    <p class="text-secondary small mb-2">Disables NTP synchronization.</p>
+                    <div class="panel-title mb-1">{{ t.clock_set_manual }}</div>
+                    <p class="text-secondary small mb-2">{{ t.clock_disables_ntp }}</p>
                     <div class="d-flex flex-wrap align-items-center gap-1">
                         <input type="text" id="time-set-date" class="form-control form-control-sm" style="flex:1; min-width:130px;" placeholder="YYYY/MM/DD" maxlength="10">
                         <input type="time" id="time-set-time" class="form-control form-control-sm" style="flex:1; min-width:100px;" step="1">
-                        <button class="btn btn-secondary btn-sm" style="width:80px;" onclick="timeSet()">Set Time</button>
+                        <button class="btn btn-secondary btn-sm" style="width:80px;" onclick="timeSet()">{{ t.clock_set_time }}</button>
                     </div>
                     <div id="time-set-status" class="mt-2 small"></div>
 
                     <hr>
 
-                    <div class="panel-title mb-1">Real-Time Clock (Adafruit PiRTC DS3231)</div>
-                    <p class="text-secondary small mb-2">
-                        Keeps accurate time without a network connection.
-                        <a href="https://learn.adafruit.com/adding-a-real-time-clock-to-raspberry-pi" target="_blank" rel="noopener">Setup guide</a>
-                    </p>
+                    <div class="panel-title mb-1">{{ t.clock_rtc_title }}</div>
+                    <p class="text-secondary small mb-2">{{ t.clock_rtc_desc | safe }}</p>
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <span id="rtc-status" class="flex-fill text-secondary small">—</span>
-                        <button id="btn-rtc-install" class="btn btn-secondary btn-sm" onclick="startRtcInstall()">Install</button>
-                        <button id="btn-rtc-remove" class="btn btn-secondary btn-sm" onclick="startRtcRemove()">Remove</button>
+                        <button id="btn-rtc-install" class="btn btn-secondary btn-sm" onclick="startRtcInstall()">{{ t.btn_install }}</button>
+                        <button id="btn-rtc-remove" class="btn btn-secondary btn-sm" onclick="startRtcRemove()">{{ t.btn_remove }}</button>
                     </div>
                     <pre id="rtc-output" class="border rounded p-2" style="display:none; background:#111; color:#e0e0e0; min-height:80px; max-height:240px; overflow-y:auto; font-size:0.8em; margin:0 0 8px;"></pre>
                     <div id="rtc-reboot-row" style="display:none; align-items:center; gap:8px;">
-                        <button class="btn btn-warning btn-sm" onclick="rtcReboot()">Reboot Now</button>
-                        <span class="text-secondary small">Reboot required to apply changes.</span>
+                        <button class="btn btn-warning btn-sm" onclick="rtcReboot()">{{ t.clock_reboot_now }}</button>
+                        <span class="text-secondary small">{{ t.clock_reboot_required }}</span>
                     </div>
 
                 </div></div>
@@ -340,15 +334,15 @@ function onPasswordInput(form) {
             <div class="row"><div class="col-lg-8">
                 <div class="card"><div class="card-body">
                     <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="text-secondary small">Current version:</span>
+                        <span class="text-secondary small">{{ t.update_current_version }}</span>
                         <span id="current-version" class="small" style="font-family:monospace;">—</span>
-                        <button class="btn btn-secondary btn-sm ms-1" onclick="loadVersions()">Refresh</button>
+                        <button class="btn btn-secondary btn-sm ms-1" onclick="loadVersions()">{{ t.btn_refresh }}</button>
                     </div>
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <select id="version-select" class="form-select form-select-sm" style="flex:1;">
-                            <option value="">Loading…</option>
+                            <option value="">{{ t.loading }}</option>
                         </select>
-                        <button id="btn-run-update" class="btn btn-secondary btn-sm" onclick="startUpdate()">Install</button>
+                        <button id="btn-run-update" class="btn btn-secondary btn-sm" onclick="startUpdate()">{{ t.btn_install }}</button>
                         <span id="update-status" class="text-secondary small"></span>
                     </div>
                     <pre id="update-output" class="border rounded p-2" style="display:none; background:#111; color:#e0e0e0; min-height:80px; max-height:360px; overflow-y:auto; font-size:0.8em; margin:0;"></pre>
@@ -356,21 +350,19 @@ function onPasswordInput(form) {
                     <hr>
 
                     <div class="d-flex align-items-center gap-2 mb-2">
-                        <button id="btn-os-update" class="btn btn-secondary btn-sm" onclick="startOsUpdate()">Update OS</button>
+                        <button id="btn-os-update" class="btn btn-secondary btn-sm" onclick="startOsUpdate()">{{ t.update_update_os }}</button>
                         <span id="os-update-status" class="text-secondary small"></span>
                     </div>
                     <pre id="os-update-output" class="border rounded p-2" style="display:none; background:#111; color:#e0e0e0; min-height:80px; max-height:360px; overflow-y:auto; font-size:0.8em; margin:0;"></pre>
 
                     <hr>
 
-                    <p class="text-secondary small mb-2">
-                        Backup includes meet files, images, recorded sessions, and settings.
-                    </p>
+                    <p class="text-secondary small mb-2">{{ t.update_backup_desc }}</p>
                     <div class="d-flex flex-wrap align-items-center gap-2">
-                        <a href="/backup_download" class="btn btn-secondary btn-sm">Download Backup</a>
+                        <a href="/backup_download" class="btn btn-secondary btn-sm">{{ t.update_download_backup }}</a>
                         <div class="file-picker">
                             <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
-                                Restore Backup<input type="file" accept=".tar.gz" style="display:none;" onchange="restoreBackup(this)">
+                                {{ t.update_restore_backup }}<input type="file" accept=".tar.gz" style="display:none;" onchange="restoreBackup(this)">
                             </label>
                         </div>
                         <span id="restore-status" class="text-secondary small"></span>
@@ -386,7 +378,7 @@ function onPasswordInput(form) {
                     <form id="timing_form" action="/settings" method="POST">
                         <input type="hidden" name="timing_settings_submit" value="1">
                         <div class="mb-3">
-                            <label for="console_type" class="form-label">Timing Equipment</label>
+                            <label for="console_type" class="form-label">{{ t.timing_equipment }}</label>
                             <select id="console_type" name="console_type" class="form-select form-select-sm" style="max-width:360px;" onchange="_fsubmit(this.form)">
                             {% for key, label in console_options %}
                                 <option value="{{key}}" {% if key == console_type %}selected{% endif %}>{{label}}</option>
@@ -394,7 +386,7 @@ function onPasswordInput(form) {
                             </select>
                         </div>
                         <div>
-                            <label for="serial_port" class="form-label">Serial Port</label>
+                            <label for="serial_port" class="form-label">{{ t.timing_serial_port }}</label>
                             <select id="serial_port" name="serial_port" class="form-select form-select-sm" style="max-width:360px;" onchange="_fsubmit(this.form)">
                             {% for port, desc in serial_port_list %}
                                 <option value="{{port}}" {% if port == serial_port %}selected{% endif %}>{{desc}}</option>
@@ -408,7 +400,7 @@ function onPasswordInput(form) {
                     <div class="accordion-item">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#consoleInfo" aria-expanded="false" aria-controls="consoleInfo">
-                                <i class="bi bi-plug me-2"></i>Hardware &amp; wiring{% if console_info %} — {{ console_info.label }}{% endif %}
+                                <i class="bi bi-plug me-2"></i>{{ t.timing_hw_wiring }}{% if console_info %} — {{ console_info.label }}{% endif %}
                             </button>
                         </h2>
                         <div id="consoleInfo" class="accordion-collapse collapse" data-bs-parent="#consoleInfoAcc">
@@ -416,44 +408,44 @@ function onPasswordInput(form) {
                                 {% if console_info %}
                                 <div class="mb-2">
                                     {% if console_info.tested %}
-                                    <span class="badge text-bg-success">✓ Tested on real hardware</span>
+                                    <span class="badge text-bg-success">{{ t.timing_tested }}</span>
                                     {% else %}
-                                    <span class="badge text-bg-warning">Not tested on real hardware</span>
+                                    <span class="badge text-bg-warning">{{ t.timing_not_tested }}</span>
                                     {% endif %}
                                 </div>
                                 <dl class="row mb-2 small">
-                                    <dt class="col-sm-3 text-body-secondary">Adapter</dt><dd class="col-sm-9">{{ console_info.adapter }}</dd>
-                                    <dt class="col-sm-3 text-body-secondary">Wiring</dt><dd class="col-sm-9">{{ console_info.wiring }}</dd>
-                                    <dt class="col-sm-3 text-body-secondary">Protocol</dt><dd class="col-sm-9">{{ console_info.protocol }}</dd>
+                                    <dt class="col-sm-3 text-body-secondary">{{ t.timing_adapter }}</dt><dd class="col-sm-9">{{ console_info.adapter }}</dd>
+                                    <dt class="col-sm-3 text-body-secondary">{{ t.timing_wiring }}</dt><dd class="col-sm-9">{{ console_info.wiring }}</dd>
+                                    <dt class="col-sm-3 text-body-secondary">{{ t.timing_protocol }}</dt><dd class="col-sm-9">{{ console_info.protocol }}</dd>
                                 </dl>
-                                <a href="{{ console_info.doc_url }}" target="_blank" rel="noopener">Full setup guide <i class="bi bi-box-arrow-up-right ms-1"></i></a>
+                                <a href="{{ console_info.doc_url }}" target="_blank" rel="noopener">{{ t.timing_full_guide }} <i class="bi bi-box-arrow-up-right ms-1"></i></a>
                                 {% else %}
-                                <p class="small text-body-secondary mb-1">No setup notes for this console.</p>
+                                <p class="small text-body-secondary mb-1">{{ t.timing_no_notes }}</p>
                                 {% endif %}
-                                <div class="form-text mt-2">No times on the scoreboard? Confirm this matches your console's adapter, and watch the <strong>Serial Monitor</strong> below for incoming packets.</div>
+                                <div class="form-text mt-2">{{ t.timing_no_times_hint | safe }}</div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="card mb-3"><div class="card-body">
                     <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="fw-bold flex-fill">Connection</span>
+                        <span class="fw-bold flex-fill">{{ t.timing_connection }}</span>
                         <span id="serial-status-badge" class="badge rounded-pill text-bg-secondary">—</span>
                     </div>
                     <pre id="serial-log" class="border rounded p-2 mb-0" style="background:#111; color:#ccc; font-size:0.78em; height:90px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;"></pre>
                 </div></div>
                 <div class="card mb-3"><div class="card-body">
                     <div class="d-flex align-items-center gap-2 mb-2">
-                        <span class="fw-bold flex-fill">Serial Monitor</span>
-                        <button id="btn-debug-toggle" class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugToggle()">Enable</button>
-                        <button class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugClear()">Clear</button>
+                        <span class="fw-bold flex-fill">{{ t.timing_serial_monitor }}</span>
+                        <button id="btn-debug-toggle" class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugToggle()">{{ t.btn_enable }}</button>
+                        <button class="btn btn-secondary btn-sm" style="width:70px;" onclick="debugClear()">{{ t.btn_clear }}</button>
                     </div>
                     <pre id="debug-output" class="border rounded p-2 mb-0" style="background:#111; color:#e0e0e0; font-size:0.8em; height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;"></pre>
                 </div></div>
                 <div class="card"><div class="card-body">
                     <div class="d-flex align-items-center gap-2">
-                        <span class="fw-bold flex-fill">Raw data on a scoreboard</span>
-                        <a href="/console" target="_blank" class="btn btn-secondary btn-sm" title="Open the raw serial data view on a separate display"><i class="bi bi-tv me-1"></i>Raw data Scoreboard</a>
+                        <span class="fw-bold flex-fill">{{ t.timing_raw_data }}</span>
+                        <a href="/console" target="_blank" class="btn btn-secondary btn-sm" title="{{ t.timing_raw_data }}"><i class="bi bi-tv me-1"></i>{{ t.timing_raw_data_btn }}</a>
                     </div>
                 </div></div>
             </div></div>
@@ -470,70 +462,70 @@ function onPasswordInput(form) {
                     <div class="card"><div class="card-body">
 
                         <!-- State diagram -->
-                        <div class="panel-title">Screen Modes</div>
+                        <div class="panel-title">{{ t.flow_screen_modes }}</div>
                         <p class="small text-body-secondary mb-2" style="line-height:1.8;">
-                            The scoreboard switches modes automatically based on what the CTS console is sending.
+                            {{ t.flow_modes_desc }}
                         </p>
                         <div class="border rounded p-2 mb-3 bg-body-tertiary" style="font-family:monospace; font-size:0.82em; line-height:2;">
-                            <div><span class="badge text-bg-secondary">Splash</span> &nbsp;←&nbsp; No activity for <strong>Intro timeout</strong> or <strong>Results timeout</strong></div>
-                            <div class="ps-3 text-body-secondary">↓ New event / heat received</div>
-                            <div><span class="badge text-bg-success">Intro</span> &nbsp;&nbsp;&nbsp;Shows swimmer names — if no names, goes straight to Running</div>
-                            <div class="ps-3 text-body-secondary">↓ Any lane starts running</div>
-                            <div><span class="badge text-bg-info">Running</span> &nbsp;Shows live clock in all active lanes</div>
-                            <div class="ps-3 text-body-secondary">↓ All lanes finish</div>
-                            <div><span class="badge text-bg-warning">Results</span> &nbsp;Shows final times and podium highlights (name column empty if no names loaded)</div>
+                            <div><span class="badge text-bg-secondary">Splash</span> &nbsp;←&nbsp; {{ t.flow_splash_when | safe }}</div>
+                            <div class="ps-3 text-body-secondary">↓ {{ t.flow_new_heat }}</div>
+                            <div><span class="badge text-bg-success">Intro</span> &nbsp;&nbsp;&nbsp;{{ t.flow_intro_desc }}</div>
+                            <div class="ps-3 text-body-secondary">↓ {{ t.flow_lane_running }}</div>
+                            <div><span class="badge text-bg-info">Running</span> &nbsp;{{ t.flow_running_desc }}</div>
+                            <div class="ps-3 text-body-secondary">↓ {{ t.flow_lanes_finish }}</div>
+                            <div><span class="badge text-bg-warning">Results</span> &nbsp;{{ t.flow_results_desc }}</div>
                         </div>
 
                         <hr>
 
                         <!-- Timeout inputs -->
-                        <div class="panel-title mb-1">Splash timeouts <small class="fw-normal text-body-secondary">(scoreboard.html only)</small></div>
-                        <p class="small text-body-secondary mb-2">These apply only to <code>scoreboard.html</code>, which has a Splash mode. <code>live.html</code> has no splash.</p>
+                        <div class="panel-title mb-1">{{ t.flow_splash_timeouts }} <small class="fw-normal text-body-secondary">{{ t.flow_scoreboard_only }}</small></div>
+                        <p class="small text-body-secondary mb-2">{{ t.flow_splash_scope | safe }}</p>
 
                         <div class="mb-3">
-                            <label class="form-label mb-1">Intro → Splash after</label>
+                            <label class="form-label mb-1">{{ t.flow_intro_splash }}</label>
                             <div class="input-group input-group-sm" style="max-width:220px;">
                                 <input type="number" name="intro_timeout" value="{{ intro_timeout }}" min="5" max="3600" class="form-control">
-                                <span class="input-group-text">seconds</span>
+                                <span class="input-group-text">{{ t.seconds }}</span>
                             </div>
-                            <div class="form-text">If the race doesn't start.</div>
+                            <div class="form-text">{{ t.flow_if_no_start }}</div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label mb-1">Results → Splash after</label>
+                            <label class="form-label mb-1">{{ t.flow_results_splash }}</label>
                             <div class="input-group input-group-sm" style="max-width:220px;">
                                 <input type="number" name="results_timeout" value="{{ results_timeout }}" min="5" max="3600" class="form-control">
-                                <span class="input-group-text">seconds</span>
+                                <span class="input-group-text">{{ t.seconds }}</span>
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label mb-1">No server update → Splash after</label>
+                            <label class="form-label mb-1">{{ t.flow_noupdate_splash }}</label>
                             <div class="input-group input-group-sm" style="max-width:220px;">
                                 <input type="number" name="server_update_timeout" value="{{ server_update_timeout }}" min="10" max="3600" class="form-control">
-                                <span class="input-group-text">seconds</span>
+                                <span class="input-group-text">{{ t.seconds }}</span>
                             </div>
                         </div>
 
                         <hr>
 
-                        <div class="panel-title">Timing</div>
+                        <div class="panel-title">{{ t.flow_timing }}</div>
                         <div class="mb-3">
-                            <label class="form-label mb-1">Finish debounce</label>
+                            <label class="form-label mb-1">{{ t.flow_finish_debounce }}</label>
                             <div class="input-group input-group-sm" style="max-width:220px;">
                                 <input type="number" name="finish_debounce" value="{{ finish_debounce }}" min="0.5" max="10" step="0.1" class="form-control">
-                                <span class="input-group-text">seconds</span>
+                                <span class="input-group-text">{{ t.seconds }}</span>
                             </div>
-                            <div class="form-text">Lap split vs. true finish.</div>
+                            <div class="form-text">{{ t.flow_finish_debounce_hint }}</div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label mb-1">Split min. duration</label>
+                            <label class="form-label mb-1">{{ t.flow_split_min }}</label>
                             <div class="input-group input-group-sm" style="max-width:220px;">
                                 <input type="number" name="split_min_duration" value="{{ split_min_duration }}" min="0.5" max="10" step="0.1" class="form-control">
-                                <span class="input-group-text">seconds</span>
+                                <span class="input-group-text">{{ t.seconds }}</span>
                             </div>
-                            <div class="form-text">Min. stop time to count as a split.</div>
+                            <div class="form-text">{{ t.flow_split_min_hint }}</div>
                         </div>
 
-                        <button id="btn-update-flow" class="btn btn-secondary btn-sm" type="submit">Update</button>
+                        <button id="btn-update-flow" class="btn btn-secondary btn-sm" type="submit">{{ t.btn_update }}</button>
 
                     </div></div>
                 </form>
@@ -546,7 +538,7 @@ function onPasswordInput(form) {
                     <input type="hidden" name="display_settings_submit" value="1">
                     <div class="card"><div class="card-body">
                         <div class="mb-3">
-                            <label for="meet_title" class="form-label">Title</label>
+                            <label for="meet_title" class="form-label">{{ t.disp_title }}</label>
                             <input id="meet_title" name="meet_title" value="{{ meet_title }}" class="form-control" style="max-width:420px;">
                         </div>
                         <hr>
@@ -567,66 +559,66 @@ function onPasswordInput(form) {
                             <div class="d-flex flex-wrap gap-1">
                                 <div class="file-picker">
                                     <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
-                                        Add<input name="locale_file" type="file" accept=".toml" style="display:none;">
+                                        {{ t.common_add }}<input name="locale_file" type="file" accept=".toml" style="display:none;">
                                     </label>
                                     <span class="file-msg small text-body-secondary ms-1"></span>
                                 </div>
                                 {% if locale in custom_locale_codes %}
-                                <a href="/locale_delete" class="btn btn-outline-danger btn-sm">Delete</a>
+                                <a href="/locale_delete" class="btn btn-outline-danger btn-sm">{{ t.btn_delete }}</a>
                                 {% endif %}
                                 {% if custom_locale_list %}
-                                <a href="/locale_delete_all" class="btn btn-outline-danger btn-sm" data-hold data-hold-label="Hold to delete all…">Delete All</a>
+                                <a href="/locale_delete_all" class="btn btn-outline-danger btn-sm" data-hold data-hold-label="{{ t.hold_delete_all }}">{{ t.btn_delete_all }}</a>
                                 {% endif %}
                             </div>
                         </div>
                         <hr>
                         <div class="mb-3">
-                            <label for="label_style" class="form-label">Label Style</label>
+                            <label for="label_style" class="form-label">{{ t.disp_label_style }}</label>
                             <select id="label_style" name="label_style" class="form-select form-select-sm" style="max-width:220px;">
-                                <option value="long"  {% if label_style == 'long'  %}selected{% endif %}>Long  (ex: EVENT)</option>
-                                <option value="short" {% if label_style == 'short' %}selected{% endif %}>Short (ex: EV)</option>
+                                <option value="long"  {% if label_style == 'long'  %}selected{% endif %}>{{ t.disp_label_long }}</option>
+                                <option value="short" {% if label_style == 'short' %}selected{% endif %}>{{ t.disp_label_short }}</option>
                             </select>
                         </div>
                         <hr>
                         <div class="mb-3">
-                            <div class="panel-eyebrow">Column titles</div>
+                            <div class="panel-eyebrow">{{ t.disp_column_titles }}</div>
                             <div class="row row-cols-2 row-cols-sm-3 g-1">
-                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_lane_h"  name="show_lane_header"     value="1" {% if show_lane_header %}checked{% endif %}><label class="form-check-label" for="cb_lane_h">Lane</label></div></div>
-                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_name_h"  name="show_name_header"     value="1" {% if show_name_header %}checked{% endif %}><label class="form-check-label" for="cb_name_h">Name</label></div></div>
-                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_club_h"  name="show_club_header"     value="1" {% if show_club_header %}checked{% endif %}><label class="form-check-label" for="cb_club_h">Club</label></div></div>
-                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_time_h"  name="show_time_header"     value="1" {% if show_time_header %}checked{% endif %}><label class="form-check-label" for="cb_time_h">Time</label></div></div>
-                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_delta_h" name="show_delta_header"    value="1" {% if show_delta_header %}checked{% endif %}><label class="form-check-label" for="cb_delta_h">Diff</label></div></div>
-                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_pos_h"   name="show_position_header" value="1" {% if show_position_header %}checked{% endif %}><label class="form-check-label" for="cb_pos_h">Position</label></div></div>
+                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_lane_h"  name="show_lane_header"     value="1" {% if show_lane_header %}checked{% endif %}><label class="form-check-label" for="cb_lane_h">{{ t.lbl_lane }}</label></div></div>
+                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_name_h"  name="show_name_header"     value="1" {% if show_name_header %}checked{% endif %}><label class="form-check-label" for="cb_name_h">{{ t.lbl_name }}</label></div></div>
+                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_club_h"  name="show_club_header"     value="1" {% if show_club_header %}checked{% endif %}><label class="form-check-label" for="cb_club_h">{{ t.lbl_club }}</label></div></div>
+                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_time_h"  name="show_time_header"     value="1" {% if show_time_header %}checked{% endif %}><label class="form-check-label" for="cb_time_h">{{ t.lbl_time }}</label></div></div>
+                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_delta_h" name="show_delta_header"    value="1" {% if show_delta_header %}checked{% endif %}><label class="form-check-label" for="cb_delta_h">{{ t.lbl_diff }}</label></div></div>
+                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_pos_h"   name="show_position_header" value="1" {% if show_position_header %}checked{% endif %}><label class="form-check-label" for="cb_pos_h">{{ t.lbl_position }}</label></div></div>
                             </div>
                         </div>
                         <div class="mb-3">
-                            <div class="panel-eyebrow">Columns shown</div>
+                            <div class="panel-eyebrow">{{ t.disp_columns_shown }}</div>
                             <div class="row row-cols-2 row-cols-sm-3 g-1">
-                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_name"  name="show_name"     value="1" {% if show_name %}checked{% endif %}><label class="form-check-label" for="cb_name">Name</label></div></div>
-                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_club"  name="show_club"     value="1" {% if show_club %}checked{% endif %}><label class="form-check-label" for="cb_club">Club</label></div></div>
-                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_delta" name="show_delta"    value="1" {% if show_delta %}checked{% endif %}><label class="form-check-label" for="cb_delta">Diff</label></div></div>
-                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_pos"   name="show_position" value="1" {% if show_position %}checked{% endif %}><label class="form-check-label" for="cb_pos">Position</label></div></div>
+                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_name"  name="show_name"     value="1" {% if show_name %}checked{% endif %}><label class="form-check-label" for="cb_name">{{ t.lbl_name }}</label></div></div>
+                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_club"  name="show_club"     value="1" {% if show_club %}checked{% endif %}><label class="form-check-label" for="cb_club">{{ t.lbl_club }}</label></div></div>
+                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_delta" name="show_delta"    value="1" {% if show_delta %}checked{% endif %}><label class="form-check-label" for="cb_delta">{{ t.lbl_diff }}</label></div></div>
+                                <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" id="cb_pos"   name="show_position" value="1" {% if show_position %}checked{% endif %}><label class="form-check-label" for="cb_pos">{{ t.lbl_position }}</label></div></div>
                             </div>
                         </div>
                         <div class="mb-3">
-                            <div class="panel-eyebrow">Features</div>
-                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_podium" name="show_podium" value="1" {% if show_podium %}checked{% endif %}><label class="form-check-label" for="cb_podium">Podium colors</label></div>
+                            <div class="panel-eyebrow">{{ t.disp_features }}</div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="cb_podium" name="show_podium" value="1" {% if show_podium %}checked{% endif %}><label class="form-check-label" for="cb_podium">{{ t.disp_podium_colors }}</label></div>
                         </div>
                         <div class="mb-3">
-                            <div class="panel-eyebrow">Results order</div>
-                            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="rs_lane"  name="results_sort" value="lane"  {% if results_sort == 'lane' %}checked{% endif %}><label class="form-check-label" for="rs_lane">By lane</label></div>
-                            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="rs_place" name="results_sort" value="place" {% if results_sort == 'place' %}checked{% endif %}><label class="form-check-label" for="rs_place">By position</label></div>
+                            <div class="panel-eyebrow">{{ t.disp_results_order }}</div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="rs_lane"  name="results_sort" value="lane"  {% if results_sort == 'lane' %}checked{% endif %}><label class="form-check-label" for="rs_lane">{{ t.disp_by_lane }}</label></div>
+                            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="rs_place" name="results_sort" value="place" {% if results_sort == 'place' %}checked{% endif %}><label class="form-check-label" for="rs_place">{{ t.disp_by_position }}</label></div>
                         </div>
-                        <button id="btn-update-display" class="btn btn-secondary btn-sm" type="submit">Update</button>
+                        <button id="btn-update-display" class="btn btn-secondary btn-sm" type="submit">{{ t.btn_update }}</button>
                     </div></div>
                 </form>
                 <form id="splash-settings-form" action="/settings" method="POST" enctype="multipart/form-data" class="mt-3">
                     <input type="hidden" name="splash_settings_submit" value="1">
                     <div class="card"><div class="card-body">
                         <div class="mb-3">
-                            <label class="form-label">Splash Screen</label>
+                            <label class="form-label">{{ t.disp_splash_screen }}</label>
                             <select name="splash_url" class="form-select form-select-sm mb-1" onchange="_fsubmit(this.form)">
-                                <option value="" {% if not splash_url %}selected{% endif %}>-- None --</option>
+                                <option value="" {% if not splash_url %}selected{% endif %}>{{ t.disp_none }}</option>
                                 {% for url in splash_url_list %}
                                     <option value="{{ url }}" {% if url == splash_url %}selected{% endif %}>{{ url }}</option>
                                 {% endfor %}
@@ -634,15 +626,15 @@ function onPasswordInput(form) {
                             <div class="d-flex flex-wrap align-items-center gap-1">
                                 <div class="file-picker flex-shrink-0">
                                     <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
-                                        Add Image<input name="splash_file" type="file" accept="image/*" style="display:none;" onchange="_fsubmit(this.closest('form'))">
+                                        {{ t.disp_add_image }}<input name="splash_file" type="file" accept="image/*" style="display:none;" onchange="_fsubmit(this.closest('form'))">
                                     </label>
                                     <span class="file-msg small text-body-secondary ms-1"></span>
                                 </div>
                                 {% if splash_url %}
-                                <a href="/splash_delete" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ splash_url }}?')">Delete</a>
+                                <a href="/splash_delete" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ splash_url }}?')">{{ t.btn_delete }}</a>
                                 {% endif %}
                                 {% if splash_url_list %}
-                                <a href="/splash_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="Hold to delete all…">Delete All</a>
+                                <a href="/splash_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="{{ t.hold_delete_all }}">{{ t.btn_delete_all }}</a>
                                 {% endif %}
                                 {% if splash_url %}
                                 <img src="{{ url_for('appearance.serve_image', filename=splash_url) }}" style="max-height:36px; max-width:72px; border-radius:3px; flex-shrink:0;"/>
@@ -650,10 +642,10 @@ function onPasswordInput(form) {
                             </div>
                         </div>
                         <div>
-                            <label class="form-label mb-1">Carousel interval</label>
+                            <label class="form-label mb-1">{{ t.disp_carousel_interval }}</label>
                             <div class="input-group input-group-sm" style="max-width:220px;">
                                 <input type="number" name="carousel_interval" value="{{ carousel_interval }}" min="3" max="300" step="1" class="form-control" onchange="_fsubmit(this.form)">
-                                <span class="input-group-text">sec / slide</span>
+                                <span class="input-group-text">{{ t.disp_sec_slide }}</span>
                             </div>
                         </div>
                     </div></div>
@@ -668,7 +660,7 @@ function onPasswordInput(form) {
                                 <input type="hidden" name="theme_update_submit" value="1">
                                 <div class="row g-3 mb-1">
                                     <div class="col-md-6">
-                                        <label for="theme_select" class="form-label">Theme</label>
+                                        <label for="theme_select" class="form-label">{{ t.theme_select_label }}</label>
                                         <select id="theme_select" name="theme_select" class="form-select form-select-sm mb-1">
                                         {% for code, tname in theme_list %}
                                             <option value="{{ code }}" {% if code == active_theme %}selected{% endif %}>{{ tname }}</option>
@@ -683,10 +675,10 @@ function onPasswordInput(form) {
                                         </select>
                                         <div class="d-flex flex-wrap gap-1">
                                             {% if active_theme in custom_theme_codes %}
-                                            <a href="/theme_delete" class="btn btn-outline-danger btn-sm">Delete</a>
+                                            <a href="/theme_delete" class="btn btn-outline-danger btn-sm">{{ t.btn_delete }}</a>
                                             {% endif %}
                                             {% if custom_theme_list %}
-                                            <a href="/theme_delete_all" class="btn btn-outline-danger btn-sm" data-hold data-hold-label="Hold to delete all…">Delete All Customs</a>
+                                            <a href="/theme_delete_all" class="btn btn-outline-danger btn-sm" data-hold data-hold-label="{{ t.hold_delete_all }}">{{ t.theme_delete_all_customs }}</a>
                                             {% endif %}
                                         </div>
                                     </div>
@@ -695,87 +687,87 @@ function onPasswordInput(form) {
                                         <div class="d-flex gap-1 align-items-start">
                                             <div class="file-picker">
                                                 <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
-                                                    Add Theme<input name="theme_file" type="file" accept=".toml" style="display:none;">
+                                                    {{ t.theme_add }}<input name="theme_file" type="file" accept=".toml" style="display:none;">
                                                 </label>
                                                 <span class="file-msg small text-body-secondary d-block mt-1"></span>
                                             </div>
-                                            <button type="button" class="btn btn-secondary btn-sm" onclick="saveCustomTheme()">Save custom</button>
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="saveCustomTheme()">{{ t.theme_save_custom }}</button>
                                         </div>
                                     </div>
                                 </div>
                                 <hr>
-                                <div class="panel-title">Custom overrides</div>
+                                <div class="panel-title">{{ t.theme_custom_overrides }}</div>
 
                                 <div class="mb-3">
-                                    <div class="panel-eyebrow">Background</div>
+                                    <div class="panel-eyebrow">{{ t.th_grp_background }}</div>
                                     <div class="color-grid">
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_bg" value="{{ theme_colors.bg }}" data-default="{{ theme_color_defaults.bg }}"><span class="cs-name small">Background</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_bg" value="{{ theme_colors.bg }}" data-default="{{ theme_color_defaults.bg }}"><span class="cs-name small">{{ t.th_background }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="panel-eyebrow">Header bar</div>
+                                    <div class="panel-eyebrow">{{ t.th_grp_header }}</div>
                                     <div class="color-grid">
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_header_bg" value="{{ theme_colors.header_bg }}" data-default="{{ theme_color_defaults.header_bg }}"><span class="cs-name small">Background</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_header_border" value="{{ theme_colors.header_border }}" data-default="{{ theme_color_defaults.header_border }}"><span class="cs-name small">Border</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_header_label" value="{{ theme_colors.header_label }}" data-default="{{ theme_color_defaults.header_label }}"><span class="cs-name small">Label</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_header_value" value="{{ theme_colors.header_value }}" data-default="{{ theme_color_defaults.header_value }}"><span class="cs-name small">Value</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_header_bg" value="{{ theme_colors.header_bg }}" data-default="{{ theme_color_defaults.header_bg }}"><span class="cs-name small">{{ t.th_background }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_header_border" value="{{ theme_colors.header_border }}" data-default="{{ theme_color_defaults.header_border }}"><span class="cs-name small">{{ t.th_border }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_header_label" value="{{ theme_colors.header_label }}" data-default="{{ theme_color_defaults.header_label }}"><span class="cs-name small">{{ t.th_label }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_header_value" value="{{ theme_colors.header_value }}" data-default="{{ theme_color_defaults.header_value }}"><span class="cs-name small">{{ t.th_value }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="panel-eyebrow">Table header</div>
+                                    <div class="panel-eyebrow">{{ t.th_grp_table_header }}</div>
                                     <div class="color-grid">
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_th_bg" value="{{ theme_colors.th_bg }}" data-default="{{ theme_color_defaults.th_bg }}"><span class="cs-name small">Background</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_th_text" value="{{ theme_colors.th_text }}" data-default="{{ theme_color_defaults.th_text }}"><span class="cs-name small">Text</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_th_bg" value="{{ theme_colors.th_bg }}" data-default="{{ theme_color_defaults.th_bg }}"><span class="cs-name small">{{ t.th_background }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_th_text" value="{{ theme_colors.th_text }}" data-default="{{ theme_color_defaults.th_text }}"><span class="cs-name small">{{ t.th_text }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="panel-eyebrow">Rows</div>
+                                    <div class="panel-eyebrow">{{ t.th_grp_rows }}</div>
                                     <div class="color-grid">
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_row_odd" value="{{ theme_colors.row_odd }}" data-default="{{ theme_color_defaults.row_odd }}"><span class="cs-name small">Odd</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_row_even" value="{{ theme_colors.row_even }}" data-default="{{ theme_color_defaults.row_even }}"><span class="cs-name small">Even</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_row_text" value="{{ theme_colors.row_text }}" data-default="{{ theme_color_defaults.row_text }}"><span class="cs-name small">Text</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_row_odd" value="{{ theme_colors.row_odd }}" data-default="{{ theme_color_defaults.row_odd }}"><span class="cs-name small">{{ t.th_odd }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_row_even" value="{{ theme_colors.row_even }}" data-default="{{ theme_color_defaults.row_even }}"><span class="cs-name small">{{ t.th_even }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_row_text" value="{{ theme_colors.row_text }}" data-default="{{ theme_color_defaults.row_text }}"><span class="cs-name small">{{ t.th_text }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="panel-eyebrow">Timing</div>
+                                    <div class="panel-eyebrow">{{ t.th_grp_timing }}</div>
                                     <div class="color-grid">
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_time" value="{{ theme_colors.time }}" data-default="{{ theme_color_defaults.time }}"><span class="cs-name small">Time</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_delta_better" value="{{ theme_colors.delta_better }}" data-default="{{ theme_color_defaults.delta_better }}"><span class="cs-name small">Faster</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_delta_worse" value="{{ theme_colors.delta_worse }}" data-default="{{ theme_color_defaults.delta_worse }}"><span class="cs-name small">Slower</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_time" value="{{ theme_colors.time }}" data-default="{{ theme_color_defaults.time }}"><span class="cs-name small">{{ t.th_time }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_delta_better" value="{{ theme_colors.delta_better }}" data-default="{{ theme_color_defaults.delta_better }}"><span class="cs-name small">{{ t.th_faster }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_delta_worse" value="{{ theme_colors.delta_worse }}" data-default="{{ theme_color_defaults.delta_worse }}"><span class="cs-name small">{{ t.th_slower }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="panel-eyebrow">Podium</div>
+                                    <div class="panel-eyebrow">{{ t.th_grp_podium }}</div>
                                     <div class="color-grid">
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_podium_gold" value="{{ theme_colors.podium_gold }}" data-default="{{ theme_color_defaults.podium_gold }}"><span class="cs-name small">Gold</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_podium_silver" value="{{ theme_colors.podium_silver }}" data-default="{{ theme_color_defaults.podium_silver }}"><span class="cs-name small">Silver</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_podium_bronze" value="{{ theme_colors.podium_bronze }}" data-default="{{ theme_color_defaults.podium_bronze }}"><span class="cs-name small">Bronze</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_podium_gold" value="{{ theme_colors.podium_gold }}" data-default="{{ theme_color_defaults.podium_gold }}"><span class="cs-name small">{{ t.th_gold }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_podium_silver" value="{{ theme_colors.podium_silver }}" data-default="{{ theme_color_defaults.podium_silver }}"><span class="cs-name small">{{ t.th_silver }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_podium_bronze" value="{{ theme_colors.podium_bronze }}" data-default="{{ theme_color_defaults.podium_bronze }}"><span class="cs-name small">{{ t.th_bronze }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
                                     </div>
                                 </div>
-                                <div class="panel-eyebrow mb-2">Schedule</div>
+                                <div class="panel-eyebrow mb-2">{{ t.th_grp_schedule }}</div>
                                 <div class="mb-3">
-                                    <div class="panel-eyebrow">Event / Heat</div>
+                                    <div class="panel-eyebrow">{{ t.th_grp_event }}</div>
                                     <div class="color-grid">
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_event" value="{{ theme_colors.schedule_event }}" data-default="{{ theme_color_defaults.schedule_event }}"><span class="cs-name small">Text</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                    </div>
-                                </div>
-                                <div class="mb-3">
-                                    <div class="panel-eyebrow">Time</div>
-                                    <div class="color-grid">
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_time" value="{{ theme_colors.schedule_time }}" data-default="{{ theme_color_defaults.schedule_time }}"><span class="cs-name small">Text</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_event" value="{{ theme_colors.schedule_event }}" data-default="{{ theme_color_defaults.schedule_event }}"><span class="cs-name small">{{ t.th_text }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
                                     </div>
                                 </div>
                                 <div class="mb-3">
-                                    <div class="panel-eyebrow">Swimmer</div>
+                                    <div class="panel-eyebrow">{{ t.th_grp_time }}</div>
                                     <div class="color-grid">
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_name" value="{{ theme_colors.schedule_name }}" data-default="{{ theme_color_defaults.schedule_name }}"><span class="cs-name small">Name</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
-                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_club" value="{{ theme_colors.schedule_club }}" data-default="{{ theme_color_defaults.schedule_club }}"><span class="cs-name small">Club</span><button type="button" class="cs-reset" title="Reset to default" aria-label="Reset to default">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_time" value="{{ theme_colors.schedule_time }}" data-default="{{ theme_color_defaults.schedule_time }}"><span class="cs-name small">{{ t.th_text }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="panel-eyebrow">{{ t.th_grp_swimmer }}</div>
+                                    <div class="color-grid">
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_name" value="{{ theme_colors.schedule_name }}" data-default="{{ theme_color_defaults.schedule_name }}"><span class="cs-name small">{{ t.lbl_name }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_schedule_club" value="{{ theme_colors.schedule_club }}" data-default="{{ theme_color_defaults.schedule_club }}"><span class="cs-name small">{{ t.lbl_club }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
                                     </div>
                                 </div>
                                 <hr style="margin:6px 0;">
                                 <div class="row g-3 mb-1">
                                     <div class="col-md-4">
-                                        <label class="form-label">Font</label>
+                                        <label class="form-label">{{ t.theme_font }}</label>
                                         <select name="font_family" id="sel-font-family" class="form-select form-select-sm" onchange="updateFontPreview(this,'prev-font-family')">
                                             <option value="Overpass Mono"   {% if theme_fonts.family == 'Overpass Mono'   %}selected{% endif %}>Overpass Mono</option>
                                             <option value="Roboto Mono"     {% if theme_fonts.family == 'Roboto Mono'     %}selected{% endif %}>Roboto Mono</option>
@@ -789,7 +781,7 @@ function onPasswordInput(form) {
                                         <div id="prev-font-family" style="font-family:var(--font-family),monospace; margin-top:4px; padding:3px 8px; background:var(--color-row-odd); border:1px solid #2e2e2e; border-radius:3px; font-size:1em; color:var(--color-row-text); white-space:nowrap; overflow:hidden;">0:58.21 — Tremblay Sophie</div>
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="form-label">Digit Font</label>
+                                        <label class="form-label">{{ t.theme_digit_font }}</label>
                                         <select name="font_digits" id="sel-font-digits" class="form-select form-select-sm" onchange="updateFontPreview(this,'prev-font-digits')">
                                             <option value="DSEG7Classic"    {% if theme_fonts.digits == 'DSEG7Classic'    %}selected{% endif %}>DSEG7Classic</option>
                                             <option value="DSEG14Classic"   {% if theme_fonts.digits == 'DSEG14Classic'   %}selected{% endif %}>DSEG14Classic</option>
@@ -803,7 +795,7 @@ function onPasswordInput(form) {
                                         <div id="prev-font-digits" style="font-family:var(--font-digits),monospace; margin-top:4px; padding:3px 8px; background:var(--color-row-odd); border:1px solid #2e2e2e; border-radius:3px; font-size:1em; color:var(--color-time); white-space:nowrap; overflow:hidden;">1:02.34</div>
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="form-label">Timing Font</label>
+                                        <label class="form-label">{{ t.theme_timing_font }}</label>
                                         <select name="font_timing" id="sel-font-timing" class="form-select form-select-sm" onchange="updateFontPreview(this,'prev-font-timing')">
                                             <option value="DSEG7Classic"    {% if theme_fonts.timing == 'DSEG7Classic'    %}selected{% endif %}>DSEG7Classic</option>
                                             <option value="DSEG14Classic"   {% if theme_fonts.timing == 'DSEG14Classic'   %}selected{% endif %}>DSEG14Classic</option>
@@ -819,7 +811,7 @@ function onPasswordInput(form) {
                                 <input type="hidden" name="theme_save_submit" value="1">
                                 <input type="hidden" id="theme_save_name" name="theme_name" value="">
                             </form>
-                            <button id="btn-update-theme" class="btn btn-secondary btn-sm" form="theme_update_form" type="submit">Update</button>
+                            <button id="btn-update-theme" class="btn btn-secondary btn-sm" form="theme_update_form" type="submit">{{ t.btn_update }}</button>
                     </div></div>
                 </div></div>
                 </div>
@@ -834,13 +826,13 @@ function onPasswordInput(form) {
                 <div class="row"><div class="col-lg-8">
                     <!-- Status block -->
                     <div class="card mb-3"><div class="card-body">
-                        <div class="panel-title">Status</div>
+                        <div class="panel-title">{{ t.net_status }}</div>
                         <div class="d-flex align-items-center gap-2 mb-2">
-                            <span class="text-body-secondary small" style="min-width:70px;">Ethernet</span>
+                            <span class="text-body-secondary small" style="min-width:70px;">{{ t.net_ethernet }}</span>
                             <span id="eth-ip-text" class="flex-fill small"></span>
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <span class="text-body-secondary small" style="min-width:70px;">WiFi</span>
+                            <span class="text-body-secondary small" style="min-width:70px;">{{ t.net_wifi }}</span>
                             <span id="wifi-status-text" class="flex-fill small"></span>
                             <button id="btn-wifi-toggle" class="btn btn-secondary btn-sm text-nowrap" disabled style="touch-action:none;">…</button>
                         </div>
@@ -848,16 +840,16 @@ function onPasswordInput(form) {
 
                     <!-- Ethernet block -->
                     <div class="card mb-3"><div class="card-body">
-                        <div class="panel-title">Ethernet Static IP</div>
+                        <div class="panel-title">{{ t.net_eth_static_ip }}</div>
                         <div class="d-flex flex-wrap align-items-center gap-1 mb-2">
                             <input id="eth-ip-input" type="text" class="form-control form-control-sm" placeholder="10.10.10.10" maxlength="15" style="width:140px; flex:none;">
                             <span class="text-body-secondary">/</span>
                             <input id="eth-prefix-input" type="number" class="form-control form-control-sm" value="24" min="1" max="32" style="width:60px; flex:none;">
-                            <button class="btn btn-secondary btn-sm" style="width:80px;" onclick="setEthIp()">Static</button>
-                            <button class="btn btn-secondary btn-sm" style="width:80px;" onclick="setEthDhcp()">DHCP</button>
+                            <button class="btn btn-secondary btn-sm" style="width:80px;" onclick="setEthIp()">{{ t.net_static }}</button>
+                            <button class="btn btn-secondary btn-sm" style="width:80px;" onclick="setEthDhcp()">{{ t.net_dhcp }}</button>
                         </div>
                         <div id="eth-ip-status" class="small mb-1"></div>
-                        <div class="small" style="color:var(--bs-warning-text-emphasis);">⚠ Applying will disconnect your current session.</div>
+                        <div class="small" style="color:var(--bs-warning-text-emphasis);">{{ t.net_disconnect_warn }}</div>
                     </div></div>
 
                     <!-- WiFi block -->
@@ -865,19 +857,19 @@ function onPasswordInput(form) {
 
                         <!-- Network list -->
                         <div class="d-flex align-items-center mb-2">
-                            <span class="fw-bold flex-fill">WiFi Networks</span>
+                            <span class="fw-bold flex-fill">{{ t.net_wifi_networks }}</span>
                             <button class="btn btn-secondary btn-sm" style="width:80px;"
                                     hx-get="/wifi_scan" hx-target="#wifi-net-list" hx-disabled-elt="this"
-                                    hx-on::before-request="document.getElementById('wifi-net-list').innerHTML = '<span class=&quot;text-body-secondary&quot;>Scanning…</span>'">Scan</button>
+                                    hx-on::before-request="document.getElementById('wifi-net-list').innerHTML = '<span class=&quot;text-body-secondary&quot;>{{ t.net_scanning }}</span>'">{{ t.net_scan }}</button>
                         </div>
-                        <div id="wifi-net-list" class="small" style="min-height:32px;"><span class="text-body-secondary">Click Scan to search for networks.</span></div>
+                        <div id="wifi-net-list" class="small" style="min-height:32px;"><span class="text-body-secondary">{{ t.net_click_scan }}</span></div>
 
                         <hr>
 
                         <!-- Connected clients (HTMX-driven) -->
                         <div class="d-flex align-items-center mb-2">
-                            <span class="fw-bold flex-fill">Connected Clients</span>
-                            <button class="btn btn-secondary btn-sm" hx-get="/clients_fragment" hx-target="#client-list" style="width:80px;">Refresh</button>
+                            <span class="fw-bold flex-fill">{{ t.net_connected_clients }}</span>
+                            <button class="btn btn-secondary btn-sm" hx-get="/clients_fragment" hx-target="#client-list" style="width:80px;">{{ t.btn_refresh }}</button>
                         </div>
                         <div id="client-list" class="small" style="min-height:32px;"
                              hx-get="/clients_fragment" hx-trigger="load, every 10s" hx-target="#client-list">
@@ -889,10 +881,10 @@ function onPasswordInput(form) {
                             <div class="fw-bold mb-1" id="wifi-join-ssid"></div>
                             <form class="d-flex flex-wrap gap-1" onsubmit="connectWifi(); return false;">
                                 <input type="password" id="wifi-join-pw" class="form-control form-control-sm"
-                                       autocomplete="current-password" placeholder="Password" style="flex:1; min-width:120px;"
+                                       autocomplete="current-password" placeholder="{{ t.net_password_ph }}" style="flex:1; min-width:120px;"
                                        onkeydown="if(event.key==='Enter') connectWifi();">
-                                <button class="btn btn-primary btn-sm" onclick="connectWifi()">Connect</button>
-                                <button class="btn btn-secondary btn-sm" onclick="cancelJoin()">Cancel</button>
+                                <button class="btn btn-primary btn-sm" onclick="connectWifi()">{{ t.net_connect }}</button>
+                                <button class="btn btn-secondary btn-sm" onclick="cancelJoin()">{{ t.net_cancel }}</button>
                             </form>
                             <div id="wifi-join-status" class="mt-1 small"></div>
                         </div>
@@ -908,23 +900,23 @@ function onPasswordInput(form) {
                     <input type="hidden" name="cloud_settings_submit" value="1">
                         <div class="card mb-3"><div class="card-body">
                             <div class="d-flex align-items-center gap-2 mb-3">
-                                <span class="text-body-secondary small" style="min-width:70px;">Status</span>
+                                <span class="text-body-secondary small" style="min-width:70px;">{{ t.net_status }}</span>
                                 <span id="cloud-status-text" class="flex-fill small"></span>
                                 <button id="btn-cloud-toggle" class="btn btn-secondary btn-sm text-nowrap" onclick="toggleCloud(); return false;" disabled>…</button>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Server URL</label>
+                                <label class="form-label">{{ t.cloud_server_url }}</label>
                                 <input type="url" name="cloud_relay_url" value="{{ cloud_relay_url }}"
                                        class="form-control form-control-sm" placeholder="https://scores.example.com">
-                                <div class="form-text">URL of your cloud server (leave empty to disable).</div>
+                                <div class="form-text">{{ t.cloud_url_hint }}</div>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Relay Key</label>
+                                <label class="form-label">{{ t.cloud_relay_key }}</label>
                                 <input type="password" name="cloud_relay_key" value="{{ cloud_relay_key }}"
-                                       class="form-control form-control-sm" placeholder="Paste key from cloud admin">
+                                       class="form-control form-control-sm" placeholder="{{ t.cloud_relay_key_ph }}">
                             </div>
                             <div class="text-end">
-                                <button id="btn-update-cloud" type="submit" class="btn btn-secondary btn-sm">Save</button>
+                                <button id="btn-update-cloud" type="submit" class="btn btn-secondary btn-sm">{{ t.btn_save }}</button>
                             </div>
                         </div></div>
                     </form>
@@ -935,44 +927,44 @@ function onPasswordInput(form) {
                 <form id="cloud_appearance_form" action="/settings" method="post" enctype="multipart/form-data">
                 <input type="hidden" name="meet_appearance_submit" value="1">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <label class="form-label fw-bold mb-0">Cloud appearance — this meet</label>
-                    <button id="btn-update-meet" type="submit" class="btn btn-secondary btn-sm">Save</button>
+                    <label class="form-label fw-bold mb-0">{{ t.cloud_appearance_title }}</label>
+                    <button id="btn-update-meet" type="submit" class="btn btn-secondary btn-sm">{{ t.btn_save }}</button>
                 </div>
-                <p class="small text-body-secondary mb-2">Saved separately for each meet file, so each day of a split meet keeps its own title, image and icon.</p>
+                <p class="small text-body-secondary mb-2">{{ t.cloud_appearance_desc }}</p>
 
                 <div class="mb-2">
-                    <label class="form-label mb-1">Picker title</label>
+                    <label class="form-label mb-1">{{ t.cloud_picker_title }}</label>
                     <input type="text" name="cloud_meet_title" id="cloud_meet_title" value="{{ cloud_meet_title }}"
                            class="form-control form-control-sm" placeholder="{{ meet_title or 'Meet title' }}">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label mb-1">Location</label>
+                    <label class="form-label mb-1">{{ t.cloud_location }}</label>
                     <input type="text" name="meet_location" value="{{ meet_location }}"
-                           class="form-control form-control-sm" placeholder="City or venue (auto from Lenex if blank)">
+                           class="form-control form-control-sm" placeholder="{{ t.cloud_location_ph }}">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label mb-1">Sport</label>
+                    <label class="form-label mb-1">{{ t.cloud_sport }}</label>
                     <input type="text" name="meet_sport" value="{{ meet_sport }}"
-                           class="form-control form-control-sm" placeholder="e.g. Swimming (optional)">
+                           class="form-control form-control-sm" placeholder="{{ t.cloud_sport_ph }}">
                 </div>
                 <div class="mb-2">
-                    <label class="form-label mb-1">App / window title</label>
+                    <label class="form-label mb-1">{{ t.cloud_app_title }}</label>
                     <input type="text" name="app_window_title" id="app_window_title" value="{{ app_window_title }}"
-                           class="form-control form-control-sm" placeholder="Tremplin (blank = meet name)">
+                           class="form-control form-control-sm" placeholder="{{ t.cloud_app_title_ph }}">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label mb-1">Column label style</label>
+                    <label class="form-label mb-1">{{ t.cloud_col_label_style }}</label>
                     <select name="cloud_label_style" class="form-select form-select-sm" style="width:auto;">
-                        <option value="short" {% if cloud_label_style == 'short' %}selected{% endif %}>Short (EV, HT, LN…)</option>
-                        <option value="long"  {% if cloud_label_style == 'long'  %}selected{% endif %}>Long (EVENT, HEAT, LANE…)</option>
+                        <option value="short" {% if cloud_label_style == 'short' %}selected{% endif %}>{{ t.cloud_label_short }}</option>
+                        <option value="long"  {% if cloud_label_style == 'long'  %}selected{% endif %}>{{ t.cloud_label_long }}</option>
                     </select>
                 </div>
 
                 <!-- Picker image -->
-                <label class="form-label mb-1">Picker image <small class="text-body-secondary">(shown on the meet card)</small></label>
+                <label class="form-label mb-1">{{ t.cloud_picker_image }} <small class="text-body-secondary">{{ t.cloud_picker_image_note }}</small></label>
                 {% if picker_image_error %}<p class="text-danger small mb-1">{{ picker_image_error }}</p>{% endif %}
                 <select name="selected_picker_image" class="form-select form-select-sm mb-1" onchange="_fsubmit(this.closest('form'))">
-                    <option value="" {% if not active_picker_image %}selected{% endif %}>— None —</option>
+                    <option value="" {% if not active_picker_image %}selected{% endif %}>{{ t.cloud_none }}</option>
                     {% for img in picker_image_list %}
                     <option value="{{ img }}" {% if img == active_picker_image %}selected{% endif %}>{{ img }}</option>
                     {% endfor %}
@@ -980,17 +972,17 @@ function onPasswordInput(form) {
                 <div class="d-flex flex-wrap align-items-center gap-1 mb-3">
                     <div class="file-picker flex-shrink-0">
                         <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
-                            Add Image
+                            {{ t.disp_add_image }}
                             <input type="file" name="picker_image" accept="image/*" style="display:none;"
-                                   onchange="var m=this.closest('.file-picker').querySelector('.file-msg');m.style.opacity='1';m.style.transition='none';m.textContent='Uploading…';_fsubmit(this.closest('form'))">
+                                   onchange="var m=this.closest('.file-picker').querySelector('.file-msg');m.style.opacity='1';m.style.transition='none';m.textContent='{{ t.cloud_uploading }}';_fsubmit(this.closest('form'))">
                         </label>
                         <span class="file-msg small text-body-secondary ms-1"></span>
                     </div>
                     {% if active_picker_image %}
-                    <a href="/picker_image_delete?file={{ active_picker_image }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_picker_image }}?')">Delete</a>
+                    <a href="/picker_image_delete?file={{ active_picker_image }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_picker_image }}?')">{{ t.btn_delete }}</a>
                     {% endif %}
                     {% if picker_image_list %}
-                    <a href="/picker_image_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="Hold to delete all…">Delete All</a>
+                    <a href="/picker_image_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="{{ t.hold_delete_all }}">{{ t.btn_delete_all }}</a>
                     {% endif %}
                     {% if active_picker_image %}
                     <img src="/picker_image" style="height:28px; border-radius:4px; border:1px solid #ccc; flex-shrink:0;">
@@ -998,10 +990,10 @@ function onPasswordInput(form) {
                 </div>
 
                 <!-- Home screen icon -->
-                <label class="form-label mb-1">Home screen icon <small class="text-body-secondary">(square PNG, 512 or 1024 px)</small></label>
+                <label class="form-label mb-1">{{ t.cloud_home_icon }} <small class="text-body-secondary">{{ t.cloud_home_icon_note }}</small></label>
                 {% if icon_error %}<p class="text-danger small mb-1">{{ icon_error }}</p>{% endif %}
                 <select name="selected_home_icon" class="form-select form-select-sm mb-1" onchange="_fsubmit(this.closest('form'))">
-                    <option value="" {% if not active_home_icon %}selected{% endif %}>— None —</option>
+                    <option value="" {% if not active_home_icon %}selected{% endif %}>{{ t.cloud_none }}</option>
                     {% for icon in icon_list %}
                     <option value="{{ icon }}" {% if icon == active_home_icon %}selected{% endif %}>{{ icon }}</option>
                     {% endfor %}
@@ -1009,17 +1001,17 @@ function onPasswordInput(form) {
                 <div class="d-flex flex-wrap align-items-center gap-1">
                     <div class="file-picker flex-shrink-0">
                         <label class="btn btn-secondary btn-sm m-0" style="cursor:pointer;">
-                            Add Icon
+                            {{ t.cloud_add_icon }}
                             <input type="file" name="home_icon" accept="image/png" style="display:none;"
-                                   onchange="var m=this.closest('.file-picker').querySelector('.file-msg');m.style.opacity='1';m.style.transition='none';m.textContent='Resizing…';_fsubmit(this.closest('form'))">
+                                   onchange="var m=this.closest('.file-picker').querySelector('.file-msg');m.style.opacity='1';m.style.transition='none';m.textContent='{{ t.cloud_resizing }}';_fsubmit(this.closest('form'))">
                         </label>
                         <span class="file-msg small text-body-secondary ms-1"></span>
                     </div>
                     {% if active_home_icon %}
-                    <a href="/icon_delete?file={{ active_home_icon }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_home_icon }}?')">Delete</a>
+                    <a href="/icon_delete?file={{ active_home_icon }}" class="btn btn-outline-danger btn-sm flex-shrink-0" onclick="return confirm('Delete {{ active_home_icon }}?')">{{ t.btn_delete }}</a>
                     {% endif %}
                     {% if icon_list %}
-                    <a href="/icon_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="Hold to delete all…">Delete All</a>
+                    <a href="/icon_delete_all" class="btn btn-outline-danger btn-sm flex-shrink-0" data-hold data-hold-label="{{ t.hold_delete_all }}">{{ t.btn_delete_all }}</a>
                     {% endif %}
                     {% if has_home_icon %}
                     <img src="/home_icon" style="height:28px; width:28px; border-radius:6px; border:1px solid #ccc; flex-shrink:0;">
@@ -1029,7 +1021,7 @@ function onPasswordInput(form) {
             </div></div>
             {% else %}
             <div class="card mt-3"><div class="card-body text-body-secondary small">
-                Load a meet file to set its cloud picker title, image and icon.
+                {{ t.cloud_load_meet_hint }}
             </div></div>
             {% endif %}
                     </div></div>
@@ -1048,32 +1040,32 @@ function onPasswordInput(form) {
                         <!-- Playback status bar (shown as flex by JS) -->
                         <div id="test-status-bar" style="display:none; align-items:center; gap:8px; margin-bottom:8px;">
                             <span id="test-status-text" class="flex-fill small text-body-secondary"></span>
-                            <button class="btn btn-danger btn-sm" style="width:70px;" onclick="testStop()">Stop</button>
+                            <button class="btn btn-danger btn-sm" style="width:70px;" onclick="testStop()">{{ t.test_stop }}</button>
                         </div>
 
                         <hr id="test-status-hr" style="display:none;">
 
                         <!-- Meet-loaded warning (toggled by JS) -->
                         <div id="test-has-meet-warning" class="alert alert-warning py-2 px-3 small mb-2" style="display:none;">
-                            A meet file is loaded — go to Meet Setup and click <strong>Delete</strong> before running test sessions.
+                            {{ t.test_meet_loaded_warn | safe }}
                         </div>
 
                         <!-- Session list -->
                         <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="fw-bold">Recorded Sessions</span>
+                            <span class="fw-bold">{{ t.test_recorded_sessions }}</span>
                             <div class="file-picker">
                                 <label class="btn btn-secondary btn-sm m-0 text-nowrap" style="cursor:pointer; min-width:70px;">
-                                    Upload<input type="file" accept=".cts" style="display:none;" onchange="testUpload(this)">
+                                    {{ t.test_upload }}<input type="file" accept=".cts" style="display:none;" onchange="testUpload(this)">
                                 </label>
                             </div>
                         </div>
-                        <div id="test-session-list" class="small" style="min-height:32px;"><span class="text-body-secondary">Loading…</span></div>
+                        <div id="test-session-list" class="small" style="min-height:32px;"><span class="text-body-secondary">{{ t.loading }}</span></div>
 
                         <hr>
 
                         <!-- Speed -->
                         <div class="d-flex align-items-center gap-2 mb-2">
-                            <span class="fw-bold" style="min-width:110px;">Playback Speed</span>
+                            <span class="fw-bold" style="min-width:110px;">{{ t.test_playback_speed }}</span>
                             <div class="d-flex gap-1">
                                 <button class="btn btn-secondary btn-sm speed-btn" onclick="setSpeed(1)">1×</button>
                                 <button class="btn btn-secondary btn-sm speed-btn" onclick="setSpeed(2)">2×</button>
@@ -1085,10 +1077,10 @@ function onPasswordInput(form) {
                         <hr>
 
                         <!-- Record -->
-                        <div class="panel-title">Record Live Session</div>
+                        <div class="panel-title">{{ t.test_record_live }}</div>
                         <div class="d-flex align-items-center gap-1">
-                            <input id="test-record-name" type="text" class="form-control form-control-sm" placeholder="Session name" style="flex:1;">
-                            <button id="btn-record" class="btn btn-secondary btn-sm" style="width:70px;" onclick="testRecordToggle()">Start</button>
+                            <input id="test-record-name" type="text" class="form-control form-control-sm" placeholder="{{ t.test_session_name_ph }}" style="flex:1;">
+                            <button id="btn-record" class="btn btn-secondary btn-sm" style="width:70px;" onclick="testRecordToggle()">{{ t.test_start }}</button>
                             <span id="test-record-status" class="small text-body-secondary"></span>
                         </div>
 
@@ -1096,14 +1088,14 @@ function onPasswordInput(form) {
                         <div id="test-meet-section" style="display:none;">
                             <hr>
                             <div class="d-flex justify-content-between align-items-center mb-2">
-                                <span class="fw-bold">Meet File</span>
+                                <span class="fw-bold">{{ t.test_meet_file }}</span>
                                 <div id="test-meet-upload-btn">
                                     <label class="btn btn-secondary btn-sm m-0 text-nowrap" style="cursor:pointer; min-width:70px;">
-                                        Load<input type="file" accept=".csv,.lxf" style="display:none;" onchange="testMeetUpload(this)">
+                                        {{ t.test_load }}<input type="file" accept=".csv,.lxf" style="display:none;" onchange="testMeetUpload(this)">
                                     </label>
                                 </div>
                             </div>
-                            <div id="test-meet-status" class="small text-body-secondary">No meet file loaded — load one to show swimmer names during the test.</div>
+                            <div id="test-meet-status" class="small text-body-secondary">{{ t.test_no_meet_hint }}</div>
                         </div>
 
                     </div></div>
@@ -1115,10 +1107,10 @@ function onPasswordInput(form) {
                     <div class="card mb-3" style="max-width:860px;"><div class="card-body">
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <span style="position:relative; display:inline-block;">
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleLogMenu(event)">Save Logs ▾</button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleLogMenu(event)">{{ t.term_save_logs }}</button>
                                 <div id="log-menu" style="display:none; position:absolute; left:0; top:100%; margin-top:4px; background:var(--bs-tertiary-bg); border:1px solid var(--bs-border-color); border-radius:4px; z-index:50; min-width:150px; box-shadow:0 2px 8px rgba(0,0,0,0.4);">
-                                    <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="downloadLogs()">Download</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="saveLogsToPi()">Save to Pi</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="downloadLogs()">{{ t.common_download }}</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" style="display:block; width:100%; text-align:left; border:none; border-radius:0;" onclick="saveLogsToPi()">{{ t.term_save_to_pi }}</button>
                                 </div>
                             </span>
                             <span id="log-save-status" class="small text-body-secondary"></span>
@@ -1126,13 +1118,13 @@ function onPasswordInput(form) {
                     </div></div>
                     <div class="card" style="max-width:860px;"><div class="card-body">
                         <div class="d-flex align-items-center gap-1 mb-2 flex-wrap">
-                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('bash')">Shell</button>
+                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('bash')">{{ t.term_shell }}</button>
                             <button class="btn btn-secondary btn-sm" onclick="termLaunch('raspi-config')">raspi-config</button>
-                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('logs')">Scoreboard logs</button>
+                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('logs')">{{ t.term_scoreboard_logs }}</button>
                             <button class="btn btn-secondary btn-sm" onclick="termLaunch('dmesg-tty')">dmesg tty</button>
-                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('serial-ports')">Serial ports</button>
+                            <button class="btn btn-secondary btn-sm" onclick="termLaunch('serial-ports')">{{ t.term_serial_ports }}</button>
                             <span class="flex-fill"></span>
-                            <button id="btn-term-stop" class="btn btn-danger btn-sm" style="display:none;" onclick="termStop()">Stop</button>
+                            <button id="btn-term-stop" class="btn btn-danger btn-sm" style="display:none;" onclick="termStop()">{{ t.test_stop }}</button>
                         </div>
                         <div id="terminal-container"></div>
                     </div></div>
@@ -1144,14 +1136,14 @@ function onPasswordInput(form) {
         <div class="tab-pane" id="tab-power">
             <div class="row"><div class="col-lg-8">
                 <div class="card"><div class="card-body">
-                    <p class="text-body-secondary small mb-3">Restart just the app, reboot, or shut down the Raspberry Pi. Press and <strong>hold</strong> a button to confirm.</p>
+                    <p class="text-body-secondary small mb-3">{{ t.power_intro | safe }}</p>
                     <div class="d-flex flex-column align-items-start gap-2">
-                        <button type="button" class="btn btn-secondary" data-hold data-hold-fn="serviceRestart" data-hold-label="Hold to restart…"><i class="bi bi-arrow-clockwise me-2"></i>Restart service</button>
-                        <button type="button" class="btn btn-warning" data-hold data-hold-fn="systemReboot" data-hold-label="Hold to reboot…"><i class="bi bi-arrow-repeat me-2"></i>Reboot</button>
-                        <button type="button" class="btn btn-danger" data-hold data-hold-fn="systemShutdown" data-hold-label="Hold to shut down…"><i class="bi bi-power me-2"></i>Shutdown</button>
+                        <button type="button" class="btn btn-secondary" data-hold data-hold-fn="serviceRestart" data-hold-label="{{ t.power_hold_restart }}"><i class="bi bi-arrow-clockwise me-2"></i>{{ t.power_restart_service }}</button>
+                        <button type="button" class="btn btn-warning" data-hold data-hold-fn="systemReboot" data-hold-label="{{ t.power_hold_reboot }}"><i class="bi bi-arrow-repeat me-2"></i>{{ t.power_reboot }}</button>
+                        <button type="button" class="btn btn-danger" data-hold data-hold-fn="systemShutdown" data-hold-label="{{ t.power_hold_shutdown }}"><i class="bi bi-power me-2"></i>{{ t.power_shutdown }}</button>
                     </div>
                     <div id="system-power-status" class="small text-body-secondary mt-2"></div>
-                    <p class="small text-body-secondary mt-3 mb-0"><strong>Restart service</strong> relaunches the app in a few seconds (this page will briefly reconnect). <strong>Shutdown</strong> requires physically power-cycling the Pi (or a smart plug) to turn it back on.</p>
+                    <p class="small text-body-secondary mt-3 mb-0">{{ t.power_note | safe }}</p>
                 </div></div>
             </div></div>
         </div>
