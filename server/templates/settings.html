@@ -155,6 +155,16 @@ function onPasswordInput(form) {
         </div>
 
         <main class="flex-fill p-3" style="min-width:0;">
+            {% if provision_stale %}
+            <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
+                <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+                <div>
+                    <strong>Update needs a reinstall to finish.</strong>
+                    A recent update changed system setup the in-app updater can't apply on its own.
+                    Re-run <code>bash ~/Tremplin/install/install.sh server</code> on this device to complete it.
+                </div>
+            </div>
+            {% endif %}
             <div class="tab-content">
 
         <!-- ── Meet Setup ──────────────────────────────────────────── -->

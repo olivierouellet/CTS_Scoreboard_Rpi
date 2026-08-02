@@ -46,6 +46,14 @@ THEME_FOLDER           = os.path.join(app_dir, 'themes')
 CUSTOM_THEME_FOLDER    = os.path.join(SCOREBOARD_DIR, 'themes')
 CUSTOM_DECODERS_FOLDER = os.path.join(SCOREBOARD_DIR, 'console_decoders')
 
+# Provisioning version. install.sh records the version it fully provisioned into
+# PROVISIONED_MARKER; the app compares it with PROVISION_VERSION_FILE (shipped in
+# the repo) to nudge for a reinstall when an update pulled a change needing
+# privileges/steps the in-app update can't self-apply. See
+# install/scripts/refresh-service.sh.
+PROVISION_VERSION_FILE = os.path.join(os.path.dirname(app_dir), 'install', 'PROVISION_VERSION')
+PROVISIONED_MARKER     = os.path.join(SCOREBOARD_DIR, '.provisioned_version')
+
 # ── Theme / locale defaults ────────────────────────────────────────────────────
 
 DEFAULT_THEME_COLORS = {
@@ -443,6 +451,29 @@ def list_locales():
         code = os.path.splitext(os.path.basename(path))[0]
         result.append((code, _read_locale_name(path, code)))
     return result
+
+
+def provisioning_stale():
+    """True when the repo needs a reinstall that the in-app update can't apply.
+
+    Compares PROVISION_VERSION_FILE (shipped in the repo) against what install.sh
+    last recorded in PROVISIONED_MARKER. A missing marker reads as 0, so the first
+    upgrade to a provisioning-aware build correctly flags itself. Gated on
+    ``INVOCATION_ID`` so it only fires for a real systemd-managed service, never a
+    plain dev run.
+    """
+    if not os.environ.get('INVOCATION_ID'):
+        return False
+
+    def _read(path):
+        try:
+            with open(path) as f:
+                return int(f.read().strip() or '0')
+        except (OSError, ValueError):
+            return 0
+
+    want = _read(PROVISION_VERSION_FILE)
+    return want > 0 and want > _read(PROVISIONED_MARKER)
 
 def list_custom_locales():
     result = []

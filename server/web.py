@@ -85,6 +85,7 @@ def _globals():
         lenex_pool_length=int(state.meet.meet_info.get('pool_length_lenex') or 0),
         theme_colors={**state.DEFAULT_THEME_COLORS, **state.settings.get('theme_colors', {})},
         theme_fonts={**state.DEFAULT_THEME_FONTS,  **state.settings.get('theme_fonts',  {})},
+        provision_stale=state.provisioning_stale(),
     )
 
 
