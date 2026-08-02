@@ -173,6 +173,7 @@ ui_theme_light  = "Claro"
 ui_theme_dark   = "Oscuro"
 ui_theme_auto   = "Auto (según el sistema)"
 ui_panel_lang   = "Idioma del panel"
+ui_lang_auto    = "Auto (idioma del navegador)"
 
 # Navegación
 nav_meet        = "Competición"

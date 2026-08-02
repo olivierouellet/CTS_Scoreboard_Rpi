@@ -136,11 +136,22 @@
     };
 
     /* ── UI-language selector: store a per-device cookie and reload so the
-       server re-renders the panel in the chosen language. ── */
+       server re-renders the panel in the chosen language. 'auto' (or empty)
+       clears the cookie so the panel follows the browser language again.
+       Drives both the segmented button group and the dropdown fallback (shown
+       when custom locales make the button group too wide). ── */
+    function setUiLang(value) {
+        if (!value || value === 'auto') {
+            document.cookie = 'ui_lang=;path=/;max-age=0';
+        } else {
+            document.cookie = 'ui_lang=' + encodeURIComponent(value) + ';path=/;max-age=31536000';
+        }
+        location.reload();
+    }
+    document.querySelectorAll('[data-ui-lang-set]').forEach(function (b) {
+        b.addEventListener('click', function () { setUiLang(b.getAttribute('data-ui-lang-set')); });
+    });
     document.querySelectorAll('[data-ui-lang]').forEach(function (sel) {
-        sel.addEventListener('change', function () {
-            document.cookie = 'ui_lang=' + encodeURIComponent(sel.value) + ';path=/;max-age=31536000';
-            location.reload();
-        });
+        sel.addEventListener('change', function () { setUiLang(sel.value); });
     });
 })();

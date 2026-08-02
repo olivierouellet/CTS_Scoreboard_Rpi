@@ -442,11 +442,18 @@ def _settings_view(request, form):
     custom_locale_codes = [c for c, _ in custom_locale_list]
 
     ui_lang = state.ui_locale(request)
+    # Whether the user has explicitly pinned a panel language (vs. "Auto"). Only
+    # an installed locale counts, so a stale cookie for a removed locale reads as
+    # Auto — matching how ui_locale() resolves it.
+    installed_ui = {c for c, _ in state.list_locales()} | set(custom_locale_codes)
+    ui_lang_cookie = request.cookies.get('ui_lang', '')
+    ui_lang_cookie = ui_lang_cookie if ui_lang_cookie in installed_ui else ''
     return render(
         request,
         'settings.html',
         t=state.settings_strings(ui_lang),
         ui_locale=ui_lang,
+        ui_lang_cookie=ui_lang_cookie,
         meet_file_list=meet_file_list,
         active_meet_file=state._active_meet_file,
         meet_title=state.settings['meet_title'],

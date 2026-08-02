@@ -169,6 +169,7 @@ ui_theme_light  = "Light"
 ui_theme_dark   = "Dark"
 ui_theme_auto   = "Auto (follow system)"
 ui_panel_lang   = "Panel language"
+ui_lang_auto    = "Auto (follow browser)"
 
 # Sidebar navigation
 nav_meet        = "Meet Setup"
