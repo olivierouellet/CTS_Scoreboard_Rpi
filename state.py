@@ -409,14 +409,21 @@ def settings_strings(code=None):
 
 def ui_locale(request):
     """Resolve the Settings-panel UI language, independently of the scoreboard
-    ``locale`` setting: the ``ui_lang`` cookie (if it names an installed locale)
-    → else the scoreboard locale setting → ``en``."""
+    ``locale`` setting: the ``ui_lang`` cookie (the user's explicit override, set
+    by the sidebar Panel-language selector) → else the browser's Accept-Language
+    → else ``en``."""
     installed = {c for c, _ in list_locales()} | {c for c, _ in list_custom_locales()}
     cookie = request.cookies.get('ui_lang')
     if cookie in installed:
         return cookie
-    fallback = settings.get('locale', 'en')
-    return fallback if fallback in installed else 'en'
+    # Default to the browser's preferred language (first Accept-Language entry
+    # that matches an installed locale).
+    accept = request.headers.get('Accept-Language', '')
+    for part in accept.replace('-', '_').split(','):
+        code = part.split(';')[0].strip().split('_')[0].lower()
+        if code in installed:
+            return code
+    return 'en'
 
 def _read_locale_name(path, fallback):
     try:
