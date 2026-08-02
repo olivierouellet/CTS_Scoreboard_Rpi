@@ -157,3 +157,41 @@ backup_meets         = "Meets"
 restore_meets_note   = "Restore retained meets (schedules, images, icons). This replaces all current retained meets; live meets are unaffected."
 tab_debug            = "Debug"
 tab_account          = "Account"
+
+# ── Operator Settings panel (server admin UI) ──────────────────────────────
+# Read via state.settings_strings(); English here is the canonical fallback for
+# every other locale. Keys grouped by area / tab.
+[settings]
+
+# Sidebar chrome
+ui_theme        = "Theme"
+ui_theme_light  = "Light"
+ui_theme_dark   = "Dark"
+ui_theme_auto   = "Auto (follow system)"
+ui_panel_lang   = "Panel language"
+
+# Sidebar navigation
+nav_meet        = "Meet Setup"
+nav_timing      = "Timing"
+nav_scoreboard  = "Scoreboard"
+nav_display     = "Display"
+nav_theme       = "Theme"
+nav_flow        = "Flow"
+nav_cloud       = "Cloud"
+nav_clock       = "Clock"
+nav_network     = "Network"
+nav_update      = "Update & Backup"
+nav_debug       = "Debug"
+nav_test        = "Test"
+nav_terminal    = "Terminal"
+nav_power       = "Power"
+
+# Quick links + account menu
+quick_open      = "Open"
+quick_live      = "Live"
+quick_operator  = "Operator"
+quick_mobile    = "Mobile"
+account_change_pw = "Change password"
+account_logout  = "Sign out"
+
+disp_scoreboard_language = "Scoreboard language"

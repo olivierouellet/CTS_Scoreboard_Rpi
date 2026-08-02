@@ -163,3 +163,39 @@ backup_meets         = "Competiciones"
 restore_meets_note   = "Restaura las competiciones conservadas (horarios, imágenes, iconos). Reemplaza todas las competiciones conservadas; las competiciones en vivo no se ven afectadas."
 tab_debug            = "Depuración"
 tab_account          = "Cuenta"
+
+# ── Panel de ajustes (interfaz de administración del servidor) ─────────────
+[settings]
+
+# Barra lateral
+ui_theme        = "Tema"
+ui_theme_light  = "Claro"
+ui_theme_dark   = "Oscuro"
+ui_theme_auto   = "Auto (según el sistema)"
+ui_panel_lang   = "Idioma del panel"
+
+# Navegación
+nav_meet        = "Competición"
+nav_timing      = "Cronometraje"
+nav_scoreboard  = "Marcador"
+nav_display     = "Visualización"
+nav_theme       = "Tema"
+nav_flow        = "Flujo"
+nav_cloud       = "Nube"
+nav_clock       = "Reloj"
+nav_network     = "Red"
+nav_update      = "Actualización y copia"
+nav_debug       = "Depuración"
+nav_test        = "Prueba"
+nav_terminal    = "Terminal"
+nav_power       = "Energía"
+
+# Enlaces rápidos + menú de cuenta
+quick_open      = "Abrir"
+quick_live      = "Directo"
+quick_operator  = "Operador"
+quick_mobile    = "Móvil"
+account_change_pw = "Cambiar contraseña"
+account_logout  = "Cerrar sesión"
+
+disp_scoreboard_language = "Idioma del marcador"

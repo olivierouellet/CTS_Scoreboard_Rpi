@@ -441,9 +441,12 @@ def _settings_view(request, form):
     custom_locale_list  = state.list_custom_locales()
     custom_locale_codes = [c for c, _ in custom_locale_list]
 
+    ui_lang = state.ui_locale(request)
     return render(
         request,
         'settings.html',
+        t=state.settings_strings(ui_lang),
+        ui_locale=ui_lang,
         meet_file_list=meet_file_list,
         active_meet_file=state._active_meet_file,
         meet_title=state.settings['meet_title'],

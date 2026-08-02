@@ -6,6 +6,7 @@
 <title>Tremplin — Settings</title>
 <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
 <link rel="stylesheet" href="/static/css/bootstrap-icons.min.css">
+<!-- Shared operator-panel UI (also used by cloud admin). Edit static/css/panel.css, then run scripts/sync-ui-assets.sh. -->
 <link rel="stylesheet" href="/static/css/panel.css">
 <script>
 // Apply the saved colour theme before first paint (no flash). Default: dark.
@@ -72,49 +73,62 @@ function onPasswordInput(form) {
             </div>
             <div class="offcanvas-body d-flex flex-column">
                 <nav class="nav flex-column app-nav">
-                    <a class="nav-link" data-target="#tab-meet"><i class="bi bi-water me-2"></i>Meet Setup</a>
-                    <a class="nav-link" data-target="#tab-debug"><i class="bi bi-stopwatch me-2"></i>Timing</a>
+                    <a class="nav-link" data-target="#tab-meet"><i class="bi bi-water me-2"></i>{{ t.nav_meet }}</a>
+                    <a class="nav-link" data-target="#tab-debug"><i class="bi bi-stopwatch me-2"></i>{{ t.nav_timing }}</a>
 
-                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-appearance" role="button" aria-expanded="false" aria-controls="grp-appearance"><span><i class="bi bi-tv me-2"></i>Scoreboard</span><span class="caret">▸</span></a>
+                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-appearance" role="button" aria-expanded="false" aria-controls="grp-appearance"><span><i class="bi bi-tv me-2"></i>{{ t.nav_scoreboard }}</span><span class="caret">▸</span></a>
                     <div class="collapse" id="grp-appearance">
-                        <a class="nav-link sub" data-target="#tab-display"><i class="bi bi-card-heading me-2"></i>Display</a>
-                        <a class="nav-link sub" data-target="#tab-theme"><i class="bi bi-brush me-2"></i>Theme</a>
-                        <a class="nav-link sub" data-target="#tab-flow"><i class="bi bi-diagram-3 me-2"></i>Flow</a>
+                        <a class="nav-link sub" data-target="#tab-display"><i class="bi bi-card-heading me-2"></i>{{ t.nav_display }}</a>
+                        <a class="nav-link sub" data-target="#tab-theme"><i class="bi bi-brush me-2"></i>{{ t.nav_theme }}</a>
+                        <a class="nav-link sub" data-target="#tab-flow"><i class="bi bi-diagram-3 me-2"></i>{{ t.nav_flow }}</a>
                     </div>
 
-                    <a class="nav-link" data-target="#tab-cloud"><i class="bi bi-cloud me-2"></i>Cloud</a>
+                    <a class="nav-link" data-target="#tab-cloud"><i class="bi bi-cloud me-2"></i>{{ t.nav_cloud }}</a>
 
                     <hr class="my-2">
 
-                    <a class="nav-link" data-target="#tab-time"><i class="bi bi-clock me-2"></i>Clock</a>
-                    <a class="nav-link" data-target="#tab-network"><i class="bi bi-wifi me-2"></i>Network</a>
-                    <a class="nav-link" data-target="#tab-update"><i class="bi bi-arrow-repeat me-2"></i>Update &amp; Backup</a>
+                    <a class="nav-link" data-target="#tab-time"><i class="bi bi-clock me-2"></i>{{ t.nav_clock }}</a>
+                    <a class="nav-link" data-target="#tab-network"><i class="bi bi-wifi me-2"></i>{{ t.nav_network }}</a>
+                    <a class="nav-link" data-target="#tab-update"><i class="bi bi-arrow-repeat me-2"></i>{{ t.nav_update }}</a>
 
-                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-debug" role="button" aria-expanded="false" aria-controls="grp-debug"><span><i class="bi bi-bug me-2"></i>Debug</span><span class="caret">▸</span></a>
+                    <a class="nav-link group-toggle" data-bs-toggle="collapse" href="#grp-debug" role="button" aria-expanded="false" aria-controls="grp-debug"><span><i class="bi bi-bug me-2"></i>{{ t.nav_debug }}</span><span class="caret">▸</span></a>
                     <div class="collapse" id="grp-debug">
-                        <a class="nav-link sub" data-target="#tab-test"><i class="bi bi-play-circle me-2"></i>Test</a>
-                        <a class="nav-link sub" data-target="#tab-terminal"><i class="bi bi-terminal me-2"></i>Terminal</a>
+                        <a class="nav-link sub" data-target="#tab-test"><i class="bi bi-play-circle me-2"></i>{{ t.nav_test }}</a>
+                        <a class="nav-link sub" data-target="#tab-terminal"><i class="bi bi-terminal me-2"></i>{{ t.nav_terminal }}</a>
                     </div>
 
-                    <a class="nav-link" data-target="#tab-power"><i class="bi bi-power me-2"></i>Power</a>
+                    <a class="nav-link" data-target="#tab-power"><i class="bi bi-power me-2"></i>{{ t.nav_power }}</a>
                 </nav>
                 <hr>
                 <div class="app-quicklinks">
-                    <div class="panel-eyebrow">Open</div>
+                    <div class="panel-eyebrow">{{ t.quick_open }}</div>
                     <div class="d-flex flex-wrap gap-1">
-                        <a href="/live"     target="_blank" class="btn btn-secondary">Live</a>
-                        <a href="/operator" target="_blank" class="btn btn-secondary">Operator</a>
-                        <a href="/mobile"   target="_blank" class="btn btn-secondary">Mobile</a>
+                        <a href="/live"     target="_blank" class="btn btn-secondary">{{ t.quick_live }}</a>
+                        <a href="/operator" target="_blank" class="btn btn-secondary">{{ t.quick_operator }}</a>
+                        <a href="/mobile"   target="_blank" class="btn btn-secondary">{{ t.quick_mobile }}</a>
                     </div>
                 </div>
                 <hr>
                 <div class="app-theme">
-                    <div class="panel-eyebrow">Theme</div>
-                    <div class="btn-group btn-group-sm w-100" role="group" aria-label="Colour theme">
-                        <button type="button" class="btn btn-outline-secondary" data-theme-set="light" title="Light">☀</button>
-                        <button type="button" class="btn btn-outline-secondary" data-theme-set="dark" title="Dark">🌙</button>
-                        <button type="button" class="btn btn-outline-secondary" data-theme-set="auto" title="Auto (follow system)">Auto</button>
+                    <div class="panel-eyebrow">{{ t.ui_theme }}</div>
+                    <div class="btn-group btn-group-sm w-100" role="group" aria-label="{{ t.ui_theme }}">
+                        <button type="button" class="btn btn-outline-secondary" data-theme-set="light" title="{{ t.ui_theme_light }}">☀</button>
+                        <button type="button" class="btn btn-outline-secondary" data-theme-set="dark" title="{{ t.ui_theme_dark }}">🌙</button>
+                        <button type="button" class="btn btn-outline-secondary" data-theme-set="auto" title="{{ t.ui_theme_auto }}">Auto</button>
                     </div>
+                </div>
+                <div class="app-lang mt-3">
+                    <div class="panel-eyebrow">{{ t.ui_panel_lang }}</div>
+                    <select class="form-select form-select-sm" data-ui-lang aria-label="{{ t.ui_panel_lang }}">
+                    {% for code, lname in locale_list %}
+                        <option value="{{ code }}" {% if code == ui_locale %}selected{% endif %}>{{ lname }}</option>
+                    {% endfor %}
+                    {% if custom_locale_list %}
+                        {% for code, lname in custom_locale_list %}
+                        <option value="{{ code }}" {% if code == ui_locale %}selected{% endif %}>{{ lname }}</option>
+                        {% endfor %}
+                    {% endif %}
+                    </select>
                 </div>
                 <div class="dropup mt-auto pt-3 border-top">
                     <a href="#" class="d-flex align-items-center text-body-secondary text-decoration-none dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -122,9 +136,9 @@ function onPasswordInput(form) {
                         <strong class="text-truncate">{{ user_name }}</strong>
                     </a>
                     <ul class="dropdown-menu shadow w-100">
-                        <li><a class="dropdown-item" href="#" onclick="panelShowTab('#tab-account'); var oc=document.getElementById('app-sidebar'); if(window.bootstrap){var i=bootstrap.Offcanvas.getInstance(oc); if(i) i.hide();} return false;">Change password</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="panelShowTab('#tab-account'); var oc=document.getElementById('app-sidebar'); if(window.bootstrap){var i=bootstrap.Offcanvas.getInstance(oc); if(i) i.hide();} return false;">{{ t.account_change_pw }}</a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><form action="/logout" class="m-0"><button type="submit" class="dropdown-item">Sign out</button></form></li>
+                        <li><form action="/logout" class="m-0"><button type="submit" class="dropdown-item">{{ t.account_logout }}</button></form></li>
                     </ul>
                 </div>
             </div>
@@ -537,7 +551,7 @@ function onPasswordInput(form) {
                         </div>
                         <hr>
                         <div class="mb-3">
-                            <label for="locale" class="form-label">Language</label>
+                            <label for="locale" class="form-label">{{ t.disp_scoreboard_language }}</label>
                             <select id="locale" name="locale" class="form-select form-select-sm mb-1" style="max-width:220px;">
                             {% for code, lname in locale_list %}
                                 <option value="{{ code }}" {% if code == locale %}selected{% endif %}>{{ lname }}</option>
@@ -1147,6 +1161,7 @@ function onPasswordInput(form) {
     </div><!-- d-flex -->
 </div><!-- container-fluid -->
     <script src="/static/js/bootstrap.bundle-5.3.3.min.js"></script>
+    <!-- Shared operator-panel behaviour (also used by cloud admin). Edit static/js/panel.js, then run scripts/sync-ui-assets.sh. -->
     <script src="/static/js/panel.js"></script>
     <script src="/static/js/htmx-2.0.4.min.js"></script>
     <script src="/static/js/ws.js"></script>

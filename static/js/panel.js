@@ -134,4 +134,13 @@
             setTimeout(function () { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
         });
     };
+
+    /* ── UI-language selector: store a per-device cookie and reload so the
+       server re-renders the panel in the chosen language. ── */
+    document.querySelectorAll('[data-ui-lang]').forEach(function (sel) {
+        sel.addEventListener('change', function () {
+            document.cookie = 'ui_lang=' + encodeURIComponent(sel.value) + ';path=/;max-age=31536000';
+            location.reload();
+        });
+    });
 })();

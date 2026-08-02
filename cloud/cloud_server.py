@@ -61,7 +61,17 @@ MEETS_FILE  = os.path.join(DATA_DIR, 'meets.json')   # legacy single-file store 
 RETAINED_DIR = os.path.join(DATA_DIR, 'retained')    # per-meet files: <id>.json + blobs
 ANALYTICS_FILE = os.path.join(DATA_DIR, 'analytics.db')
 _HERE       = os.path.dirname(__file__)
-LOCALES_DIR = os.path.join(_HERE, 'locales')
+# Locale files are the repo-root locales/ (single canonical source, shared with
+# the Pi app). The Docker image copies them next to cloud_server.py (COPY
+# locales/ locales/), so in-container they sit at _HERE/locales; running from
+# source they are one level up at the repo root. Use whichever exists so the
+# cloud server can be run and tested locally without Docker.
+LOCALES_DIR = next(
+    (p for p in (os.path.join(_HERE, 'locales'),
+                 os.path.join(_HERE, os.pardir, 'locales'))
+     if os.path.isdir(p)),
+    os.path.join(_HERE, 'locales'),
+)
 
 _locale_cache = {}
 
