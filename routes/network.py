@@ -33,6 +33,10 @@ class CloudStatus(BaseModel):
     connected: bool
     running: bool
     url: str
+    # Attendance snapshot from the cloud: {'enabled': False} when analytics is
+    # off there, else {'enabled': True, 'counts': {window: n}}. None until the
+    # relay has heard back (or when disconnected).
+    stats: dict | None = None
 
 
 

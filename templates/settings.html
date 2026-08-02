@@ -921,6 +921,14 @@ function onPasswordInput(form) {
                         </div></div>
                     </form>
 
+                        <!-- Attendance counts, pushed back from the cloud (analytics is opt-in there) -->
+                        <div id="cloud-attendance-card" class="card mb-3" style="display:none;">
+                            <div class="card-body">
+                                <label class="form-label fw-bold mb-2">{{ t.cloud_attendance_title }}</label>
+                                <div id="cloud-attendance-body"></div>
+                            </div>
+                        </div>
+
                         <!-- Per-meet cloud appearance (moved from Meet Setup) -->
             {% if active_meet_file %}
             <div class="card mt-3"><div class="card-body">
@@ -2294,6 +2302,33 @@ function onPasswordInput(form) {
             btn.textContent  = T.net_connect;
             btn.disabled     = false;
         }
+        _applyCloudAttendance(d);
+    }
+
+    // Attendance counts the cloud pushes back over the relay link. Only shown
+    // while connected; a muted note explains when the cloud admin has analytics
+    // turned off, so an empty panel is never mistaken for "zero visitors".
+    function _applyCloudAttendance(d) {
+        var card = document.getElementById('cloud-attendance-card');
+        var body = document.getElementById('cloud-attendance-body');
+        if (!card || !body) return;
+        if (!d.connected || !d.stats) { card.style.display = 'none'; return; }
+        card.style.display = '';
+        if (!d.stats.enabled) {
+            body.innerHTML = '<span class="text-body-secondary small">' + T.cloud_att_disabled + '</span>';
+            return;
+        }
+        var c = d.stats.counts || {};
+        var wins = [['1h', T.cloud_att_1h], ['3h', T.cloud_att_3h], ['12h', T.cloud_att_12h],
+                    ['24h', T.cloud_att_24h], ['7d', T.cloud_att_7d], ['all', T.cloud_att_all]];
+        var html = '<div class="d-flex flex-wrap gap-4">';
+        wins.forEach(function(w) {
+            var n = c[w[0]]; if (n == null) n = 0;
+            html += '<div class="text-center"><div class="fs-4 fw-bold lh-1">' + n +
+                    '</div><div class="text-body-secondary small">' + w[1] + '</div></div>';
+        });
+        html += '</div>';
+        body.innerHTML = html;
     }
 
     function toggleCloud() {

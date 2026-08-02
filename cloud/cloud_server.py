@@ -658,6 +658,23 @@ def _attendee_count(meet_id, since_ts):
     return row[0] if row else 0
 
 
+def _attendee_counts(meet_id):
+    """Distinct-visitor counts for a meet across every analytics window plus
+    all-time, computed under a single lock so the relay gets one consistent
+    snapshot. Blocking (disk I/O) — run off the loop."""
+    now     = datetime.datetime.now()
+    windows = {k: int((now - d).timestamp()) for k, d in _ANALYTICS_WINDOWS.items()}
+    windows['all'] = 0
+    out = {}
+    with _analytics_lock:
+        db = _get_analytics_db()
+        for key, since in windows.items():
+            row = db.execute('SELECT COUNT(DISTINCT visitor_id) FROM connections '
+                             'WHERE meet_id = ? AND ts >= ?', (meet_id, since)).fetchone()
+            out[key] = row[0] if row else 0
+    return out
+
+
 def _analytics_prune():
     """Drop rows past the retention window so the DB stays small."""
     cutoff = int((datetime.datetime.now()
@@ -1442,6 +1459,22 @@ async def _on_relay_reload(sid):
     await manager.broadcast(_ch('results', meet_id), 'reload')
 
 
+async def _on_relay_stats(ws, sid):
+    """Reply to a relay's stats request with attendance counts for its *own*
+    meet. The meet id is taken from the socket's registration, so a relay can
+    only ever read its own numbers. Sends `{'enabled': False}` when the admin
+    hasn't turned analytics on, so the operator panel can say so."""
+    with _lock:
+        meet_id = _relay_sids.get(sid)
+    if not meet_id:
+        return
+    if not _analytics_enabled():
+        await manager.send(ws, 'stats', {'enabled': False})
+        return
+    counts = await run_in_threadpool(_attendee_counts, meet_id)
+    await manager.send(ws, 'stats', {'enabled': True, 'counts': counts})
+
+
 @app.websocket('/ws/relay')
 async def ws_relay(ws: WebSocket):
     await ws.accept()
@@ -1457,6 +1490,8 @@ async def ws_relay(ws: WebSocket):
                 await _forward(sid, event, data)
             elif event == 'reload':
                 await _on_relay_reload(sid)
+            elif event == 'get_stats':
+                await _on_relay_stats(ws, sid)
             elif event == 'ping':
                 await manager.send(ws, 'pong')
     except WebSocketDisconnect:
