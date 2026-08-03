@@ -1,7 +1,7 @@
 services:
   app:
     build:
-      context: ..          # repo root — gives Dockerfile access to static/
+      context: ..          # repo root — gives Dockerfile access to shared/
       dockerfile: cloud/Dockerfile
     restart: unless-stopped
     environment:

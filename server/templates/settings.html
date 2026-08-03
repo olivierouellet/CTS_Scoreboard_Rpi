@@ -6,7 +6,7 @@
 <title>Tremplin — Settings</title>
 <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
 <link rel="stylesheet" href="/static/css/bootstrap-icons.min.css">
-<!-- Shared operator-panel UI (also used by cloud admin). Edit static/css/panel.css, then run scripts/sync-ui-assets.sh. -->
+<!-- Shared operator-panel UI (also used by cloud admin). Single canonical copy: shared/static/css/panel.css. -->
 <link rel="stylesheet" href="/static/css/panel.css">
 <script>
 // Apply the saved colour theme before first paint (no flash). Default: dark.
@@ -155,6 +155,16 @@ function onPasswordInput(form) {
         </div>
 
         <main class="flex-fill p-3" style="min-width:0;">
+            {% if provision_stale %}
+            <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
+                <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+                <div>
+                    <strong>Update needs a reinstall to finish.</strong>
+                    A recent update changed system setup the in-app updater can't apply on its own.
+                    Re-run <code>bash ~/Tremplin/install/install.sh server</code> on this device to complete it.
+                </div>
+            </div>
+            {% endif %}
             <div class="tab-content">
 
         <!-- ── Meet Setup ──────────────────────────────────────────── -->
@@ -1171,7 +1181,7 @@ function onPasswordInput(form) {
     </div><!-- d-flex -->
 </div><!-- container-fluid -->
     <script src="/static/js/bootstrap.bundle-5.3.3.min.js"></script>
-    <!-- Shared operator-panel behaviour (also used by cloud admin). Edit static/js/panel.js, then run scripts/sync-ui-assets.sh. -->
+    <!-- Shared operator-panel behaviour (also used by cloud admin). Single canonical copy: shared/static/js/panel.js. -->
     <script src="/static/js/panel.js"></script>
     <script src="/static/js/htmx-2.0.4.min.js"></script>
     <script src="/static/js/ws.js"></script>

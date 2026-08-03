@@ -14,7 +14,7 @@ import relay
 import state
 from console_decoders import CONSOLE_OPTIONS, console_info_for, load_custom_decoders, make_decoder
 from meet_data import send_event_info
-from parsers.lenex_parser import load_lenex
+from meet_parsers.lenex_parser import load_lenex
 from web import render, require_login, save_upload
 from worker import _restart_worker
 

@@ -17,4 +17,4 @@ dependencies = [
 dev = ["pytest"]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["server"]

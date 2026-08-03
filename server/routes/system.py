@@ -18,6 +18,12 @@ from web import ActionResult, require_login
 
 router = APIRouter(tags=['System'])
 
+# Single source of truth for the systemd unit (install/scripts/refresh-service.sh).
+# Run before each in-app restart so a changed entrypoint/layout self-heals rather
+# than crash-looping on a stale unit. Sibling of the repo's server/ dir.
+_REFRESH_SCRIPT = os.path.join(os.path.dirname(state.app_dir),
+                               'install', 'scripts', 'refresh-service.sh')
+
 
 class UpdateStart(BaseModel):
     target: str | None = None
@@ -231,6 +237,20 @@ def _run_update(target=None):
         emit(f'\n{label}. Restarting service…\n')
         state._update_log_done = True
         time.sleep(2)
+        # Self-heal the systemd unit to match the just-updated code before the
+        # restart. Non-interactive (sudo -n): installs that predate the sudoers
+        # grant simply skip this and fall back to the Tremplin.py compat shim.
+        if os.path.isfile(_REFRESH_SCRIPT):
+            emit('$ sudo -n install/scripts/refresh-service.sh\n')
+            r = subprocess.run(['sudo', '-n', _REFRESH_SCRIPT],
+                               capture_output=True, text=True)
+            if r.stdout:
+                emit(r.stdout)
+            if r.returncode != 0:
+                emit('(could not refresh the service unit automatically — re-run '
+                     'install.sh on this device to finish updating)\n')
+                if r.stderr:
+                    emit(r.stderr)
         subprocess.run(['sudo', 'systemctl', 'restart', 'tremplin'])
     except Exception as e:
         emit(f'\nError: {e}\n', error=True)
@@ -329,7 +349,7 @@ def route_os_update_log():
 
 # ── RTC (Adafruit PiRTC DS3231) ──────────────────────────────────────────────────
 
-_RTC_SCRIPT = os.path.join(state.app_dir, 'scripts', 'rtc_setup.sh')
+_RTC_SCRIPT = os.path.join(os.path.dirname(state.app_dir), 'install', 'scripts', 'rtc_setup.sh')
 
 
 @router.get('/rtc_status', response_model=RtcStatus,
@@ -366,7 +386,7 @@ def _run_rtc(action):
         state._rtc_log_lines.append({'text': text, 'error': error})
 
     try:
-        emit(f'$ sudo bash scripts/rtc_setup.sh {action}\n')
+        emit(f'$ sudo bash install/scripts/rtc_setup.sh {action}\n')
         out, rc = _run_cmd_blocking(['sudo', 'bash', _RTC_SCRIPT, action])
         if out:
             emit(out)

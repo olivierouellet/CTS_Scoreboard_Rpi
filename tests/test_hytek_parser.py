@@ -1,7 +1,7 @@
 import csv
 import io
 import pytest
-from parsers.hytek_parser import HytekParser as HytekEventLoader
+from meet_parsers.hytek_parser import HytekParser as HytekEventLoader
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 #

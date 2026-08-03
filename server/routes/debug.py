@@ -16,7 +16,7 @@ from starlette.concurrency import run_in_threadpool
 import bus
 import state
 from meet_data import send_event_info
-from parsers.lenex_parser import load_lenex
+from meet_parsers.lenex_parser import load_lenex
 from web import ActionResult, EnabledFlag, redirect, require_login, save_upload
 from worker import _cleanup_test_meet, _list_sessions, _restart_worker
 

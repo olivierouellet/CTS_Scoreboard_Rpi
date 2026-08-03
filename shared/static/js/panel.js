@@ -2,8 +2,8 @@
    Tremplin operator panels — shared UI behaviour.
    Used by BOTH the Pi server Settings panel and the cloud Admin panel.
 
-   CANONICAL SOURCE: static/js/panel.js
-   Keep cloud/static/js/panel.js byte-identical via scripts/sync-ui-assets.sh.
+   Single canonical copy: shared/static/js/panel.js. The server serves it
+   directly; the cloud image copies shared/static/ at build time.
    Loaded after bootstrap.bundle.js and BEFORE each page's own inline <script>
    (so window.panelShowTab / copyKey are defined first).
 

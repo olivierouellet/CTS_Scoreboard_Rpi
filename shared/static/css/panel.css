@@ -1,10 +1,10 @@
 /* ============================================================================
    Tremplin operator panels — shared UI layer.
-   Used by BOTH the Pi server Settings panel (templates/settings.html) and the
-   cloud Admin panel (cloud/templates/admin.html).
+   Used by BOTH the Pi server Settings panel (server/templates/settings.html) and
+   the cloud Admin panel (cloud/templates/admin.html).
 
-   CANONICAL SOURCE: static/css/panel.css
-   Keep cloud/static/css/panel.css byte-identical via scripts/sync-ui-assets.sh.
+   Single canonical copy: shared/static/css/panel.css. The server serves it
+   directly; the cloud image copies shared/static/ at build time.
    Loaded after Bootstrap + Bootstrap-Icons, before any page-specific <style>.
 
    ── Design vocabulary ──────────────────────────────────────────────────────

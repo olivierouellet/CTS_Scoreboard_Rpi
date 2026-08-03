@@ -1,0 +1,841 @@
+#!/usr/bin/env bash
+# Tremplin — Raspberry Pi install script
+#
+# Usage:
+#   bash install.sh           interactive role selection
+#   bash install.sh server    Pi #1 — pool deck FastAPI server
+#   bash install.sh kiosk     Pi #2 — TV kiosk display
+#
+# Run from inside the cloned repo, or from anywhere (it will clone automatically).
+
+set -euo pipefail
+
+# ── Configuration ──────────────────────────────────────────────────────────────
+REPO_URL="https://github.com/olivierouellet/Tremplin.git"
+INSTALL_DIR="$HOME/Tremplin"
+SERVER_IP="10.10.10.10/24"
+KIOSK_GATEWAY="10.0.0.1"
+SERVER_HOSTNAME="tremplin"                 # broadcasts as tremplin.local on the network
+MDNS_ALIASES="tableau.local marcador.local" # space-separated translated mDNS aliases
+SCOREBOARD_URL="http://${SERVER_HOSTNAME}.local"
+SERIAL_PORT="/dev/ttyUSB0"
+# ──────────────────────────────────────────────────────────────────────────────
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\033[0m'
+info()    { echo -e "${GREEN}[INFO]${NC}  $*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
+error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+section() { echo -e "\n${BOLD}──── $* ────${NC}"; }
+confirm() { read -rp "$1 [y/N] " _r; [[ "${_r:-}" =~ ^[Yy]$ ]]; }
+
+# Some networks (corporate/intranet proxies) intercept plain HTTP and return a
+# fake 404 for apt's Release files, breaking `apt-get update`. Switching the apt
+# sources to HTTPS sidesteps that, and is harmless on networks without a proxy.
+# See docs/troubleshooting-apt-http-proxy.md
+ensure_https_apt_sources() {
+    sudo sed -i \
+        -e 's|http://deb.debian.org|https://deb.debian.org|g' \
+        -e 's|http://archive.raspberrypi.com|https://archive.raspberrypi.com|g' \
+        -e 's|http://security.debian.org|https://security.debian.org|g' \
+        /etc/apt/sources.list \
+        /etc/apt/sources.list.d/*.list \
+        /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+}
+
+# ── Role selection ─────────────────────────────────────────────────────────────
+ROLE="${1:-}"
+if [[ -z "$ROLE" ]]; then
+    echo
+    echo "Which role is this?"
+    PS3="Choice: "
+    select _choice in \
+        "Server  (Pi #1 — pool deck, FastAPI + serial decoder)" \
+        "Kiosk   (Pi #2 — TV display, Chromium fullscreen)" \
+        "Cloud   (Debian VM — public relay server)" \
+        "Quit"; do
+        case "$_choice" in
+            Server*) ROLE="server"; break ;;
+            Kiosk*)  ROLE="kiosk";  break ;;
+            Cloud*)  ROLE="cloud";  break ;;
+            Quit)    exit 0 ;;
+        esac
+    done
+fi
+
+if [[ "$ROLE" != "server" && "$ROLE" != "kiosk" && "$ROLE" != "cloud" ]]; then
+    error "Unknown role '$ROLE'. Use 'server', 'kiosk', or 'cloud'."
+    exit 1
+fi
+info "Role: $ROLE"
+
+# ── Version selection ─────────────────────────────────────────────────────────
+VERSION_CHOICE="${2:-}"
+if [[ -z "$VERSION_CHOICE" ]]; then
+    echo
+    echo "Which version to install?"
+    PS3="Choice: "
+    select _choice in \
+        "Latest release (recommended)" \
+        "Master (development branch)"; do
+        case "$_choice" in
+            Latest*) VERSION_CHOICE="latest"; break ;;
+            Master*) VERSION_CHOICE="master"; break ;;
+        esac
+    done
+fi
+
+# ── System packages ────────────────────────────────────────────────────────────
+section "System packages"
+ensure_https_apt_sources
+sudo apt-get update -qq
+sudo apt-get upgrade -y
+sudo apt-get install -y git curl ufw
+
+# ── Static IP helper ───────────────────────────────────────────────────────────
+configure_static_ip() {
+    local ip="$1" gateway="${2:-}"
+
+    echo
+    warn "About to set eth0 to static IP ${ip%/*}."
+    warn "If you are connected via SSH over Ethernet this will disconnect you."
+    confirm "Configure static IP now?" || { info "Skipping network configuration."; return 0; }
+
+    if systemctl is-active --quiet dhcpcd 2>/dev/null; then
+        # Raspberry Pi OS Bullseye — dhcpcd
+        local conf=/etc/dhcpcd.conf
+        if ! grep -q "# Tremplin" "$conf" 2>/dev/null; then
+            {
+                printf '\n# Tremplin\ninterface eth0\nstatic ip_address=%s\n' "$ip"
+                [[ -n "$gateway" ]] && printf 'static routers=%s\n' "$gateway"
+            } | sudo tee -a "$conf" > /dev/null
+        else
+            warn "dhcpcd.conf already has a Tremplin entry — skipping."
+        fi
+        sudo systemctl restart dhcpcd
+
+    elif command -v nmcli &>/dev/null; then
+        # Raspberry Pi OS Bookworm — NetworkManager
+        local con="tremplin-eth"
+        local -a args=(type ethernet ifname eth0 con-name "$con"
+            ipv4.method manual ipv4.addresses "$ip"
+            connection.autoconnect yes)
+        [[ -n "$gateway" ]] && args+=(ipv4.gateway "$gateway")
+
+        if nmcli con show "$con" &>/dev/null; then
+            sudo nmcli con mod "$con" ipv4.addresses "$ip" \
+                ${gateway:+ipv4.gateway "$gateway"}
+        else
+            sudo nmcli con add "${args[@]}"
+        fi
+        sudo nmcli con up "$con"
+
+    else
+        warn "Cannot detect network manager (no dhcpcd or nmcli). Configure static IP manually."
+        return 0
+    fi
+
+    info "Static IP configured: ${ip%/*}"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SERVER (Pi #1)
+# ═══════════════════════════════════════════════════════════════════════════════
+if [[ "$ROLE" == "server" ]]; then
+
+    section "Project"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-install.sh}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+    # Migrate from previous install directory name if needed
+    for _old_dir in "$HOME/CTS_Scoreboard_Rpi" "$HOME/CTS_Scoreboard" "$HOME/Scoreboard_Pi"; do
+        if [[ ! -d "$INSTALL_DIR" && -d "$_old_dir/.git" ]]; then
+            info "Found old installation at $_old_dir — migrating to $INSTALL_DIR"
+            sudo systemctl stop tremplin 2>/dev/null || sudo systemctl stop scoreboard 2>/dev/null || true
+            mv "$_old_dir" "$INSTALL_DIR"
+            git -C "$INSTALL_DIR" remote set-url origin "$REPO_URL"
+            info "Directory renamed and git remote updated."
+            break
+        fi
+    done
+
+    if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/../server/app.py" ]]; then
+        info "Running from project directory — skipping clone"
+        INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+    elif [[ -d "$INSTALL_DIR/.git" ]]; then
+        info "Updating existing repo at $INSTALL_DIR"
+        git -C "$INSTALL_DIR" fetch --tags
+        git -C "$INSTALL_DIR" pull
+    else
+        info "Cloning $REPO_URL → $INSTALL_DIR"
+        git clone "$REPO_URL" "$INSTALL_DIR"
+        git -C "$INSTALL_DIR" fetch --tags
+    fi
+
+    if [[ "$VERSION_CHOICE" == "latest" ]]; then
+        LATEST_TAG=$(git -C "$INSTALL_DIR" tag -l --sort=-version:refname \
+                     | grep -E '^v[0-9]{4}\.[0-9]{2}\.[0-9]+$' | head -1)
+        if [[ -n "$LATEST_TAG" ]]; then
+            git -C "$INSTALL_DIR" checkout -B release "$LATEST_TAG"
+            info "Version: $LATEST_TAG"
+        else
+            warn "No release tags found — using master."
+        fi
+    else
+        git -C "$INSTALL_DIR" checkout master 2>/dev/null \
+            || git -C "$INSTALL_DIR" checkout main 2>/dev/null || true
+        info "Version: master"
+    fi
+
+    section "uv (Python package manager)"
+    if ! command -v uv &>/dev/null; then
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+    fi
+    info "uv $(uv --version)"
+
+    section "Python dependencies"
+    cd "$INSTALL_DIR"
+    uv sync
+    info "Virtual environment ready at $INSTALL_DIR/.venv"
+
+    section "Sudo permissions"
+    SUDOERS_FILE="/etc/sudoers.d/tremplin"
+    sudo tee "$SUDOERS_FILE" > /dev/null <<EOF
+$USER ALL=(ALL) NOPASSWD: /usr/bin/timedatectl, /usr/bin/systemctl restart systemd-timesyncd, /usr/bin/nmcli, /usr/bin/apt-get, /usr/bin/systemctl restart tremplin, /usr/sbin/reboot, /usr/sbin/poweroff, $INSTALL_DIR/install/scripts/rtc_setup.sh *, $INSTALL_DIR/install/scripts/refresh-service.sh
+EOF
+    sudo chmod 0440 "$SUDOERS_FILE"
+    info "Sudoers rules written to $SUDOERS_FILE"
+
+    section "Serial port access"
+    if ! groups "$USER" | grep -qw dialout; then
+        sudo usermod -aG dialout "$USER"
+        warn "Added $USER to 'dialout' group — takes effect after next login / reboot."
+    else
+        info "$USER already in 'dialout' group."
+    fi
+
+    section "Data folders"
+    mkdir -p "$HOME/TremplinData/meet"
+    mkdir -p "$HOME/TremplinData/images"
+    mkdir -p "$HOME/TremplinData/icons"
+    mkdir -p "$HOME/TremplinData/recorded"
+    info "~/TremplinData/{meet,images,icons,recorded} created."
+
+    section "Settings"
+    if [[ ! -f "$HOME/TremplinData/settings.json" ]]; then
+        cp "$INSTALL_DIR/server/settings.default.json" "$HOME/TremplinData/settings.json"
+        info "settings.json copied from default."
+    else
+        info "settings.json already exists — skipping."
+    fi
+
+    # The realtime client (static/js/ws.js) ships with the repo — no download
+    # needed since the move to plain WebSockets.
+
+    section "xterm.js (browser terminal)"
+    XTERM_VER="5.3.0"
+    XTERM_JS="$INSTALL_DIR/shared/static/js/xterm.min.js"
+    XTERM_CSS="$INSTALL_DIR/shared/static/css/xterm.min.css"
+    if [[ ! -f "$XTERM_JS" ]]; then
+        curl -fsSL "https://cdn.jsdelivr.net/npm/xterm@${XTERM_VER}/lib/xterm.min.js" -o "$XTERM_JS"
+        curl -fsSL "https://cdn.jsdelivr.net/npm/xterm@${XTERM_VER}/css/xterm.css"    -o "$XTERM_CSS"
+        info "xterm.js ${XTERM_VER} downloaded."
+    else
+        info "xterm.js already present."
+    fi
+
+    section "Desktop shortcuts"
+    mkdir -p "$HOME/Desktop"
+
+    cat > "$HOME/Desktop/Tremplin.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Tremplin
+Comment=Open the live scoreboard
+Exec=xdg-open http://${SERVER_HOSTNAME}.local/live
+Icon=video-display
+Terminal=false
+StartupNotify=false
+EOF
+    cat > "$HOME/Desktop/Settings.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Settings
+Comment=Open the scoreboard admin page
+Exec=xdg-open http://${SERVER_HOSTNAME}.local/settings
+Icon=preferences-system
+Terminal=false
+StartupNotify=false
+EOF
+    cat > "$HOME/Desktop/Mobile.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Mobile
+Comment=Open the mobile view
+Exec=xdg-open http://${SERVER_HOSTNAME}.local/mobile
+Icon=input-tablet
+Terminal=false
+StartupNotify=false
+EOF
+    cat > "$HOME/Desktop/Reinstall.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Reinstall Tremplin
+Comment=Re-run the Tremplin install script
+Exec=lxterminal -e bash -c 'bash ${INSTALL_DIR}/install/install.sh; echo; read -rp "Press Enter to close…"'
+Icon=system-software-install
+Terminal=false
+StartupNotify=false
+EOF
+    chmod +x "$HOME/Desktop/Tremplin.desktop" \
+              "$HOME/Desktop/Settings.desktop" \
+              "$HOME/Desktop/Mobile.desktop" \
+              "$HOME/Desktop/Reinstall.desktop"
+
+    # Disable the "executable script" dialog in PCManFM/libfm
+    mkdir -p "$HOME/.config/libfm"
+    if grep -q "quick_exec" "$HOME/.config/libfm/libfm.conf" 2>/dev/null; then
+        sed -i 's/quick_exec=.*/quick_exec=1/' "$HOME/.config/libfm/libfm.conf"
+    else
+        echo -e "[config]\nquick_exec=1" >> "$HOME/.config/libfm/libfm.conf"
+    fi
+    info "Desktop shortcuts created (Tremplin, Settings, Mobile)."
+
+    section "Chromium bookmarks"
+    python3 - <<'PYEOF'
+import json, os, uuid
+from itertools import chain
+
+path = os.path.expanduser('~/.config/chromium/Default/Bookmarks')
+os.makedirs(os.path.dirname(path), exist_ok=True)
+
+empty = {"checksum": "", "version": 1, "roots": {
+    "bookmark_bar": {"id": "1", "type": "folder", "name": "Bookmarks bar",
+                     "guid": "0bc5d13f-2cba-5d74-951f-3f233fe6c908",
+                     "children": [], "date_added": "13270163645000000",
+                     "date_last_used": "0", "date_modified": "0"},
+    "other":        {"id": "2", "type": "folder", "name": "Other bookmarks",
+                     "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
+                     "children": [], "date_added": "13270163645000000",
+                     "date_last_used": "0", "date_modified": "0"},
+    "synced":       {"id": "3", "type": "folder", "name": "Mobile bookmarks",
+                     "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
+                     "children": [], "date_added": "13270163645000000",
+                     "date_last_used": "0", "date_modified": "0"},
+}}
+
+data = json.load(open(path)) if os.path.exists(path) else empty
+
+def all_ids(node):
+    yield int(node.get('id', 0))
+    for c in node.get('children', []):
+        yield from all_ids(c)
+
+next_id = max(chain(
+    all_ids(data['roots']['bookmark_bar']),
+    all_ids(data['roots']['other']),
+    all_ids(data['roots']['synced']),
+), default=0) + 1
+
+bookmarks = [
+    ("Tremplin", "http://localhost:5000/live"),
+    ("Settings",   "http://localhost:5000/settings"),
+    ("Help",       "http://localhost:5000/help"),
+]
+
+bar = data['roots']['bookmark_bar']
+existing = {c['url'] for c in bar.get('children', []) if c.get('type') == 'url'}
+
+added = 0
+for name, url in bookmarks:
+    if url not in existing:
+        bar.setdefault('children', []).append({
+            "date_added": "13270163645000000", "date_last_used": "0",
+            "guid": str(uuid.uuid4()), "id": str(next_id),
+            "name": name, "type": "url", "url": url,
+        })
+        next_id += 1
+        added += 1
+
+json.dump(data, open(path, 'w'), indent=3)
+print(f"Added {added} Chromium bookmark(s).")
+PYEOF
+
+    section "Desktop wallpaper"
+    WALLPAPER="$INSTALL_DIR/shared/static/img/scoreboard_bg.png"
+    if [[ -f "$WALLPAPER" ]]; then
+        PCMANFM_CONF="$HOME/.config/pcmanfm/LXDE-pi"
+        mkdir -p "$PCMANFM_CONF"
+        # Set wallpaper for both monitor outputs (pcmanfm desktop config)
+        for conf in "$PCMANFM_CONF/desktop-items-0.conf" "$PCMANFM_CONF/desktop-items-1.conf"; do
+            cat > "$conf" <<WALLEOF
+[*]
+wallpaper_mode=fit
+wallpaper_common=1
+wallpaper=$WALLPAPER
+WALLEOF
+        done
+        # Apply immediately if desktop is running
+        pcmanfm --set-wallpaper "$WALLPAPER" --wallpaper-mode=fit 2>/dev/null || true
+        info "Desktop wallpaper set to scoreboard_bg.png"
+    else
+        warn "Wallpaper image not found — skipping."
+    fi
+
+    section "systemd service"
+    # tremplin.service is generated by refresh-service.sh — the single source of
+    # truth for the unit. The in-app update flow runs the same script before each
+    # restart, so a changed entrypoint/layout self-heals instead of crash-looping
+    # on a stale unit. See install/scripts/refresh-service.sh.
+    sudo "$INSTALL_DIR/install/scripts/refresh-service.sh"
+    info "Service enabled (tremplin.service). Serial port: $SERIAL_PORT"
+
+    # Record which provisioning version this full install applied. The app
+    # compares it against install/PROVISION_VERSION and nudges for a reinstall
+    # when a change needs privileges/steps the in-app update can't self-apply.
+    cp "$INSTALL_DIR/install/PROVISION_VERSION" "$HOME/TremplinData/.provisioned_version"
+    warn "Change the serial port in the web UI if your adapter appears as a different device."
+
+    section "VNC remote access"
+    sudo apt-get install -y realvnc-vnc-server
+    if command -v raspi-config &>/dev/null; then
+        sudo raspi-config nonint do_vnc 0
+        info "VNC enabled. Connect with RealVNC Viewer → ${SERVER_IP%/*}"
+    else
+        warn "raspi-config not found — enable VNC manually via: sudo raspi-config → Interface Options → VNC"
+    fi
+
+    section "Firewall"
+    sudo ufw --force enable
+    sudo ufw default deny incoming
+    sudo ufw default allow outgoing
+    sudo ufw allow in on eth0
+    sudo ufw allow in on wlan0
+    info "Firewall enabled — all incoming traffic allowed on eth0 and wlan0"
+
+    section "Hostname"
+    sudo hostnamectl set-hostname "$SERVER_HOSTNAME"
+    if grep -q "127.0.1.1" /etc/hosts; then
+        sudo sed -i "s/127\.0\.1\.1.*/127.0.1.1\t${SERVER_HOSTNAME}/" /etc/hosts
+    else
+        echo "127.0.1.1	${SERVER_HOSTNAME}" | sudo tee -a /etc/hosts > /dev/null
+    fi
+    info "Hostname set to ${SERVER_HOSTNAME} — device will appear as ${SERVER_HOSTNAME}.local"
+
+    section "mDNS aliases"
+    sudo apt-get install -y avahi-utils
+
+    # Stop avahi from publishing IPv6 link-local (fe80::) records. On a
+    # multihomed/WiFi Pi, browsers resolving tremplin.local may prefer the
+    # AAAA link-local address, which is unroutable without a zone index, so the
+    # page fails to load even though IPv4 works fine.
+    #   - use-ipv6=no            disables the IPv6 mDNS transport
+    #   - publish-aaaa-on-ipv4=no stops the AAAA record being announced over
+    #     IPv4 (this one defaults to YES and is the actual culprit)
+    # See docs/troubleshooting-tremplin-local-unreachable.md
+    _avahi_set() {  # _avahi_set <key> <value> <section>
+        if grep -q "^#*[[:space:]]*$1=" /etc/avahi/avahi-daemon.conf; then
+            sudo sed -i "s/^#*[[:space:]]*$1=.*/$1=$2/" /etc/avahi/avahi-daemon.conf
+        else
+            sudo sed -i "/^\[$3\]/a $1=$2" /etc/avahi/avahi-daemon.conf
+        fi
+    }
+    _avahi_set use-ipv6 no server
+    _avahi_set publish-aaaa-on-ipv4 no publish
+    sudo systemctl restart avahi-daemon
+
+    # Translated aliases are published at the live interface IP, re-detected at
+    # service start by mdns-aliases.sh — so they resolve on a DHCP setup instead
+    # of the old install-time-baked static 10.10.10.10.
+    sudo tee /etc/systemd/system/tremplin-mdns-aliases.service > /dev/null <<EOF
+[Unit]
+Description=mDNS aliases for Tremplin
+After=avahi-daemon.service
+Requires=avahi-daemon.service
+
+[Service]
+Type=simple
+ExecStart=$INSTALL_DIR/install/scripts/mdns-aliases.sh $MDNS_ALIASES
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now tremplin-mdns-aliases
+    info "mDNS aliases active: $MDNS_ALIASES → (live interface IP)"
+
+    section "Port 80 redirect"
+    sudo tee /etc/systemd/system/tremplin-redirect.service > /dev/null <<EOF
+[Unit]
+Description=Tremplin port 80 to 5000 redirect
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 5000 && iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port 5000'
+ExecStop=/bin/sh -c 'iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 5000; iptables -t nat -D OUTPUT -p tcp --dport 80 -j REDIRECT --to-port 5000'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now tremplin-redirect
+    info "Port 80 redirects to 5000 — http://${SERVER_IP%/*}/ reaches the scoreboard"
+
+    section "Network — Pi #1"
+    configure_static_ip "$SERVER_IP"
+
+    section "Real-time clock (Adafruit PiRTC DS3231)"
+    echo "Adds a hardware clock so the Pi keeps accurate time without network access."
+    if confirm "Install Adafruit PiRTC (DS3231) support now?"; then
+        sudo bash "$INSTALL_DIR/install/scripts/rtc_setup.sh" enable
+        info "RTC configured — will become active after reboot."
+    else
+        info "Skipping RTC setup — can be installed later from Settings → Clock."
+    fi
+
+    section "Done — Pi #1 (server)"
+    echo
+    echo -e "  Install dir : $INSTALL_DIR"
+    echo -e "  Start server: ${BOLD}sudo systemctl start tremplin${NC}"
+    echo -e "  Logs        : ${BOLD}journalctl -u tremplin -f${NC}"
+    echo -e "  Scoreboard  : ${BOLD}http://${SERVER_HOSTNAME}.local/${NC}  or  http://${SERVER_IP%/*}/"
+    echo -e "  Admin UI    : ${BOLD}http://${SERVER_HOSTNAME}.local/settings${NC}"
+    echo -e "  Mobile view : ${BOLD}http://${SERVER_HOSTNAME}.local/mobile${NC}"
+    echo -e "  Aliases     : $MDNS_ALIASES"
+    echo -e "  Meet files  : ~/TremplinData/meet/*.lxf"
+    echo -e "  Settings    : ~/TremplinData/settings.json"
+    echo
+    echo
+    confirm "Reboot now to apply group membership and network changes?" && sudo reboot
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# KIOSK (Pi #2)
+# ═══════════════════════════════════════════════════════════════════════════════
+if [[ "$ROLE" == "kiosk" ]]; then
+
+    section "Desktop autologin"
+    if command -v raspi-config &>/dev/null; then
+        sudo raspi-config nonint do_boot_behaviour B4
+        info "Desktop autologin enabled — kiosk will boot straight to Chromium."
+    else
+        warn "raspi-config not found — enable manually via: sudo raspi-config → System Options → Boot / Auto Login → Desktop Autologin"
+    fi
+
+    section "Display resolution (1080p)"
+    if [[ -f /boot/firmware/config.txt ]]; then
+        CONFIG_TXT="/boot/firmware/config.txt"
+    else
+        CONFIG_TXT="/boot/config.txt"
+    fi
+    if ! grep -q "# Tremplin kiosk" "$CONFIG_TXT"; then
+        sudo tee -a "$CONFIG_TXT" > /dev/null <<EOF
+
+# Tremplin kiosk — force 1920x1080 HDMI output
+hdmi_force_hotplug=1
+hdmi_group=2
+hdmi_mode=82
+EOF
+        info "HDMI forced to 1920x1080 (DMT mode 82) — takes effect after reboot."
+    else
+        info "Display resolution already configured — skipping."
+    fi
+
+    section "Chromium kiosk autostart"
+    CHROMIUM_BIN="chromium-browser"
+    command -v chromium-browser &>/dev/null || CHROMIUM_BIN="chromium"
+    KIOSK_CMD="$CHROMIUM_BIN --kiosk --app=$SCOREBOARD_URL --noerrdialogs --disable-infobars --password-store=basic"
+
+    # Raspberry Pi OS Bookworm/Trixie — Wayland session via labwc
+    LABWC_AUTOSTART="$HOME/.config/labwc/autostart"
+    mkdir -p "$(dirname "$LABWC_AUTOSTART")"
+    touch "$LABWC_AUTOSTART"
+    if ! grep -q "# Tremplin kiosk" "$LABWC_AUTOSTART"; then
+        printf '\n# Tremplin kiosk\n%s &\n' "$KIOSK_CMD" >> "$LABWC_AUTOSTART"
+    fi
+
+    # Older Raspberry Pi OS releases — LXDE / X11 session
+    AUTOSTART_DIR=/etc/xdg/lxsession/LXDE-pi
+    sudo mkdir -p "$AUTOSTART_DIR"
+    sudo tee "$AUTOSTART_DIR/autostart" > /dev/null <<EOF
+@xset s off
+@xset -dpms
+@xset s noblank
+@$KIOSK_CMD
+EOF
+    info "Kiosk autostart configured ($CHROMIUM_BIN) → $SCOREBOARD_URL"
+
+    section "Desktop wallpaper"
+    WALLPAPER="$HOME/.config/tremplin/scoreboard_bg.png"
+    WALLPAPER_URL="${REPO_URL%.git}"
+    WALLPAPER_URL="${WALLPAPER_URL/github.com/raw.githubusercontent.com}/master/shared/static/img/scoreboard_bg.png"
+    mkdir -p "$(dirname "$WALLPAPER")"
+    if curl -fsSL "$WALLPAPER_URL" -o "$WALLPAPER"; then
+        PCMANFM_CONF="$HOME/.config/pcmanfm/LXDE-pi"
+        mkdir -p "$PCMANFM_CONF"
+        for conf in "$PCMANFM_CONF/desktop-items-0.conf" "$PCMANFM_CONF/desktop-items-1.conf"; do
+            cat > "$conf" <<WALLEOF
+[*]
+wallpaper_mode=fit
+wallpaper_common=1
+wallpaper=$WALLPAPER
+WALLEOF
+        done
+        pcmanfm --set-wallpaper "$WALLPAPER" --wallpaper-mode=fit 2>/dev/null || true
+        info "Desktop wallpaper set to scoreboard_bg.png"
+    else
+        warn "Could not download wallpaper from $WALLPAPER_URL — skipping."
+    fi
+
+    section "VNC remote access"
+    sudo apt-get install -y realvnc-vnc-server
+    if command -v raspi-config &>/dev/null; then
+        sudo raspi-config nonint do_vnc 0
+        info "VNC enabled. Connect with RealVNC Viewer → (DHCP — check router for kiosk IP)"
+    else
+        warn "raspi-config not found — enable VNC manually via: sudo raspi-config → Interface Options → VNC"
+    fi
+
+    section "Firewall"
+    sudo ufw --force enable
+    sudo ufw default deny incoming
+    sudo ufw default allow outgoing
+    sudo ufw allow in on eth0
+    sudo ufw allow in on wlan0
+    info "Firewall enabled — all incoming traffic allowed on eth0 and wlan0"
+
+    section "Done — Pi #2 (kiosk)"
+    echo
+    echo -e "  Displays    : ${BOLD}$SCOREBOARD_URL${NC}"
+    echo
+    warn "Pi #1 (server) must be running and reachable at $KIOSK_GATEWAY before the kiosk boots."
+    echo
+    confirm "Reboot now?" && sudo reboot
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CLOUD (Debian VM — public relay server)
+# ═══════════════════════════════════════════════════════════════════════════════
+if [[ "$ROLE" == "cloud" ]]; then
+
+    # ── User bootstrap (runs once as root on a fresh server) ──────────────────
+    if [[ "$(id -u)" == "0" ]]; then
+        section "User setup"
+        TREMPLIN_USER="tremplin"
+
+        if ! id "$TREMPLIN_USER" &>/dev/null; then
+            useradd -m -s /bin/bash "$TREMPLIN_USER"
+            info "User '$TREMPLIN_USER' created."
+        else
+            info "User '$TREMPLIN_USER' already exists."
+        fi
+
+        usermod -aG sudo "$TREMPLIN_USER"
+
+        # Set a password so tremplin can use sudo normally after the install
+        echo
+        while true; do
+            read -rsp "Set a password for '$TREMPLIN_USER': " _pw1; echo
+            read -rsp "Confirm password: " _pw2; echo
+            if [[ "$_pw1" == "$_pw2" && -n "$_pw1" ]]; then
+                echo "$TREMPLIN_USER:$_pw1" | chpasswd
+                info "Password set for '$TREMPLIN_USER'."
+                unset _pw1 _pw2
+                break
+            fi
+            warn "Passwords did not match or were empty — try again."
+        done
+
+        # Passwordless sudo only for the duration of the install
+        echo "$TREMPLIN_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/tremplin
+        chmod 0440 /etc/sudoers.d/tremplin
+        info "Temporary NOPASSWD sudo granted for install."
+
+        # Copy root's SSH authorized_keys so the server stays reachable
+        if [[ -f /root/.ssh/authorized_keys ]]; then
+            install -d -m 700 -o "$TREMPLIN_USER" -g "$TREMPLIN_USER" \
+                "/home/$TREMPLIN_USER/.ssh"
+            install -m 600 -o "$TREMPLIN_USER" -g "$TREMPLIN_USER" \
+                /root/.ssh/authorized_keys \
+                "/home/$TREMPLIN_USER/.ssh/authorized_keys"
+            info "SSH authorized_keys copied from root → '$TREMPLIN_USER' can log in via SSH."
+        else
+            warn "No /root/.ssh/authorized_keys — configure SSH access for '$TREMPLIN_USER' manually."
+        fi
+
+        # Harden root access
+        passwd -l root
+        info "Root password locked."
+        sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+        sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+        systemctl restart ssh
+        info "Root SSH login disabled, password auth disabled — key-only SSH from now on."
+
+        # Copy this script to tremplin's home and re-exec as that user
+        _script_src="$(realpath "${BASH_SOURCE[0]}")"
+        _script_dst="/home/$TREMPLIN_USER/install.sh"
+        install -m 755 -o "$TREMPLIN_USER" -g "$TREMPLIN_USER" \
+            "$_script_src" "$_script_dst"
+        info "Re-running install as '$TREMPLIN_USER'…"
+        exec sudo -H -u "$TREMPLIN_USER" bash "$_script_dst" cloud "$VERSION_CHOICE"
+    fi
+    # ──────────────────────────────────────────────────────────────────────────
+
+    section "System packages"
+    ensure_https_apt_sources
+    sudo apt-get update -qq
+    sudo apt-get upgrade -y
+    sudo apt-get install -y git curl fail2ban unattended-upgrades
+
+    section "fail2ban"
+    sudo tee /etc/fail2ban/jail.d/sshd.local > /dev/null <<'EOF'
+[sshd]
+enabled  = true
+maxretry = 5
+bantime  = 1h
+findtime = 10m
+EOF
+    sudo systemctl enable --now fail2ban
+    info "fail2ban enabled — SSH: 5 failures in 10 min → 1 h ban."
+
+    section "Automatic security updates"
+    sudo tee /etc/apt/apt.conf.d/20auto-upgrades > /dev/null <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+    info "Unattended security upgrades enabled."
+
+    section "Docker"
+    if ! command -v docker &>/dev/null; then
+        curl -fsSL https://get.docker.com | sh
+        sudo usermod -aG docker "$USER"
+        info "Docker installed. You may need to log out and back in for group membership to take effect."
+    else
+        info "Docker already installed: $(docker --version)"
+    fi
+
+    section "Project"
+    if [[ -d "$INSTALL_DIR/.git" ]]; then
+        info "Updating existing repo at $INSTALL_DIR"
+        git -C "$INSTALL_DIR" pull
+    else
+        info "Cloning $REPO_URL → $INSTALL_DIR"
+        git clone "$REPO_URL" "$INSTALL_DIR"
+    fi
+
+    CLOUD_DIR="$INSTALL_DIR/cloud"
+
+    section "Environment file"
+    if [[ ! -f "$CLOUD_DIR/.env" ]]; then
+        cp "$CLOUD_DIR/.env.example" "$CLOUD_DIR/.env"
+        SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+        sed -i "s/^SECRET_KEY=.*/SECRET_KEY=${SECRET}/" "$CLOUD_DIR/.env"
+
+        echo
+        read -rp "Set the admin username for the /admin panel [admin]: " _au
+        _au="${_au:-admin}"
+        sed -i "s/^ADMIN_USER=.*/ADMIN_USER=${_au}/" "$CLOUD_DIR/.env"
+        info "ADMIN_USER set to '${_au}'."
+
+        while true; do
+            read -rsp "Set the admin password for the /admin panel: " _ap1; echo
+            read -rsp "Confirm admin password: " _ap2; echo
+            if [[ "$_ap1" == "$_ap2" && -n "$_ap1" ]]; then
+                sed -i "s/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=${_ap1}/" "$CLOUD_DIR/.env"
+                info "ADMIN_PASSWORD set."
+                unset _ap1 _ap2
+                break
+            fi
+            warn "Passwords did not match or were empty — try again."
+        done
+
+        info "Created $CLOUD_DIR/.env with generated SECRET_KEY, ADMIN_USER, and ADMIN_PASSWORD."
+    else
+        info ".env already exists — skipping."
+    fi
+
+    section "Deploy webhook"
+    if grep -q "^DEPLOY_SECRET=change_me" "$CLOUD_DIR/.env" 2>/dev/null || \
+       ! grep -q "^DEPLOY_SECRET=" "$CLOUD_DIR/.env" 2>/dev/null; then
+        _deploy_secret=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+        if grep -q "^DEPLOY_SECRET=" "$CLOUD_DIR/.env" 2>/dev/null; then
+            sed -i "s/^DEPLOY_SECRET=.*$/DEPLOY_SECRET=${_deploy_secret}/" "$CLOUD_DIR/.env"
+        else
+            echo "DEPLOY_SECRET=${_deploy_secret}" >> "$CLOUD_DIR/.env"
+        fi
+        info "DEPLOY_SECRET generated and saved to .env"
+    else
+        info "DEPLOY_SECRET already set in .env — keeping existing value."
+    fi
+    sed \
+        -e "s|YOUR_INSTALL_DIR|${INSTALL_DIR}|g" \
+        -e "s|YOUR_USER|${USER}|g" \
+        "$CLOUD_DIR/deploy_webhook.service" \
+        > /tmp/deploy-webhook.service
+    sudo install -m 644 /tmp/deploy-webhook.service /etc/systemd/system/deploy-webhook.service
+    rm /tmp/deploy-webhook.service
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now deploy-webhook
+    info "Deploy webhook enabled on port 9000 — powers the Update button in /admin."
+    sudo ufw allow from 172.16.0.0/12 to any port 9000 comment "Docker → deploy webhook"
+    info "ufw: Docker bridge networks (172.16/12) allowed to reach port 9000."
+
+    # Allow the webhook process to restart itself after a deploy (no password prompt)
+    echo "${USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart deploy-webhook" \
+        | sudo tee /etc/sudoers.d/tremplin-webhook > /dev/null
+    sudo chmod 0440 /etc/sudoers.d/tremplin-webhook
+    info "Sudoers rule added: deploy-webhook can self-restart without a password."
+
+    section "Caddyfile domain"
+    _current_domain=$(grep -E '^\S+\s*\{' "$CLOUD_DIR/Caddyfile" | awk '{print $1}')
+    echo
+    echo "  Current domain: ${_current_domain:-not set}"
+    read -rp "  Enter domain name (leave blank to keep current): " _domain
+    if [[ -n "$_domain" && "$_domain" != "$_current_domain" ]]; then
+        sed -i "s|^\S\+\s*{|${_domain} {|" "$CLOUD_DIR/Caddyfile"
+        info "Caddyfile updated: $_domain"
+    else
+        info "Domain unchanged: ${_current_domain}"
+    fi
+
+    section "Firewall"
+    if command -v ufw &>/dev/null; then
+        sudo ufw --force enable
+        sudo ufw default deny incoming
+        sudo ufw default allow outgoing
+        sudo ufw allow 22/tcp    # SSH
+        sudo ufw allow 80/tcp    # HTTP  (Caddy ACME challenge + redirect)
+        sudo ufw allow 443/tcp   # HTTPS
+        sudo ufw allow 443/udp   # HTTP/3
+        info "Firewall enabled — ports 22, 80, 443 open."
+    else
+        warn "ufw not found — configure firewall manually (open ports 22, 80, 443)."
+    fi
+
+    section "Build and start"
+    cd "$CLOUD_DIR"
+    sg docker -c "docker compose --env-file .env up -d --build"
+    info "Cloud server started."
+
+    section "Done — Cloud server"
+    echo
+    echo -e "  Install dir  : $INSTALL_DIR"
+    echo -e "  Cloud dir    : $CLOUD_DIR"
+    echo -e "  Logs         : ${BOLD}cd $CLOUD_DIR && docker compose logs -f${NC}"
+    _final_domain=$(grep -E '^\S+\s*\{' "$CLOUD_DIR/Caddyfile" | awk '{print $1}')
+    echo -e "  Admin UI     : ${BOLD}https://${_final_domain}/admin${NC}"
+    echo -e "  Update       : ${BOLD}Update button in /admin${NC}  (or: cd $INSTALL_DIR && git pull && cd cloud && docker compose up -d --build)"
+    echo
+    echo
+
+    # Remove the temporary NOPASSWD rule — sudo now requires the password set above
+    sudo rm -f /etc/sudoers.d/tremplin
+    info "Temporary NOPASSWD sudo rule removed."
+fi
