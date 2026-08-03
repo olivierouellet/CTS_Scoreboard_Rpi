@@ -10,7 +10,7 @@ dependencies = [
     "itsdangerous",
     "pyserial",
     "websocket-client",
-    "pillow",
+    "pillow>=12.3.0",
 ]
 
 [dependency-groups]
