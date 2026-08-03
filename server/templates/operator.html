@@ -261,7 +261,7 @@ function updateWallClock() {
 updateWallClock();
 setInterval(updateWallClock, 1000);
 
-var sock = tremplinSocket('/ws/scoreboard');
+var sock = splouchSocket('/ws/scoreboard');
 
 sock.on('update_scoreboard', function(d) {
     if ('running_time' in d) {

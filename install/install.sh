@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tremplin — Raspberry Pi install script
+# Splouch — Raspberry Pi install script
 #
 # Usage:
 #   bash install.sh           interactive role selection
@@ -11,12 +11,20 @@
 set -euo pipefail
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-REPO_URL="https://github.com/olivierouellet/Tremplin.git"
-INSTALL_DIR="$HOME/Tremplin"
+REPO_URL="https://github.com/olivierouellet/Splouch.git"
+
+# Provision for the real owner of the checkout, not root. The in-app Reinstall
+# runs this script non-interactively in a detached systemd scope as root, passing
+# SPLOUCH_TARGET_USER; interactive runs resolve to the invoking (or sudo) user.
+TARGET_USER="${SPLOUCH_TARGET_USER:-${SUDO_USER:-$USER}}"
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+TARGET_HOME="${TARGET_HOME:-$HOME}"
+
+INSTALL_DIR="$TARGET_HOME/Splouch"          # default for fresh installs; existing checkouts are auto-detected
 SERVER_IP="10.10.10.10/24"
 KIOSK_GATEWAY="10.0.0.1"
-SERVER_HOSTNAME="tremplin"                 # broadcasts as tremplin.local on the network
-MDNS_ALIASES="tableau.local marcador.local" # space-separated translated mDNS aliases
+SERVER_HOSTNAME="splouch"                   # broadcasts as splouch.local on the network
+MDNS_ALIASES="tableau.local marcador.local tremplin.local"  # translated aliases + legacy name for old bookmarks
 SCOREBOARD_URL="http://${SERVER_HOSTNAME}.local"
 SERIAL_PORT="/dev/ttyUSB0"
 # ──────────────────────────────────────────────────────────────────────────────
@@ -26,7 +34,25 @@ info()    { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 section() { echo -e "\n${BOLD}──── $* ────${NC}"; }
-confirm() { read -rp "$1 [y/N] " _r; [[ "${_r:-}" =~ ^[Yy]$ ]]; }
+# Auto-answer No in non-interactive mode (the in-app Reinstall has no TTY), so
+# optional prompts (static IP, RTC, reboot) safely keep the current config.
+confirm() {
+    if [[ "${SPLOUCH_NONINTERACTIVE:-}" == "1" ]]; then
+        info "Non-interactive — skipping: $1"
+        return 1
+    fi
+    read -rp "$1 [y/N] " _r; [[ "${_r:-}" =~ ^[Yy]$ ]]
+}
+
+# Run a command as the target user when we're root (detached reinstall); run it
+# directly otherwise. Keeps user-owned files (data dir, venv, desktop) correct.
+as_user() {
+    if [[ ${EUID:-$(id -u)} -eq 0 && "$TARGET_USER" != "root" ]]; then
+        sudo -u "$TARGET_USER" -H "$@"
+    else
+        "$@"
+    fi
+}
 
 # Some networks (corporate/intranet proxies) intercept plain HTTP and return a
 # fake 404 for apt's Release files, breaking `apt-get update`. Switching the apt
@@ -44,6 +70,7 @@ ensure_https_apt_sources() {
 
 # ── Role selection ─────────────────────────────────────────────────────────────
 ROLE="${1:-}"
+if [[ -z "$ROLE" && "${SPLOUCH_NONINTERACTIVE:-}" == "1" ]]; then ROLE="server"; fi
 if [[ -z "$ROLE" ]]; then
     echo
     echo "Which role is this?"
@@ -70,6 +97,7 @@ info "Role: $ROLE"
 
 # ── Version selection ─────────────────────────────────────────────────────────
 VERSION_CHOICE="${2:-}"
+if [[ -z "$VERSION_CHOICE" && "${SPLOUCH_NONINTERACTIVE:-}" == "1" ]]; then VERSION_CHOICE="master"; fi
 if [[ -z "$VERSION_CHOICE" ]]; then
     echo
     echo "Which version to install?"
@@ -103,19 +131,19 @@ configure_static_ip() {
     if systemctl is-active --quiet dhcpcd 2>/dev/null; then
         # Raspberry Pi OS Bullseye — dhcpcd
         local conf=/etc/dhcpcd.conf
-        if ! grep -q "# Tremplin" "$conf" 2>/dev/null; then
+        if ! grep -q "# Splouch" "$conf" 2>/dev/null; then
             {
-                printf '\n# Tremplin\ninterface eth0\nstatic ip_address=%s\n' "$ip"
+                printf '\n# Splouch\ninterface eth0\nstatic ip_address=%s\n' "$ip"
                 [[ -n "$gateway" ]] && printf 'static routers=%s\n' "$gateway"
             } | sudo tee -a "$conf" > /dev/null
         else
-            warn "dhcpcd.conf already has a Tremplin entry — skipping."
+            warn "dhcpcd.conf already has a Splouch entry — skipping."
         fi
         sudo systemctl restart dhcpcd
 
     elif command -v nmcli &>/dev/null; then
         # Raspberry Pi OS Bookworm — NetworkManager
-        local con="tremplin-eth"
+        local con="splouch-eth"
         local -a args=(type ethernet ifname eth0 con-name "$con"
             ipv4.method manual ipv4.addresses "$ip"
             connection.autoconnect yes)
@@ -198,31 +226,35 @@ if [[ "$ROLE" == "server" ]]; then
     info "Virtual environment ready at $INSTALL_DIR/.venv"
 
     section "Sudo permissions"
-    SUDOERS_FILE="/etc/sudoers.d/tremplin"
+    SUDOERS_FILE="/etc/sudoers.d/splouch"
     sudo tee "$SUDOERS_FILE" > /dev/null <<EOF
-$USER ALL=(ALL) NOPASSWD: /usr/bin/timedatectl, /usr/bin/systemctl restart systemd-timesyncd, /usr/bin/nmcli, /usr/bin/apt-get, /usr/bin/systemctl restart tremplin, /usr/sbin/reboot, /usr/sbin/poweroff, $INSTALL_DIR/install/scripts/rtc_setup.sh *, $INSTALL_DIR/install/scripts/refresh-service.sh
+$TARGET_USER ALL=(ALL) NOPASSWD: /usr/bin/timedatectl, /usr/bin/systemctl restart systemd-timesyncd, /usr/bin/nmcli, /usr/bin/apt-get, /usr/bin/systemctl restart splouch, /usr/sbin/reboot, /usr/sbin/poweroff, $INSTALL_DIR/install/scripts/rtc_setup.sh *, $INSTALL_DIR/install/scripts/refresh-service.sh, $INSTALL_DIR/install/scripts/web-reinstall.sh *
 EOF
     sudo chmod 0440 "$SUDOERS_FILE"
+    sudo rm -f /etc/sudoers.d/tremplin        # retire the pre-rename grant
     info "Sudoers rules written to $SUDOERS_FILE"
 
     section "Serial port access"
-    if ! groups "$USER" | grep -qw dialout; then
-        sudo usermod -aG dialout "$USER"
-        warn "Added $USER to 'dialout' group — takes effect after next login / reboot."
+    if ! groups "$TARGET_USER" | grep -qw dialout; then
+        sudo usermod -aG dialout "$TARGET_USER"
+        warn "Added $TARGET_USER to 'dialout' group — takes effect after next login / reboot."
     else
-        info "$USER already in 'dialout' group."
+        info "$TARGET_USER already in 'dialout' group."
     fi
 
     section "Data folders"
-    mkdir -p "$HOME/TremplinData/meet"
-    mkdir -p "$HOME/TremplinData/images"
-    mkdir -p "$HOME/TremplinData/icons"
-    mkdir -p "$HOME/TremplinData/recorded"
-    info "~/TremplinData/{meet,images,icons,recorded} created."
+    # Migrate the pre-Splouch data dir if present (the app also does this on start).
+    if [[ ! -d "$TARGET_HOME/SplouchData" && -d "$TARGET_HOME/TremplinData" ]]; then
+        as_user mv "$TARGET_HOME/TremplinData" "$TARGET_HOME/SplouchData"
+        info "Migrated ~/TremplinData → ~/SplouchData."
+    fi
+    as_user mkdir -p "$TARGET_HOME/SplouchData/meet" "$TARGET_HOME/SplouchData/images" \
+                     "$TARGET_HOME/SplouchData/icons" "$TARGET_HOME/SplouchData/recorded"
+    info "~/SplouchData/{meet,images,icons,recorded} created."
 
     section "Settings"
-    if [[ ! -f "$HOME/TremplinData/settings.json" ]]; then
-        cp "$INSTALL_DIR/server/settings.default.json" "$HOME/TremplinData/settings.json"
+    if [[ ! -f "$TARGET_HOME/SplouchData/settings.json" ]]; then
+        as_user cp "$INSTALL_DIR/server/settings.default.json" "$TARGET_HOME/SplouchData/settings.json"
         info "settings.json copied from default."
     else
         info "settings.json already exists — skipping."
@@ -244,20 +276,21 @@ EOF
     fi
 
     section "Desktop shortcuts"
-    mkdir -p "$HOME/Desktop"
+    mkdir -p "$TARGET_HOME/Desktop"
+    rm -f "$TARGET_HOME/Desktop/Tremplin.desktop"   # retire the pre-rename launcher
 
-    cat > "$HOME/Desktop/Tremplin.desktop" <<EOF
+    cat > "$TARGET_HOME/Desktop/Splouch.desktop" <<EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Tremplin
+Name=Splouch
 Comment=Open the live scoreboard
 Exec=xdg-open http://${SERVER_HOSTNAME}.local/live
 Icon=video-display
 Terminal=false
 StartupNotify=false
 EOF
-    cat > "$HOME/Desktop/Settings.desktop" <<EOF
+    cat > "$TARGET_HOME/Desktop/Settings.desktop" <<EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
@@ -268,7 +301,7 @@ Icon=preferences-system
 Terminal=false
 StartupNotify=false
 EOF
-    cat > "$HOME/Desktop/Mobile.desktop" <<EOF
+    cat > "$TARGET_HOME/Desktop/Mobile.desktop" <<EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
@@ -279,30 +312,30 @@ Icon=input-tablet
 Terminal=false
 StartupNotify=false
 EOF
-    cat > "$HOME/Desktop/Reinstall.desktop" <<EOF
+    cat > "$TARGET_HOME/Desktop/Reinstall.desktop" <<EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Reinstall Tremplin
-Comment=Re-run the Tremplin install script
+Name=Reinstall Splouch
+Comment=Re-run the Splouch install script
 Exec=lxterminal -e bash -c 'bash ${INSTALL_DIR}/install/install.sh; echo; read -rp "Press Enter to close…"'
 Icon=system-software-install
 Terminal=false
 StartupNotify=false
 EOF
-    chmod +x "$HOME/Desktop/Tremplin.desktop" \
-              "$HOME/Desktop/Settings.desktop" \
-              "$HOME/Desktop/Mobile.desktop" \
-              "$HOME/Desktop/Reinstall.desktop"
+    chmod +x "$TARGET_HOME/Desktop/Splouch.desktop" \
+              "$TARGET_HOME/Desktop/Settings.desktop" \
+              "$TARGET_HOME/Desktop/Mobile.desktop" \
+              "$TARGET_HOME/Desktop/Reinstall.desktop"
 
     # Disable the "executable script" dialog in PCManFM/libfm
-    mkdir -p "$HOME/.config/libfm"
-    if grep -q "quick_exec" "$HOME/.config/libfm/libfm.conf" 2>/dev/null; then
-        sed -i 's/quick_exec=.*/quick_exec=1/' "$HOME/.config/libfm/libfm.conf"
+    mkdir -p "$TARGET_HOME/.config/libfm"
+    if grep -q "quick_exec" "$TARGET_HOME/.config/libfm/libfm.conf" 2>/dev/null; then
+        sed -i 's/quick_exec=.*/quick_exec=1/' "$TARGET_HOME/.config/libfm/libfm.conf"
     else
-        echo -e "[config]\nquick_exec=1" >> "$HOME/.config/libfm/libfm.conf"
+        echo -e "[config]\nquick_exec=1" >> "$TARGET_HOME/.config/libfm/libfm.conf"
     fi
-    info "Desktop shortcuts created (Tremplin, Settings, Mobile)."
+    info "Desktop shortcuts created (Splouch, Settings, Mobile)."
 
     section "Chromium bookmarks"
     python3 - <<'PYEOF'
@@ -341,7 +374,7 @@ next_id = max(chain(
 ), default=0) + 1
 
 bookmarks = [
-    ("Tremplin", "http://localhost:5000/live"),
+    ("Splouch", "http://localhost:5000/live"),
     ("Settings",   "http://localhost:5000/settings"),
     ("Help",       "http://localhost:5000/help"),
 ]
@@ -386,17 +419,17 @@ WALLEOF
     fi
 
     section "systemd service"
-    # tremplin.service is generated by refresh-service.sh — the single source of
+    # splouch.service is generated by refresh-service.sh — the single source of
     # truth for the unit. The in-app update flow runs the same script before each
     # restart, so a changed entrypoint/layout self-heals instead of crash-looping
     # on a stale unit. See install/scripts/refresh-service.sh.
-    sudo "$INSTALL_DIR/install/scripts/refresh-service.sh"
-    info "Service enabled (tremplin.service). Serial port: $SERIAL_PORT"
+    sudo "$INSTALL_DIR/install/scripts/refresh-service.sh" splouch
+    info "Service enabled (splouch.service). Serial port: $SERIAL_PORT"
 
     # Record which provisioning version this full install applied. The app
     # compares it against install/PROVISION_VERSION and nudges for a reinstall
     # when a change needs privileges/steps the in-app update can't self-apply.
-    cp "$INSTALL_DIR/install/PROVISION_VERSION" "$HOME/TremplinData/.provisioned_version"
+    as_user cp "$INSTALL_DIR/install/PROVISION_VERSION" "$TARGET_HOME/SplouchData/.provisioned_version"
     warn "Change the serial port in the web UI if your adapter appears as a different device."
 
     section "VNC remote access"
@@ -429,13 +462,13 @@ WALLEOF
     sudo apt-get install -y avahi-utils
 
     # Stop avahi from publishing IPv6 link-local (fe80::) records. On a
-    # multihomed/WiFi Pi, browsers resolving tremplin.local may prefer the
+    # multihomed/WiFi Pi, browsers resolving splouch.local may prefer the
     # AAAA link-local address, which is unroutable without a zone index, so the
     # page fails to load even though IPv4 works fine.
     #   - use-ipv6=no            disables the IPv6 mDNS transport
     #   - publish-aaaa-on-ipv4=no stops the AAAA record being announced over
     #     IPv4 (this one defaults to YES and is the actual culprit)
-    # See docs/troubleshooting-tremplin-local-unreachable.md
+    # See docs/troubleshooting-splouch-local-unreachable.md
     _avahi_set() {  # _avahi_set <key> <value> <section>
         if grep -q "^#*[[:space:]]*$1=" /etc/avahi/avahi-daemon.conf; then
             sudo sed -i "s/^#*[[:space:]]*$1=.*/$1=$2/" /etc/avahi/avahi-daemon.conf
@@ -450,9 +483,11 @@ WALLEOF
     # Translated aliases are published at the live interface IP, re-detected at
     # service start by mdns-aliases.sh — so they resolve on a DHCP setup instead
     # of the old install-time-baked static 10.10.10.10.
-    sudo tee /etc/systemd/system/tremplin-mdns-aliases.service > /dev/null <<EOF
+    sudo systemctl disable --now tremplin-mdns-aliases 2>/dev/null || true   # retire pre-rename unit
+    sudo rm -f /etc/systemd/system/tremplin-mdns-aliases.service
+    sudo tee /etc/systemd/system/splouch-mdns-aliases.service > /dev/null <<EOF
 [Unit]
-Description=mDNS aliases for Tremplin
+Description=mDNS aliases for Splouch
 After=avahi-daemon.service
 Requires=avahi-daemon.service
 
@@ -466,13 +501,15 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
     sudo systemctl daemon-reload
-    sudo systemctl enable --now tremplin-mdns-aliases
+    sudo systemctl enable --now splouch-mdns-aliases
     info "mDNS aliases active: $MDNS_ALIASES → (live interface IP)"
 
     section "Port 80 redirect"
-    sudo tee /etc/systemd/system/tremplin-redirect.service > /dev/null <<EOF
+    sudo systemctl disable --now tremplin-redirect 2>/dev/null || true   # retire pre-rename unit
+    sudo rm -f /etc/systemd/system/tremplin-redirect.service
+    sudo tee /etc/systemd/system/splouch-redirect.service > /dev/null <<EOF
 [Unit]
-Description=Tremplin port 80 to 5000 redirect
+Description=Splouch port 80 to 5000 redirect
 After=network.target
 
 [Service]
@@ -485,7 +522,7 @@ ExecStop=/bin/sh -c 'iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT
 WantedBy=multi-user.target
 EOF
     sudo systemctl daemon-reload
-    sudo systemctl enable --now tremplin-redirect
+    sudo systemctl enable --now splouch-redirect
     info "Port 80 redirects to 5000 — http://${SERVER_IP%/*}/ reaches the scoreboard"
 
     section "Network — Pi #1"
@@ -503,14 +540,14 @@ EOF
     section "Done — Pi #1 (server)"
     echo
     echo -e "  Install dir : $INSTALL_DIR"
-    echo -e "  Start server: ${BOLD}sudo systemctl start tremplin${NC}"
-    echo -e "  Logs        : ${BOLD}journalctl -u tremplin -f${NC}"
+    echo -e "  Start server: ${BOLD}sudo systemctl start splouch${NC}"
+    echo -e "  Logs        : ${BOLD}journalctl -u splouch -f${NC}"
     echo -e "  Scoreboard  : ${BOLD}http://${SERVER_HOSTNAME}.local/${NC}  or  http://${SERVER_IP%/*}/"
     echo -e "  Admin UI    : ${BOLD}http://${SERVER_HOSTNAME}.local/settings${NC}"
     echo -e "  Mobile view : ${BOLD}http://${SERVER_HOSTNAME}.local/mobile${NC}"
     echo -e "  Aliases     : $MDNS_ALIASES"
-    echo -e "  Meet files  : ~/TremplinData/meet/*.lxf"
-    echo -e "  Settings    : ~/TremplinData/settings.json"
+    echo -e "  Meet files  : ~/SplouchData/meet/*.lxf"
+    echo -e "  Settings    : ~/SplouchData/settings.json"
     echo
     echo
     confirm "Reboot now to apply group membership and network changes?" && sudo reboot
@@ -535,10 +572,10 @@ if [[ "$ROLE" == "kiosk" ]]; then
     else
         CONFIG_TXT="/boot/config.txt"
     fi
-    if ! grep -q "# Tremplin kiosk" "$CONFIG_TXT"; then
+    if ! grep -q "# Splouch kiosk" "$CONFIG_TXT"; then
         sudo tee -a "$CONFIG_TXT" > /dev/null <<EOF
 
-# Tremplin kiosk — force 1920x1080 HDMI output
+# Splouch kiosk — force 1920x1080 HDMI output
 hdmi_force_hotplug=1
 hdmi_group=2
 hdmi_mode=82
@@ -557,8 +594,8 @@ EOF
     LABWC_AUTOSTART="$HOME/.config/labwc/autostart"
     mkdir -p "$(dirname "$LABWC_AUTOSTART")"
     touch "$LABWC_AUTOSTART"
-    if ! grep -q "# Tremplin kiosk" "$LABWC_AUTOSTART"; then
-        printf '\n# Tremplin kiosk\n%s &\n' "$KIOSK_CMD" >> "$LABWC_AUTOSTART"
+    if ! grep -q "# Splouch kiosk" "$LABWC_AUTOSTART"; then
+        printf '\n# Splouch kiosk\n%s &\n' "$KIOSK_CMD" >> "$LABWC_AUTOSTART"
     fi
 
     # Older Raspberry Pi OS releases — LXDE / X11 session
@@ -573,7 +610,7 @@ EOF
     info "Kiosk autostart configured ($CHROMIUM_BIN) → $SCOREBOARD_URL"
 
     section "Desktop wallpaper"
-    WALLPAPER="$HOME/.config/tremplin/scoreboard_bg.png"
+    WALLPAPER="$HOME/.config/splouch/scoreboard_bg.png"
     WALLPAPER_URL="${REPO_URL%.git}"
     WALLPAPER_URL="${WALLPAPER_URL/github.com/raw.githubusercontent.com}/master/shared/static/img/scoreboard_bg.png"
     mkdir -p "$(dirname "$WALLPAPER")"
@@ -628,7 +665,7 @@ if [[ "$ROLE" == "cloud" ]]; then
     # ── User bootstrap (runs once as root on a fresh server) ──────────────────
     if [[ "$(id -u)" == "0" ]]; then
         section "User setup"
-        TREMPLIN_USER="tremplin"
+        TREMPLIN_USER="splouch"
 
         if ! id "$TREMPLIN_USER" &>/dev/null; then
             useradd -m -s /bin/bash "$TREMPLIN_USER"
@@ -639,7 +676,7 @@ if [[ "$ROLE" == "cloud" ]]; then
 
         usermod -aG sudo "$TREMPLIN_USER"
 
-        # Set a password so tremplin can use sudo normally after the install
+        # Set a password so splouch can use sudo normally after the install
         echo
         while true; do
             read -rsp "Set a password for '$TREMPLIN_USER': " _pw1; echo
@@ -654,8 +691,8 @@ if [[ "$ROLE" == "cloud" ]]; then
         done
 
         # Passwordless sudo only for the duration of the install
-        echo "$TREMPLIN_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/tremplin
-        chmod 0440 /etc/sudoers.d/tremplin
+        echo "$TREMPLIN_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/splouch
+        chmod 0440 /etc/sudoers.d/splouch
         info "Temporary NOPASSWD sudo granted for install."
 
         # Copy root's SSH authorized_keys so the server stays reachable
@@ -678,7 +715,7 @@ if [[ "$ROLE" == "cloud" ]]; then
         systemctl restart ssh
         info "Root SSH login disabled, password auth disabled — key-only SSH from now on."
 
-        # Copy this script to tremplin's home and re-exec as that user
+        # Copy this script to splouch's home and re-exec as that user
         _script_src="$(realpath "${BASH_SOURCE[0]}")"
         _script_dst="/home/$TREMPLIN_USER/install.sh"
         install -m 755 -o "$TREMPLIN_USER" -g "$TREMPLIN_USER" \
@@ -789,8 +826,8 @@ EOF
 
     # Allow the webhook process to restart itself after a deploy (no password prompt)
     echo "${USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart deploy-webhook" \
-        | sudo tee /etc/sudoers.d/tremplin-webhook > /dev/null
-    sudo chmod 0440 /etc/sudoers.d/tremplin-webhook
+        | sudo tee /etc/sudoers.d/splouch-webhook > /dev/null
+    sudo chmod 0440 /etc/sudoers.d/splouch-webhook
     info "Sudoers rule added: deploy-webhook can self-restart without a password."
 
     section "Caddyfile domain"

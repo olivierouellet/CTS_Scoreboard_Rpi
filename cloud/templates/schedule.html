@@ -458,9 +458,9 @@ const HEATS   = {{ heats_json | safe }};
 const LABELS  = {{ labels | tojson }};
 
 // Random per-device id for anonymous attendance counting (opt-in, admin side).
-function tremplinVid() {
+function splouchVid() {
     try {
-        var k = 'tremplin_vid', v = localStorage.getItem(k);
+        var k = 'splouch_vid', v = localStorage.getItem(k);
         if (!v) {
             v = (window.crypto && crypto.randomUUID)
                 ? crypto.randomUUID()
@@ -699,18 +699,18 @@ renderSchedule();
 
 <script src="/static/js/ws.js"></script>
 <script>
-var sockResults    = tremplinSocket('/ws/results');
-var sockScoreboard = tremplinSocket('/ws/scoreboard');
-var sockSchedule   = tremplinSocket('/ws/schedule');
+var sockResults    = splouchSocket('/ws/results');
+var sockScoreboard = splouchSocket('/ws/scoreboard');
+var sockSchedule   = splouchSocket('/ws/schedule');
 
 sockResults.on('connect', function() {
-    sockResults.emit('join_meet', { meet_id: MEET_ID, vid: tremplinVid() });
+    sockResults.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() });
 });
 sockScoreboard.on('connect', function() {
-    sockScoreboard.emit('join_meet', { meet_id: MEET_ID, vid: tremplinVid() });
+    sockScoreboard.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() });
 });
 sockSchedule.on('connect', function() {
-    sockSchedule.emit('join_meet', { meet_id: MEET_ID, vid: tremplinVid() });
+    sockSchedule.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() });
 });
 
 sockResults.on('results_snapshot', function(d) {

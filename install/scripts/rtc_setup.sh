@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tremplin — Adafruit PiRTC (DS3231) real-time clock setup/removal
+# Splouch — Adafruit PiRTC (DS3231) real-time clock setup/removal
 # Product: https://www.adafruit.com/product/4282
 # Guide:   https://learn.adafruit.com/adding-a-real-time-clock-to-raspberry-pi
 #

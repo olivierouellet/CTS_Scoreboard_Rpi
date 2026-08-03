@@ -1,9 +1,9 @@
-# `tremplin.local` won't load in the browser (but ping works)
+# `splouch.local` won't load in the browser (but ping works)
 
 ## Symptom
 
-- `ping tremplin.local` works.
-- Loading `http://tremplin.local/` in a browser fails / hangs.
+- `ping splouch.local` works.
+- Loading `http://splouch.local/` in a browser fails / hangs.
 - Connecting to the Pi **by its IP address** works:
   `http://10.8.20.103/` and `http://10.8.20.103:5000/live` both load.
 
@@ -13,10 +13,10 @@ the **hostname** fails to load.
 ## Cause
 
 The Pi is multihomed (e.g. WiFi `wlan0` has an IP, `eth0` does not, or vice
-versa). avahi advertises **every** address it has for `tremplin.local`,
+versa). avahi advertises **every** address it has for `splouch.local`,
 including the **IPv6 link-local** address (`fe80::…`) on the active interface.
 
-When a browser resolves `tremplin.local` it receives both an `AAAA`
+When a browser resolves `splouch.local` it receives both an `AAAA`
 (IPv6 link-local) and an `A` (IPv4) record. Many browsers/OSes **prefer IPv6**,
 try the `fe80::…` address first, and a link-local IPv6 address can't be reached
 without a zone index (`%iface`) — so the connection hangs or fails. `ping` and
@@ -30,7 +30,7 @@ avahi-daemon[680]: Registering new address record for fe80::e65f:1ff:fe86:772 on
 
 ## Solution
 
-Stop avahi from publishing the IPv6 record, so `tremplin.local` only ever
+Stop avahi from publishing the IPv6 record, so `splouch.local` only ever
 resolves to the reachable IPv4 address. **Two** settings are involved in
 `/etc/avahi/avahi-daemon.conf`:
 
@@ -69,11 +69,11 @@ sudo systemctl restart avahi-daemon
 Confirm it took — the IPv6 lookup should now fail and only IPv4 should resolve:
 
 ```bash
-avahi-resolve -n tremplin.local -6     # should return nothing
-avahi-resolve -n tremplin.local        # should return only the IPv4 address
+avahi-resolve -n splouch.local -6     # should return nothing
+avahi-resolve -n splouch.local        # should return only the IPv4 address
 ```
 
-Then flush the client's DNS/mDNS cache and reload `http://tremplin.local/`:
+Then flush the client's DNS/mDNS cache and reload `http://splouch.local/`:
 
 - **macOS:** `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`
 - **Windows:** `ipconfig /flushdns`

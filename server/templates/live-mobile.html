@@ -413,7 +413,7 @@ function mode_to_results() {
 <script>
     var s = {};
 
-    var socket = tremplinSocket('/ws/scoreboard');
+    var socket = splouchSocket('/ws/scoreboard');
     socket.on('connect', function() { reset_state(); });
     socket.on('reload', function() { location.reload(); });
     socket.on('display_overlay', function(d) { show_overlay(d.active); });

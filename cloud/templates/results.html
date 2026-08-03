@@ -24,8 +24,8 @@
 var meet_live = false;   // a relay/console is currently feeding this meet
 function showWaiting() { document.getElementById('waiting').classList.remove('hidden'); }
 
-var sock = tremplinSocket('/ws/results');
-sock.on('connect', function() { sock.emit('join_meet', { meet_id: MEET_ID, vid: tremplinVid() }); });
+var sock = splouchSocket('/ws/results');
+sock.on('connect', function() { sock.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() }); });
 sock.on('reload',   function() { location.reload(); });
 sock.on('disconnect', function() { meet_live = false; showWaiting(); });
 sock.on('meet_live', function(d) { meet_live = !!(d && d.live); if (!meet_live) showWaiting(); });
@@ -75,7 +75,7 @@ function renderResults(d) {
     document.getElementById('waiting').classList.add('hidden');
 }
 window.on_tab_shown = function() {
-    if (sock.connected) { sock.emit('join_meet', { meet_id: MEET_ID, vid: tremplinVid() }); }
+    if (sock.connected) { sock.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() }); }
     else                 { sock.connect(); }
 };
 {% endblock %}

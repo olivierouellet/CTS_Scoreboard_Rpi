@@ -251,7 +251,7 @@ def _run_update(target=None):
                      'install.sh on this device to finish updating)\n')
                 if r.stderr:
                     emit(r.stderr)
-        subprocess.run(['sudo', 'systemctl', 'restart', 'tremplin'])
+        subprocess.run(['sudo', 'systemctl', 'restart', state.SERVICE_NAME])
     except Exception as e:
         emit(f'\nError: {e}\n', error=True)
         state._update_log_done = False
@@ -434,14 +434,14 @@ def route_logs_download():
     ts   = datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')
     return Response(
         content=text, media_type='text/plain',
-        headers={'Content-Disposition': f'attachment; filename="tremplin-log-{ts}.log"'})
+        headers={'Content-Disposition': f'attachment; filename="splouch-log-{ts}.log"'})
 
 
 @router.post('/logs_save', dependencies=[Depends(require_login)])
 def route_logs_save():
     try:
         os.makedirs(state.LOGS_DIR, exist_ok=True)
-        name = 'tremplin-log-' + datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S') + '.log'
+        name = 'splouch-log-' + datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S') + '.log'
         path = os.path.join(state.LOGS_DIR, name)
         with open(path, 'w') as f:
             f.write('\n'.join(state._log_ring) + '\n')
@@ -473,12 +473,12 @@ def route_system_shutdown():
 @router.post('/system_service_restart', response_model=ActionResult,
              dependencies=[Depends(require_login)])
 def route_service_restart():
-    # Restart just the app (tremplin.service) — far faster than a full reboot,
+    # Restart just the app (splouch.service) — far faster than a full reboot,
     # and the same command the updater runs. Deferred so this response returns
     # before systemd kills the process serving it.
     def _restart():
         time.sleep(1)
-        subprocess.run(['sudo', 'systemctl', 'restart', 'tremplin'])
+        subprocess.run(['sudo', 'systemctl', 'restart', state.SERVICE_NAME])
     bus.run_bg(_restart)
     return {'ok': True}
 
@@ -487,12 +487,12 @@ def route_service_restart():
 def route_backup_download():
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode='w:gz') as tar:
-        tar.add(state.SCOREBOARD_DIR, arcname='Tremplin')
+        tar.add(state.SCOREBOARD_DIR, arcname='Splouch')
     date_str = datetime.datetime.now().strftime('%Y-%m-%d')
     return Response(
         content=buf.getvalue(), media_type='application/gzip',
         headers={'Content-Disposition':
-                 f'attachment; filename="tremplin_backup_{date_str}.tar.gz"'})
+                 f'attachment; filename="splouch_backup_{date_str}.tar.gz"'})
 
 
 @router.post('/backup_restore', response_model=ActionResult,
@@ -526,6 +526,6 @@ def _restore_backup(data):
     # Restart after a short delay so the response can be sent first
     def _restart():
         time.sleep(1)
-        subprocess.run(['sudo', 'systemctl', 'restart', 'tremplin'])
+        subprocess.run(['sudo', 'systemctl', 'restart', state.SERVICE_NAME])
     bus.run_bg(_restart)
     return {'ok': True}

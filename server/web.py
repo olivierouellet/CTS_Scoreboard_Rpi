@@ -1,4 +1,4 @@
-"""Shared FastAPI web helpers for the local Tremplin server.
+"""Shared FastAPI web helpers for the local Splouch server.
 
 Centralises Jinja templating (with the global template context injected into
 every render), the login dependency, and small shared helpers (``redirect``,

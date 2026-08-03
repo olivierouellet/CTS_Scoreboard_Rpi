@@ -220,7 +220,7 @@
     tick_clock();
     setInterval(tick_clock, 30000);
 
-    var sock = tremplinSocket('/ws/results');
+    var sock = splouchSocket('/ws/results');
     sock.on('reload', function() { location.reload(); });
     sock.on('results_snapshot', function(d) { renderResults(d); });
 

@@ -31,7 +31,7 @@ DECODERS: dict[str, type[ConsoleDecoder]] = {
 }
 
 # Base URL for the full per-console setup guides on GitHub.
-DOCS_BASE_URL = 'https://github.com/olivierouellet/Tremplin/blob/master/docs/consoles/'
+DOCS_BASE_URL = 'https://github.com/olivierouellet/Splouch/blob/master/docs/consoles/'
 
 # Curated hardware/wiring summary per decoder, surfaced in Settings → Timing.
 # Keyed by decoder key (the three CTS models share one decoder, hence one entry).
@@ -115,7 +115,7 @@ def load_custom_decoders(folder: str) -> None:
         if not fname.endswith('.py') or fname.startswith('_'):
             continue
         path        = os.path.join(folder, fname)
-        module_name = f'_tremplin_custom_decoder_{fname[:-3]}'
+        module_name = f'_splouch_custom_decoder_{fname[:-3]}'
         try:
             spec = importlib.util.spec_from_file_location(module_name, path)
             mod  = importlib.util.module_from_spec(spec)

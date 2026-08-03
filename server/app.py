@@ -112,12 +112,12 @@ async def route_openapi():
 
 @app.get('/docs', include_in_schema=False, dependencies=[Depends(require_login)])
 async def route_docs():
-    return get_swagger_ui_html(openapi_url='/openapi.json', title='Tremplin API docs')
+    return get_swagger_ui_html(openapi_url='/openapi.json', title='Splouch API docs')
 
 
 @app.get('/redoc', include_in_schema=False, dependencies=[Depends(require_login)])
 async def route_redoc():
-    return get_redoc_html(openapi_url='/openapi.json', title='Tremplin API docs')
+    return get_redoc_html(openapi_url='/openapi.json', title='Splouch API docs')
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────

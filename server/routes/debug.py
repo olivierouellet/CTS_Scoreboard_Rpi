@@ -67,7 +67,7 @@ class TerminalStart(BaseModel):
 _TERMINAL_ALLOWED_CMDS = {
     'bash':         ['bash'],
     'raspi-config': ['sudo', 'raspi-config'],
-    'logs':         ['journalctl', '-u', 'tremplin', '-f'],
+    'logs':         ['journalctl', '-u', state.SERVICE_NAME, '-f'],
     'dmesg-tty':    ['bash', '-c', 'dmesg | grep -i tty'],
     'serial-ports': ['python3', '-m', 'serial.tools.list_ports', '-v'],
 }

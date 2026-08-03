@@ -681,8 +681,8 @@ renderSchedule();
 
 <script src="/static/js/ws.js"></script>
 <script>
-var sockResults    = tremplinSocket('/ws/results');
-var sockScoreboard = tremplinSocket('/ws/scoreboard');
+var sockResults    = splouchSocket('/ws/results');
+var sockScoreboard = splouchSocket('/ws/scoreboard');
 
 sockResults.on('results_snapshot', function(d) {
     currentEvent = String(d.event).trim();

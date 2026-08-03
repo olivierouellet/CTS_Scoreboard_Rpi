@@ -18,10 +18,10 @@ Upload a recorded `.cts` or `.cap` session via the **Test** tab in the admin UI 
 
 ## Testing with swimmer names
 
-A sample Lenex file with fictional swimmers is included at `tests/fixtures/splash.lxf`. Copy it to `~/TremplinData/meet/` and click **Reload Names** in Meet Setup:
+A sample Lenex file with fictional swimmers is included at `tests/fixtures/splash.lxf`. Copy it to `~/SplouchData/meet/` and click **Reload Names** in Meet Setup:
 
 ```bash
-cp tests/fixtures/splash.lxf ~/TremplinData/meet/
+cp tests/fixtures/splash.lxf ~/SplouchData/meet/
 ```
 
 ---
