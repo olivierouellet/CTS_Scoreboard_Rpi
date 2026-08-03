@@ -175,7 +175,7 @@
     <script>
     var LABEL_EVENT = {{ (labels.event | default('Event')) | tojson }};
     var LABEL_HEAT  = {{ (labels.heat  | default('Heat'))  | tojson }};
-    var sock = tremplinSocket('/ws/results');
+    var sock = splouchSocket('/ws/results');
     sock.on('reload', function() { location.reload(); });
 
     sock.on('next_heats', function(d) {

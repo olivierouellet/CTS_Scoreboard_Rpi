@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publish Tremplin's translated mDNS aliases (tableau.local, marcador.local, …)
+# Publish Splouch's translated mDNS aliases (tableau.local, marcador.local, …)
 # at the Pi's CURRENT primary-interface IP, re-detected every time the service
 # starts. This replaces the old install-time-baked static 10.10.10.10, so the
 # aliases resolve correctly on a DHCP setup (i.e. when the static IP was

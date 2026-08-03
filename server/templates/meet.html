@@ -105,7 +105,7 @@ body {
 
     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px;" class="no-print">
         <div class="lp-header" style="margin-bottom:0;">
-            <div class="lp-app-label">Tremplin</div>
+            <div class="lp-app-label">Splouch</div>
             <div class="lp-meet-title">
                 {{ meet_info.name or strings.get('no_file', 'Meet Preview') }}
                 {% if meet_info.get('city') %}
@@ -127,7 +127,7 @@ body {
 
     <!-- Print-only header -->
     <div class="lp-header" style="display:none;" id="print-header">
-        <div class="lp-app-label">Tremplin</div>
+        <div class="lp-app-label">Splouch</div>
         <div class="lp-meet-title">
             {{ meet_info.name or strings.get('no_file', 'Meet Preview') }}
             {% if meet_info.get('city') %} — {{ meet_info.city }}{% endif %}

@@ -242,12 +242,12 @@ def _wifi_connect(ssid, password):
 def route_eth_dhcp_set():
     try:
         r = subprocess.run(
-            ['sudo', 'nmcli', 'con', 'mod', 'tremplin-eth',
+            ['sudo', 'nmcli', 'con', 'mod', 'splouch-eth',
              'ipv4.method', 'auto', 'ipv4.addresses', '', 'ipv4.gateway', ''],
             capture_output=True, text=True, timeout=8)
         if r.returncode != 0:
             return {'ok': False, 'error': r.stderr.strip() or 'nmcli error'}
-        subprocess.run(['sudo', 'nmcli', 'con', 'up', 'tremplin-eth'],
+        subprocess.run(['sudo', 'nmcli', 'con', 'up', 'splouch-eth'],
                        capture_output=True, timeout=8)
         return {'ok': True}
     except Exception as e:
@@ -265,11 +265,11 @@ def _eth_ip_set(ip_str, prefix):
     cidr = f'{ip_str}/{prefix}'
     try:
         r = subprocess.run(
-            ['sudo', 'nmcli', 'con', 'mod', 'tremplin-eth', 'ipv4.addresses', cidr],
+            ['sudo', 'nmcli', 'con', 'mod', 'splouch-eth', 'ipv4.addresses', cidr],
             capture_output=True, text=True, timeout=8)
         if r.returncode != 0:
             return {'ok': False, 'error': r.stderr.strip() or 'nmcli error'}
-        subprocess.run(['sudo', 'nmcli', 'con', 'up', 'tremplin-eth'],
+        subprocess.run(['sudo', 'nmcli', 'con', 'up', 'splouch-eth'],
                        capture_output=True, timeout=8)
         return {'ok': True}
     except Exception as e:

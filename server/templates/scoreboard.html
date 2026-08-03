@@ -568,7 +568,7 @@ mode_to_splash = function() { mode_to_running(); };
 <script>
     var s = {};
 
-    var socket = tremplinSocket('/ws/scoreboard');
+    var socket = splouchSocket('/ws/scoreboard');
     socket.on('connect', function() { start_splash_hold(); });
     socket.on('reload', function() { location.reload(); });
     socket.on('race_finished', function() {

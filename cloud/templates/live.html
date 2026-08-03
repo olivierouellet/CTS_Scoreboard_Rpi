@@ -55,10 +55,10 @@ function apply_state() {
     last_state = current_state;
 }
 
-var socket = tremplinSocket('/ws/scoreboard');
+var socket = splouchSocket('/ws/scoreboard');
 socket.on('connect', function() {
     reset_state();
-    socket.emit('join_meet', { meet_id: MEET_ID, vid: tremplinVid() });
+    socket.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() });
 });
 socket.on('reload', function() { location.reload(); });
 socket.on('disconnect', function() { meet_live = false; updateAllLanePulses(); });

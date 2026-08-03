@@ -193,8 +193,8 @@
 
 <script src="/static/js/ws.js"></script>
 <script>
-var sockResults    = tremplinSocket('/ws/results');
-var sockScoreboard = tremplinSocket('/ws/scoreboard');
+var sockResults    = splouchSocket('/ws/results');
+var sockScoreboard = splouchSocket('/ws/scoreboard');
 var currentEvent = null, currentHeat = null;
 var needsScroll = true;
 

@@ -1,8 +1,8 @@
 /*
- * tremplinSocket(path) — tiny plain-WebSocket client that replaces socket.io.
+ * splouchSocket(path) — tiny plain-WebSocket client that replaces socket.io.
  *
  * API mirrors the small slice of socket.io the app used:
- *   var s = tremplinSocket('/ws/scoreboard');
+ *   var s = splouchSocket('/ws/scoreboard');
  *   s.on('update_scoreboard', function(data) { ... });
  *   s.emit('set_overlay', { active: true });
  *
@@ -18,7 +18,7 @@
  * {event:'pong'}; if no frame arrives for STALE_MS the connection is treated as
  * dead and reopened.
  */
-function tremplinSocket(path) {
+function splouchSocket(path) {
     var handlers = {};
     var ws = null;
     var closed = false;

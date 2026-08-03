@@ -1,4 +1,4 @@
-"""Tremplin cloud relay server.
+"""Splouch cloud relay server.
 
 Receives scoreboard events from Pi relays and forwards them to attendees.
 One instance handles all active meets; each meet is a broadcast channel.
@@ -512,8 +512,8 @@ def _picker_appearance():
     raw = creds.get('picker_title')
     raw_wt = creds.get('picker_window_title')
     return {
-        'picker_title_form':        'Tremplin' if raw is None else raw,
-        'picker_window_title_form': 'Tremplin' if raw_wt is None else raw_wt,
+        'picker_title_form':        'Splouch' if raw is None else raw,
+        'picker_window_title_form': 'Splouch' if raw_wt is None else raw_wt,
         'has_picker_logo':          bool(creds.get('picker_logo_b64', '')),
         'has_picker_icon':          bool(creds.get('picker_icon_b64', '')),
         'picker_logo_above':        creds.get('picker_logo_above', False),
@@ -568,7 +568,7 @@ def _check_admin(request):
 def require_admin(request: Request):
     if not _check_admin(request):
         raise HTTPException(status_code=401, detail='Authentication required',
-                            headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
+                            headers={'WWW-Authenticate': 'Basic realm="Splouch Admin"'})
 
 
 # ── API docs (admin-gated) ─────────────────────────────────────────────────────
@@ -583,12 +583,12 @@ async def route_openapi():
 
 @app.get('/docs', include_in_schema=False, dependencies=[Depends(require_admin)])
 async def route_docs():
-    return get_swagger_ui_html(openapi_url='/openapi.json', title='Tremplin Cloud API docs')
+    return get_swagger_ui_html(openapi_url='/openapi.json', title='Splouch Cloud API docs')
 
 
 @app.get('/redoc', include_in_schema=False, dependencies=[Depends(require_admin)])
 async def route_redoc():
-    return get_redoc_html(openapi_url='/openapi.json', title='Tremplin Cloud API docs')
+    return get_redoc_html(openapi_url='/openapi.json', title='Splouch Cloud API docs')
 
 
 # ── Attendee analytics (opt-in) ────────────────────────────────────────────────
@@ -725,8 +725,8 @@ def route_index(request: Request):
     raw_title = creds.get('picker_title')
     raw_wt    = creds.get('picker_window_title')
     return render(request, 'picker.html', meets=meets, t=_strings(_picker_lang(request), 'cloud'),
-        picker_title=('Tremplin' if raw_title is None else raw_title),
-        picker_window_title=('Tremplin' if raw_wt is None else raw_wt),
+        picker_title=('Splouch' if raw_title is None else raw_title),
+        picker_window_title=('Splouch' if raw_wt is None else raw_wt),
         picker_logo=bool(creds.get('picker_logo_b64', '')),
         picker_logo_above=creds.get('picker_logo_above', False),
         analytics_enabled=_analytics_enabled())
@@ -917,7 +917,7 @@ def route_search_suggestions(request: Request):
 def route_logout():
     return Response(
         'Logged out — <a href="/admin">sign in again</a>', status_code=401,
-        headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
+        headers={'WWW-Authenticate': 'Basic realm="Splouch Admin"'})
 
 
 @app.get('/ping', tags=['Public'])
@@ -938,7 +938,7 @@ def route_manifest(meet_id: str):
     ] if has_icon else [
         {'src': '/static/img/default_mobile_icon.png', 'sizes': '1024x1024', 'type': 'image/png'},
     ])
-    app_title = meet.get('app_window_title') or meet.get('name') or 'Tremplin'
+    app_title = meet.get('app_window_title') or meet.get('name') or 'Splouch'
     manifest = {
         'name':             app_title,
         'short_name':       app_title,
@@ -1015,7 +1015,7 @@ def route_favicon():
 def route_picker_manifest():
     creds = _load_creds()
     raw_wt = creds.get('picker_window_title')
-    app_title = ('Tremplin' if raw_wt is None else raw_wt) or 'Tremplin'
+    app_title = ('Splouch' if raw_wt is None else raw_wt) or 'Splouch'
     manifest = {
         'name':             app_title,
         'short_name':       app_title,
@@ -1081,7 +1081,7 @@ def route_backup_keys(request: Request):
     backup = {'version': 2, 'keys': keys, 'credentials': creds}
     if full:
         backup['full'] = True
-    name = 'tremplin-backup-full.json' if full else 'tremplin-backup.json'
+    name = 'splouch-backup-full.json' if full else 'splouch-backup.json'
     return Response(
         json.dumps(backup, indent=2),
         media_type='application/json',
@@ -1126,7 +1126,7 @@ def route_backup_meets():
     return Response(
         json.dumps(backup, indent=2),
         media_type='application/json',
-        headers={'Content-Disposition': 'attachment; filename="tremplin-meets.json"'})
+        headers={'Content-Disposition': 'attachment; filename="splouch-meets.json"'})
 
 
 @app.post('/admin/restore/meets', tags=['Admin'], response_model=RestoreResult,
@@ -1337,7 +1337,7 @@ async def route_admin(request: Request):
                 return Response(
                     'Credentials updated — <a href="/admin">sign in with new credentials</a>',
                     status_code=401,
-                    headers={'WWW-Authenticate': 'Basic realm="Tremplin Admin"'})
+                    headers={'WWW-Authenticate': 'Basic realm="Splouch Admin"'})
             return render(request, 'admin.html', keys=keys,
                           active_meets=_admin_meet_list(),
                           t=t, creds_error=error,

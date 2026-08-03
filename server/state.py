@@ -28,7 +28,8 @@ app_dir           = os.path.dirname(os.path.abspath(__file__))
 SHARED_DIR        = os.path.join(os.path.dirname(app_dir), 'shared')
 STATIC_DIR        = os.path.join(SHARED_DIR, 'static')
 LOCALES_DIR       = os.path.join(SHARED_DIR, 'locales')
-SCOREBOARD_DIR    = os.path.expanduser('~/TremplinData')
+SCOREBOARD_DIR    = os.path.expanduser('~/SplouchData')
+_LEGACY_DATA_DIR  = os.path.expanduser('~/TremplinData')  # pre-Splouch; migrated on first run
 settings_file     = os.path.join(SCOREBOARD_DIR, 'settings.json')
 _settings_default = os.path.join(app_dir, 'settings.default.json')
 
@@ -53,6 +54,13 @@ CUSTOM_DECODERS_FOLDER = os.path.join(SCOREBOARD_DIR, 'console_decoders')
 # install/scripts/refresh-service.sh.
 PROVISION_VERSION_FILE = os.path.join(os.path.dirname(app_dir), 'install', 'PROVISION_VERSION')
 PROVISIONED_MARKER     = os.path.join(SCOREBOARD_DIR, '.provisioned_version')
+
+# The systemd unit is named `splouch` once a full (post-rename) reinstall has run;
+# until then the legacy `tremplin` unit is still in place. Detect by unit-file
+# existence so the app restarts the right service and matches the sudoers grant
+# during the Tremplin→Splouch transition.
+SERVICE_NAME = ('splouch' if os.path.exists('/etc/systemd/system/splouch.service')
+                else 'tremplin')
 
 # ── Theme / locale defaults ────────────────────────────────────────────────────
 
@@ -371,6 +379,20 @@ def _ensure_data_dirs():
         import shutil
         shutil.copy2(_settings_default, settings_file)
 
+def _migrate_data_dir():
+    """One-time rename of the pre-Splouch data dir (~/TremplinData → ~/SplouchData).
+
+    Zero-privilege (the user owns it) and content-preserving — keeps settings,
+    meets, recordings, custom themes/decoders across the rebrand. Runs before the
+    dirs are (re)created so the destination doesn't yet exist.
+    """
+    if not os.path.exists(SCOREBOARD_DIR) and os.path.isdir(_LEGACY_DATA_DIR):
+        try:
+            os.rename(_LEGACY_DATA_DIR, SCOREBOARD_DIR)
+        except OSError:
+            pass
+
+_migrate_data_dir()
 _ensure_data_dirs()
 
 # ── Locale / theme utilities ───────────────────────────────────────────────────

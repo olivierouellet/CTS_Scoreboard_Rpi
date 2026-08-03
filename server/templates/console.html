@@ -214,7 +214,7 @@ setInterval(tick_clock, 1000);
 var running    = {};
 var times      = {};
 
-var sock = tremplinSocket('/ws/scoreboard');
+var sock = splouchSocket('/ws/scoreboard');
 
 sock.on('update_scoreboard', function(d) {
     if ('running_time' in d) {

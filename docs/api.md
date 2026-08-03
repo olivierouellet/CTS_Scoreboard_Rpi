@@ -1,10 +1,10 @@
-# Tremplin API contract
+# Splouch API contract
 
 **Contract version: `v1`** · Server implementation: this repo (`server/app.py` local, `cloud/cloud_server.py` cloud).
 
 This is the source-of-truth contract that every non-browser client follows — the
-Qt/PySide TV display (`Tremplin-tv`), the iOS app (`Tremplin-ios`), and the
-Android app (`Tremplin-android`). There is intentionally **no shared client
+Qt/PySide TV display (`Splouch-tv`), the iOS app (`Splouch-ios`), and the
+Android app (`Splouch-android`). There is intentionally **no shared client
 library**: the platforms are too different. They agree only on this document.
 
 When you change an event's shape or add a field, bump the version and note it in

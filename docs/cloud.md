@@ -29,7 +29,7 @@ Pi #1 ──── outbound WebSocket ────► Cloud VM (Docker + Caddy)
 SSH into the VM and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/olivierouellet/Tremplin/master/install/install.sh -o install.sh && bash install.sh cloud
+curl -fsSL https://raw.githubusercontent.com/olivierouellet/Splouch/master/install/install.sh -o install.sh && bash install.sh cloud
 ```
 
 The script handles everything interactively:
@@ -94,7 +94,7 @@ Click **Update** in `/admin` — it pulls the latest code from GitHub and rebuil
 To update manually over SSH:
 
 ```bash
-cd ~/Tremplin && git pull && cd cloud && docker compose up -d --build
+cd ~/Splouch && git pull && cd cloud && docker compose up -d --build
 ```
 
 Caddy and the `data` volume (which stores `keys.json`) are preserved across updates.
@@ -102,5 +102,5 @@ Caddy and the `data` volume (which stores `keys.json`) are preserved across upda
 ## Logs
 
 ```bash
-cd ~/Tremplin/cloud && docker compose logs -f
+cd ~/Splouch/cloud && docker compose logs -f
 ```

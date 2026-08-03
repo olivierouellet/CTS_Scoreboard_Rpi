@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tremplin deploy webhook.
+"""Splouch deploy webhook.
 
 Listens on 0.0.0.0 so Docker bridge networks can reach it.
 Authenticated endpoints:
@@ -25,9 +25,9 @@ from urllib.parse import urlparse, parse_qs
 _VERSION_RE = re.compile(r'^v\d{4}\.\d{2}\.\d+$')
 
 SECRET   = os.environ.get('DEPLOY_SECRET', '')
-REPO     = os.path.expanduser(os.environ.get('REPO_DIR', '~/Tremplin'))
+REPO     = os.path.expanduser(os.environ.get('REPO_DIR', '~/Splouch'))
 PORT     = int(os.environ.get('DEPLOY_PORT', '9000'))
-LOG_FILE = '/tmp/tremplin-deploy.log'
+LOG_FILE = '/tmp/splouch-deploy.log'
 
 
 def _update_config():

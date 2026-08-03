@@ -4,7 +4,7 @@
 
 | | |
 | --- | --- |
-| URL | `http://tremplin.local/settings` |
+| URL | `http://splouch.local/settings` |
 | Username | `score` |
 | Password | `swimming` |
 
@@ -36,11 +36,11 @@ Append `?test` to any scoreboard URL to show mode control buttons (Splash, Intro
 2. In **Settings → Meet Setup**, click **Add Meet File** and upload the `.lxf` — swimmer and
    club names go live on the scoreboard immediately. *(Alternatively, upload a Hytek `.csv`
    event schedule so event names appear in the header.)*
-3. Open the scoreboard on the TV at `http://tremplin.local/`.
+3. Open the scoreboard on the TV at `http://splouch.local/`.
 4. Start the CTS console — times appear automatically as heats run.
 
 > Prefer the command line? See [Manual and CLI reference](#manual-and-cli-reference) for
-> placing meet files directly in `~/TremplinData/meet/`.
+> placing meet files directly in `~/SplouchData/meet/`.
 
 ---
 
@@ -55,7 +55,7 @@ Append `?test` to any scoreboard URL to show mode control buttons (Splash, Intro
 | **Display** | Show/hide column headers and columns (Name, Club, Delta, Position); podium highlighting |
 | **Theme** | Built-in colour schemes; override individual colours and fonts; save as a custom theme |
 | **Network** | WiFi management; view connected scoreboard clients |
-| **Update & Backup** | Pull latest version from GitHub, sync dependencies, restart; download or restore a backup of `~/TremplinData` |
+| **Update & Backup** | Pull latest version from GitHub, sync dependencies, restart; download or restore a backup of `~/SplouchData` |
 | **Test** | Play back pre-recorded sessions; adjust playback speed; record live serial sessions |
 | **Terminal** | In-browser terminal — Shell, raspi-config, Scoreboard logs, dmesg, serial ports |
 | **Cloud** | Cloud relay URL and key; per-meet picker appearance (title, image, home icon, location, sport) |
@@ -71,13 +71,13 @@ Append `?test` to any scoreboard URL to show mode control buttons (Splash, Intro
 
 | Path | Contents |
 | --- | --- |
-| `~/TremplinData/meet/` | Lenex `.lxf` and Hytek `.csv` meet files (uploaded via Meet Setup, or [placed here manually](#manual-and-cli-reference)) |
-| `~/TremplinData/images/` | Sponsor or club logo images for the splash screen |
-| `~/TremplinData/recorded/` | Custom recorded sessions for playback in the Test tab |
-| `~/TremplinData/locale/` | Custom locale `.toml` overrides (takes priority over built-in locales) |
-| `~/TremplinData/themes/` | Custom theme `.toml` files |
-| `~/TremplinData/console_decoders/` | Local-only decoder plugins (`.py` files) — loaded at startup, not tracked by git |
-| `~/TremplinData/settings.json` | All admin UI settings |
+| `~/SplouchData/meet/` | Lenex `.lxf` and Hytek `.csv` meet files (uploaded via Meet Setup, or [placed here manually](#manual-and-cli-reference)) |
+| `~/SplouchData/images/` | Sponsor or club logo images for the splash screen |
+| `~/SplouchData/recorded/` | Custom recorded sessions for playback in the Test tab |
+| `~/SplouchData/locale/` | Custom locale `.toml` overrides (takes priority over built-in locales) |
+| `~/SplouchData/themes/` | Custom theme `.toml` files |
+| `~/SplouchData/console_decoders/` | Local-only decoder plugins (`.py` files) — loaded at startup, not tracked by git |
+| `~/SplouchData/settings.json` | All admin UI settings |
 
 ---
 
@@ -106,7 +106,7 @@ time  = { short = "TIME", long = "TIME"  }
 name  = { short = "NAME", long = "NAME"  }
 ```
 
-Add any `.toml` with the same structure to `locales/` (or upload via the Display tab) and it appears in the Language dropdown automatically. Files placed in `~/TremplinData/locale/` take priority over the built-in ones.
+Add any `.toml` with the same structure to `locales/` (or upload via the Display tab) and it appears in the Language dropdown automatically. Files placed in `~/SplouchData/locale/` take priority over the built-in ones.
 
 ---
 
@@ -117,26 +117,26 @@ lower-level tools for when you're SSH'd into Pi #1.
 
 ### Load meet files manually
 
-Instead of uploading in **Meet Setup**, copy `.lxf` / `.csv` files to `~/TremplinData/meet/`.
+Instead of uploading in **Meet Setup**, copy `.lxf` / `.csv` files to `~/SplouchData/meet/`.
 They appear in the Meet Setup file dropdown — select one to load it live.
 
 ### Service management
 
-The app runs as a systemd service named **`tremplin`**. The **Power** tab does restart /
+The app runs as a systemd service named **`splouch`**. The **Power** tab does restart /
 reboot / shutdown and **Terminal** has a "Scoreboard logs" launcher and "Save Logs", but
 over SSH:
 
 ```sh
-sudo systemctl restart tremplin    # restart after manual changes (same as the Power tab)
-sudo systemctl stop tremplin       # stop the service
-sudo systemctl start tremplin      # start it again
-systemctl status tremplin          # current state
-journalctl -u tremplin -f          # follow live logs
+sudo systemctl restart splouch    # restart after manual changes (same as the Power tab)
+sudo systemctl stop splouch       # stop the service
+sudo systemctl start splouch      # start it again
+systemctl status splouch          # current state
+journalctl -u splouch -f          # follow live logs
 ```
 
 ### CLI troubleshooting
 
-**The service won't start.** Run `journalctl -u tremplin -f` to see the error. Common
+**The service won't start.** Run `journalctl -u splouch -f` to see the error. Common
 causes: wrong serial port, missing Python dependencies (run `uv sync` in the repo
 directory), or another process already bound to port 5000.
 
@@ -144,4 +144,4 @@ directory), or another process already bound to port 5000.
 service user must be in the `dialout` group — check with `groups`; if missing, `sudo
 usermod -aG dialout <user>` and reboot. (The installer normally handles this.)
 
-**`tremplin.local` unreachable.** See [troubleshooting-tremplin-local-unreachable.md](troubleshooting-tremplin-local-unreachable.md).
+**`splouch.local` unreachable.** See [troubleshooting-splouch-local-unreachable.md](troubleshooting-splouch-local-unreachable.md).

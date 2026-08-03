@@ -106,9 +106,9 @@ var MEET_ID   = {{ meet_id | tojson }};
 // Random per-device id for anonymous attendance counting (opt-in, admin side).
 // Stored once in localStorage and shared across the meet's pages on this origin;
 // only ever used server-side for COUNT(DISTINCT). Sent with every join_meet.
-function tremplinVid() {
+function splouchVid() {
     try {
-        var k = 'tremplin_vid', v = localStorage.getItem(k);
+        var k = 'splouch_vid', v = localStorage.getItem(k);
         if (!v) {
             v = (window.crypto && crypto.randomUUID)
                 ? crypto.randomUUID()

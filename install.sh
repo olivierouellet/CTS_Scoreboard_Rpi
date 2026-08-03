@@ -18,5 +18,5 @@ fi
 
 echo "install.sh has moved to install/install.sh."
 echo "Fresh install:"
-echo "  curl -fsSL https://raw.githubusercontent.com/olivierouellet/Tremplin/master/install/install.sh -o install.sh && bash install.sh"
+echo "  curl -fsSL https://raw.githubusercontent.com/olivierouellet/Splouch/master/install/install.sh -o install.sh && bash install.sh"
 exit 1

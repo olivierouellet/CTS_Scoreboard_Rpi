@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tremplin — Settings</title>
+<title>Splouch — Settings</title>
 <link rel="stylesheet" href="/static/css/bootstrap-5.3.3.min.css">
 <link rel="stylesheet" href="/static/css/bootstrap-icons.min.css">
 <!-- Shared operator-panel UI (also used by cloud admin). Single canonical copy: shared/static/css/panel.css. -->
@@ -62,7 +62,7 @@ function onPasswordInput(form) {
         <button class="navbar-toggler d-lg-none border-0 shadow-none p-0 position-absolute top-50 start-0 translate-middle-y ms-3" type="button" data-bs-toggle="offcanvas" data-bs-target="#app-sidebar" aria-controls="app-sidebar" aria-label="Toggle menu">
             <span class="navbar-toggler-icon"></span>
         </button>
-        <span class="navbar-brand mb-0 h5 me-0"><i class="bi bi-gear me-2"></i>Tremplin</span>
+        <span class="navbar-brand mb-0 h5 me-0"><i class="bi bi-gear me-2"></i>Splouch</span>
     </nav>
 
     <div class="d-flex">
@@ -161,7 +161,8 @@ function onPasswordInput(form) {
                 <div>
                     <strong>Update needs a reinstall to finish.</strong>
                     A recent update changed system setup the in-app updater can't apply on its own.
-                    Re-run <code>bash ~/Tremplin/install/install.sh server</code> on this device to complete it.
+                    Run the installer again on this device — the <strong>Reinstall</strong> desktop shortcut,
+                    or <code>bash install/install.sh server</code> from the repo over SSH.
                 </div>
             </div>
             {% endif %}
@@ -1718,7 +1719,7 @@ function onPasswordInput(form) {
     var _updateSock = null;
 
     function _ensureUpdateSock() {
-        if (!_updateSock) _updateSock = tremplinSocket('/ws/settings');
+        if (!_updateSock) _updateSock = splouchSocket('/ws/settings');
     }
 
     function loadVersions() {
@@ -2174,7 +2175,7 @@ function onPasswordInput(form) {
         _term.open(document.getElementById('terminal-container'));
         _term.onData(function(data) { if (_termSock) _termSock.emit('input', data); });
         if (!_termSock) {
-            _termSock = tremplinSocket('/ws/terminal');
+            _termSock = splouchSocket('/ws/terminal');
             _termSock.on('output', function(data) { if (_term) _term.write(data); });
             _termSock.on('exit', function() {
                 if (_term) { _term.write('\r\n\x1b[33m[Process exited]\x1b[0m\r\n'); }
@@ -2260,7 +2261,7 @@ function onPasswordInput(form) {
 
     function _initDebugSock() {
         if (_debugSock) return;
-        _debugSock = tremplinSocket('/ws/settings');
+        _debugSock = splouchSocket('/ws/settings');
         _debugSock.on('debug_line', function(d) {
             var out = document.getElementById('debug-output');
             var line = document.createElement('div');

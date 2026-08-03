@@ -1,5 +1,5 @@
 [Unit]
-Description=Tremplin deploy webhook
+Description=Splouch deploy webhook
 After=network.target docker.service
 Wants=docker.service
 

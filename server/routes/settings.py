@@ -548,7 +548,7 @@ def route_picker_image():
 def route_manifest():
     app_title = (state.settings.get('app_window_title') or
                  state.meet.meet_info.get('name') or
-                 state.settings.get('meet_title') or 'Tremplin')
+                 state.settings.get('meet_title') or 'Splouch')
     icons = ([
         {'src': '/home_icon',     'sizes': '192x192', 'type': 'image/png'},
         {'src': '/home_icon_512', 'sizes': '512x512', 'type': 'image/png'},
