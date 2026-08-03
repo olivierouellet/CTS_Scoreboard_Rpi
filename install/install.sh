@@ -186,8 +186,25 @@ if [[ "$ROLE" == "server" ]]; then
     done
 
     if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/../server/app.py" ]]; then
-        info "Running from project directory — skipping clone"
         INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+        info "Running from project directory: $INSTALL_DIR"
+        # Self-update so a reinstall (e.g. the desktop Reinstall icon) provisions
+        # the LATEST code, not whatever is already on disk — otherwise a reinstall
+        # just re-runs the stale on-disk installer. Skip the pull when the working
+        # tree has local edits (a dev checkout) so we never clobber them; the
+        # version-selection step below then checks out the requested ref.
+        if [[ -d "$INSTALL_DIR/.git" ]]; then
+            # `uv sync` rewrites uv.lock; discard that expected drift so it doesn't
+            # look like a local edit and block the self-update.
+            git -C "$INSTALL_DIR" checkout -- uv.lock 2>/dev/null || true
+            if [[ -z "$(git -C "$INSTALL_DIR" status --porcelain 2>/dev/null)" ]]; then
+                info "Fetching latest code before reinstalling…"
+                git -C "$INSTALL_DIR" fetch --tags --quiet || true
+                git -C "$INSTALL_DIR" pull --quiet --ff-only 2>/dev/null || true
+            else
+                warn "Working tree has local changes — reinstalling on-disk code (no pull)."
+            fi
+        fi
     elif [[ -d "$INSTALL_DIR/.git" ]]; then
         info "Updating existing repo at $INSTALL_DIR"
         git -C "$INSTALL_DIR" fetch --tags
