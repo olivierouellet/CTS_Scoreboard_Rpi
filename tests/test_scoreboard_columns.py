@@ -43,6 +43,15 @@ def _seek(board, qt_app, fraction):
     qt_app.processEvents()
 
 
+def _run_transition(board, qt_app):
+    """Drive the sequence deterministically instead of sleeping through 2s."""
+    board._transition_collapse(board._transition_token)
+    board._col_anim.setCurrentTime(board._col_anim.duration())
+    board._transition_fade_out(board._transition_token)
+    board._content_fade.setCurrentTime(board._content_fade.duration())
+    qt_app.processEvents()
+
+
 def test_an_idle_board_shows_every_column(board):
     """Before any heat arrives the board must look finished, not half-drawn."""
     assert board.columns_visible
@@ -82,8 +91,11 @@ def test_the_next_heat_collapses_them_again(board, qt_app):
     _seek(board, qt_app, 1.0)
     assert board.columns_visible
 
+    # A lane with a time on screen means there is something to dissolve, so the
+    # collapse now waits behind the podium fade rather than snapping shut.
     board.apply_update({'lane_running1': False, 'current_heat': '2'})
     qt_app.processEvents()
+    _run_transition(board, qt_app)
     assert not board.columns_visible
 
 
@@ -101,6 +113,7 @@ def test_an_event_change_collapses_them_too(board, qt_app):
 
     board.apply_update({'lane_running1': False, 'current_event': '4'})
     qt_app.processEvents()
+    _run_transition(board, qt_app)
     assert not board.columns_visible, 'an event change must collapse the columns'
 
 
@@ -186,3 +199,101 @@ def test_headers_shrink_to_fit_too(board, qt_app):
         label = board.header_row.cells[key]
         needed = QFontMetrics(label.font()).horizontalAdvance(label.text())
         assert needed <= label.width(), f'{key} header overflows its column'
+
+
+# ── Heat transition ────────────────────────────────────────────────────────────
+# Results → next heat is a five-step dissolve, mirroring mode_to_intro() in
+# scoreboard.html: podium tints fade, columns close, the table fades out, the new
+# heat is painted while invisible, the table fades back in. 500ms per step.
+
+def _finish_a_heat(board, qt_app, event='3', heat='1'):
+    board.apply_update({'current_event': event, 'current_heat': heat,
+                        'lane_name1': 'Roy, Zoé', 'lane_name2': 'Côté, Léa'})
+    board.apply_update({'running_time': '0.00',
+                        'lane_running1': True, 'lane_running2': True})
+    qt_app.processEvents()
+    board.apply_update({'lane_running1': False, 'lane_running2': False,
+                        'lane_time1': '58.12', 'lane_place1': '1',
+                        'lane_time2': '59.03', 'lane_place2': '2'})
+    board.cancel_heat_transition()
+    board.set_columns_visible(True, animate=False)
+    qt_app.processEvents()
+
+
+def test_the_table_pauses_so_the_new_heat_does_not_leak(board, qt_app):
+    """The outgoing results stay on screen until the fade hides them."""
+    _finish_a_heat(board, qt_app)
+    board.apply_update({'current_heat': '2', 'lane_name1': 'Nguyen, An'})
+    qt_app.processEvents()
+
+    assert board.paused
+    assert board.rows[0].name_label.text() == 'Roy, Zoé', 'next heat leaked early'
+    assert board.rows[0].time_label.text() == '58.12', 'results cleared too early'
+
+
+def test_the_podium_tint_fades_before_anything_moves(board, qt_app):
+    _finish_a_heat(board, qt_app)
+    gold = board.cfg.color('podium_gold')
+    assert board.rows[0]._current_bg == gold
+
+    board.apply_update({'current_heat': '2'})
+    qt_app.processEvents()
+    anim = board.rows[0]._podium_anim
+    assert anim is not None, 'podium tint did not start fading'
+
+    anim.setCurrentTime(anim.duration())
+    assert board.rows[0]._current_bg.lower() == board.rows[0]._base_bg.lower()
+    # Nothing else has moved yet.
+    assert board._content_opacity.opacity() == 1.0
+    assert board.columns_visible
+
+
+def test_the_new_heat_appears_only_once_invisible(board, qt_app):
+    _finish_a_heat(board, qt_app)
+    board.apply_update({'current_heat': '2', 'lane_name1': 'Nguyen, An'})
+    qt_app.processEvents()
+    _run_transition(board, qt_app)
+
+    assert not board.paused
+    assert board.rows[0].name_label.text() == 'Nguyen, An'
+    # The previous heat's times must be gone, not merely hidden behind the
+    # collapsed columns — the operator can reopen them at any moment.
+    assert board.rows[0].time_label.text() == ''
+    assert board.rows[0].place_label.text() == ''
+    assert not any(k.startswith('lane_time') for k in board.snapshot)
+    assert not board.columns_visible, 'a start list keeps the timing columns shut'
+
+
+def test_the_table_fades_back_in(board, qt_app):
+    _finish_a_heat(board, qt_app)
+    board.apply_update({'current_heat': '2'})
+    qt_app.processEvents()
+    _run_transition(board, qt_app)
+
+    board._content_fade.setCurrentTime(board._content_fade.duration())
+    qt_app.processEvents()
+    assert board._content_opacity.opacity() == 1.0
+
+
+def test_a_race_starting_cuts_the_transition_short(board, qt_app):
+    """A swimmer on the blocks outranks an animation."""
+    _finish_a_heat(board, qt_app)
+    board.apply_update({'current_heat': '2', 'lane_name1': 'Nguyen, An'})
+    qt_app.processEvents()
+    assert board.paused
+
+    board.apply_update({'running_time': '0.00', 'lane_running1': True})
+    qt_app.processEvents()
+    assert not board.paused, 'transition was not cancelled'
+    assert board._content_opacity.opacity() == 1.0, 'board left half-faded'
+    assert board.rows[0].name_label.text() == 'Nguyen, An'
+
+
+def test_loading_a_heat_onto_an_empty_board_skips_the_dissolve(board, qt_app):
+    """Two seconds of dissolve to clear nothing would just look slow."""
+    board.apply_update({'current_event': '3', 'current_heat': '1',
+                        'lane_name1': 'Roy, Zoé'})
+    qt_app.processEvents()
+    assert not board.paused
+    assert not board.columns_visible
+    assert board._content_opacity.opacity() == 1.0

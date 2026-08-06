@@ -14,10 +14,12 @@ Two things differ from the browser, deliberately:
 import re
 import time
 
-from PyQt5.QtCore import QEasingCurve, Qt, QTimer, QVariantAnimation
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import (QWIDGETSIZE_MAX, QApplication, QFrame, QHBoxLayout,
-                             QLabel, QSizePolicy, QVBoxLayout, QWidget)
+from PyQt5.QtCore import (QEasingCurve, QPropertyAnimation, Qt, QTimer,
+                          QVariantAnimation)
+from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtWidgets import (QWIDGETSIZE_MAX, QApplication, QFrame,
+                             QGraphicsOpacityEffect, QHBoxLayout, QLabel,
+                             QSizePolicy, QVBoxLayout, QWidget)
 
 from .format import fmt_clock, fmt_delta, parse_clock
 from .theme import Config
@@ -33,6 +35,12 @@ _W_LANE, _W_NAME, _W_CLUB, _W_TIME, _W_DELTA, _W_PLACE = 6, 38, 20, 17, 9, 6
 # The three columns that slide in when a race starts, and how long that takes.
 # 500ms matches `.timing-anim { transition: … 0.5s ease }` in timing_display.css.
 _COL_ANIM_MS = 500
+
+# Heat transition, mirroring mode_to_intro() in scoreboard.html: the podium tints
+# fade, then the columns close, then the table fades out, is swapped while
+# invisible, and fades back in. Each step is 500ms in the browser.
+_PODIUM_FADE_MS  = 500
+_CONTENT_FADE_MS = 500
 _COL_TOTAL_WEIGHT = _W_LANE + _W_NAME + _W_CLUB + _W_TIME + _W_DELTA + _W_PLACE
 
 _LANE_SUFFIX = re.compile(r'(\d+)$')
@@ -150,10 +158,45 @@ class LaneRow(QFrame):
 
     def _podium_bg(self, place: str):
         """Tint the top three rows when `show_podium` is on, as the browser does."""
+        self._stop_podium_fade()
         key = {'1': 'podium_gold', '2': 'podium_silver', '3': 'podium_bronze'}.get(
             (place or '').strip())
         bg = self.cfg.color(key) if (key and self.cfg.show_podium) else self._base_bg
+        self._current_bg = bg
         self.setStyleSheet(f'background-color: {bg};')
+
+    def _stop_podium_fade(self):
+        anim = getattr(self, '_podium_anim', None)
+        if anim is not None:
+            anim.stop()
+            self._podium_anim = None
+
+    def fade_podium_out(self, duration_ms: int):
+        """Ease the podium tint back to the row's own stripe.
+
+        Step 1 of the heat transition. The browser gets this free from a CSS
+        `background-color` transition; Qt stylesheets do not animate, so the colour
+        is interpolated and re-applied.
+        """
+        start = QColor(getattr(self, '_current_bg', self._base_bg))
+        end   = QColor(self._base_bg)
+        if start == end:
+            return
+        self._stop_podium_fade()
+        anim = QVariantAnimation(self)
+        anim.setDuration(duration_ms)
+        anim.setStartValue(start)
+        anim.setEndValue(end)
+        anim.setEasingCurve(QEasingCurve.InOutQuad)
+
+        def paint(colour):
+            self._current_bg = colour.name()
+            self.setStyleSheet(f'background-color: {colour.name()};')
+
+        anim.valueChanged.connect(paint)
+        anim.finished.connect(self._stop_podium_fade)
+        self._podium_anim = anim
+        anim.start()
 
     # ── Data ───────────────────────────────────────────────────────────────────
 
@@ -315,7 +358,11 @@ class BoardWindow(QWidget):
         # calm start list, then the race begins and the timing columns arrive.
         # Starts expanded so an idle board looks finished rather than half-drawn.
         self._col_fraction = 1.0
-        self._heat_key = None        # (event, heat) — a change collapses the columns
+        self._heat_key = None        # (event, heat) — a change starts the transition
+        # While True, frames merge into the snapshot but are not painted: the
+        # outgoing heat stays on screen until the fade hides it.
+        self.paused = False
+        self._transition_token = 0
         self._col_anim = QVariantAnimation(self)
         self._col_anim.setDuration(_COL_ANIM_MS)
         self._col_anim.setEasingCurve(QEasingCurve.InOutCubic)
@@ -350,14 +397,30 @@ class BoardWindow(QWidget):
         root.addWidget(self.header)
 
         # ── Board ──────────────────────────────────────────────────────────────
+        # The column titles and lane rows live in one `content` widget so the heat
+        # transition can fade the whole table as a unit while the header bar and
+        # background stay put — the same split the browser has between `#scoreboard`
+        # and the `.timing-content` table it fades.
+        self.content = QWidget()
+        content = QVBoxLayout(self.content)
+        content.setContentsMargins(0, 0, 0, 0)
+        content.setSpacing(0)
+
         self.header_row = HeaderRow(cfg)
-        root.addWidget(self.header_row, 1)
+        content.addWidget(self.header_row, 1)
 
         self.rows = []
         for lane in range(1, cfg.num_lanes + 1):
             row = LaneRow(lane, cfg)
             self.rows.append(row)
-            root.addWidget(row, 2)
+            content.addWidget(row, 2)
+
+        self._content_opacity = QGraphicsOpacityEffect(self.content)
+        self._content_opacity.setOpacity(1.0)
+        self.content.setGraphicsEffect(self._content_opacity)
+        self._content_fade = QPropertyAnimation(self._content_opacity, b'opacity', self)
+        self._content_fade.setEasingCurve(QEasingCurve.InOutQuad)
+        root.addWidget(self.content, 1)
 
         # ── Status overlay ─────────────────────────────────────────────────────
         # Shown until the first connection; also covers a mid-meet drop so the TV
@@ -521,6 +584,108 @@ class BoardWindow(QWidget):
         """The current headline, or ``''`` when no status is showing."""
         return self.status.text() if self.status_box.isVisible() else ''
 
+    # ── Heat transition ────────────────────────────────────────────────────────
+
+    def _drop_stale_timing(self, keep=()):
+        """Forget the previous heat's times, places and deltas.
+
+        A new heat has none yet, and they are not merely invisible: the columns
+        may be collapsed now, but the operator can reopen them, and `refresh()`
+        repaints from the snapshot. Without this the last heat's results would
+        reappear under the next heat's names.
+
+        *keep* is the frame that triggered the heat change. Anything it carries
+        belongs to the **new** heat and must survive — a console is free to send
+        the heat number and a lane time in one packet, and wiping those would
+        discard data we had just been given.
+        """
+        stale = [key for key in self.snapshot
+                 if key.startswith(('lane_time', 'lane_place', 'lane_delta',
+                                    'lane_running'))
+                 and key not in keep]
+        for key in stale:
+            del self.snapshot[key]
+
+    def _has_results(self) -> bool:
+        """True when finished times are on screen — something worth fading out."""
+        return any(row.place_label.text() or row.time_label.text()
+                   for row in self.rows)
+
+    def begin_heat_transition(self):
+        """Results → next heat, in the browser's five steps.
+
+        1. podium tints fade back to the row stripes
+        2. the timing columns close
+        3. the table fades out
+        4. the new heat is painted while it is invisible
+        5. the table fades back in
+
+        Each step is 500ms, so the whole thing is about two seconds — which is why
+        it only runs when there are results to clear. Loading a heat onto an empty
+        board collapses the columns outright; there is nothing to dissolve.
+
+        While the transition runs the table is *paused*: frames still merge into
+        the snapshot, they just are not painted until step 4. Otherwise the next
+        heat's names would appear on the outgoing results.
+        """
+        if not self._has_results():
+            self.set_columns_visible(False, animate=False)
+            return
+
+        token = self._transition_token = self._transition_token + 1
+        self.paused = True
+        self.stop_clock()
+
+        for row in self.rows:                       # step 1
+            row.fade_podium_out(_PODIUM_FADE_MS)
+        QTimer.singleShot(_PODIUM_FADE_MS, lambda: self._transition_collapse(token))
+
+    def _transition_collapse(self, token):
+        if token != self._transition_token:
+            return
+        self.set_columns_visible(False)              # step 2
+        QTimer.singleShot(_COL_ANIM_MS, lambda: self._transition_fade_out(token))
+
+    def _transition_fade_out(self, token):
+        if token != self._transition_token:
+            return
+        self._fade_content(0.0, lambda: self._transition_swap(token))   # step 3
+
+    def _transition_swap(self, token):
+        if token != self._transition_token:
+            return
+        self.paused = False
+        for row in self.rows:                        # step 4, while invisible
+            row.clear()
+        self.refresh()
+        self._fade_content(1.0, None)                # step 5
+
+    def _fade_content(self, target: float, done):
+        self._content_fade.stop()
+        try:
+            self._content_fade.finished.disconnect()
+        except TypeError:
+            pass                                     # nothing connected
+        self._content_fade.setDuration(_CONTENT_FADE_MS)
+        self._content_fade.setStartValue(self._content_opacity.opacity())
+        self._content_fade.setEndValue(target)
+        if done is not None:
+            self._content_fade.finished.connect(done)
+        self._content_fade.start()
+
+    def cancel_heat_transition(self):
+        """Abandon a transition mid-flight and show the current state at once.
+
+        Called when a race starts during the sequence — a swimmer on the blocks
+        outranks an animation.
+        """
+        self._transition_token += 1
+        self._content_fade.stop()
+        self._content_opacity.setOpacity(1.0)
+        if self.paused:
+            self.paused = False
+            self.refresh()
+
     # ── Column reveal ──────────────────────────────────────────────────────────
 
     def _animated_cells(self):
@@ -629,9 +794,18 @@ class BoardWindow(QWidget):
             heat = (data.get('current_event', self.snapshot.get('current_event')),
                     data.get('current_heat',  self.snapshot.get('current_heat')))
             if heat != self._heat_key:
+                first_heat = self._heat_key is None
                 self._heat_key = heat
-                self.set_columns_visible(False, animate=False)
+                # Retire the previous heat's numbers now; the rows keep showing
+                # them until step 4 repaints, which is what fades out.
+                self._drop_stale_timing(keep=data)
+                if first_heat:
+                    self.set_columns_visible(False, animate=False)
+                else:
+                    self.begin_heat_transition()
         if not was_racing and any(row.running for row in self.rows):
+            # A race outranks any animation still in flight.
+            self.cancel_heat_transition()
             self.set_columns_visible(True)
 
         if 'current_event' in data:
@@ -668,9 +842,10 @@ class BoardWindow(QWidget):
             match = _LANE_SUFFIX.search(key)
             if match:
                 touched.add(int(match.group(1)))
-        for row in self.rows:
-            if row.lane in touched:
-                row.update_from(self.snapshot)
+        if not self.paused:
+            for row in self.rows:
+                if row.lane in touched:
+                    row.update_from(self.snapshot)
 
         self._sync_clock()
         if self._clock_timer.isActive():
@@ -682,6 +857,7 @@ class BoardWindow(QWidget):
 
     def reset(self):
         self.stop_clock()
+        self.cancel_heat_transition()
         self._heat_key = None
         self.set_columns_visible(True, animate=False)
         self.snapshot.clear()

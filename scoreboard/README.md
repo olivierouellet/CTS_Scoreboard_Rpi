@@ -132,22 +132,53 @@ begins and the timing columns arrive.
 
 | trigger | effect |
 | --- | --- |
-| `current_event` **or** `current_heat` changes | collapse, instantly |
+| `current_event` **or** `current_heat` changes, results on screen | the heat transition below |
+| same, but the board is empty | collapse at once — nothing to dissolve |
 | first lane starts running | reveal, animated |
 | `columns_state {hidden}` from `/operator` | either, animated |
 | `reset()` / idle board | expanded |
 
 Either half of the `(event, heat)` pair changing counts as a new race — event 3
 heat 1 → event 4 heat 1 is a new start list even though the heat number held. Only
-a *change* collapses, since the console resends both fields constantly.
-
-Collapsing is instant because it happens while the previous heat's numbers are
-being cleared anyway; only the reveal is worth animating. The board starts
-expanded so an idle display looks finished rather than half-drawn.
+a *change* counts, since the console resends both fields constantly. The board
+starts expanded so an idle display looks finished rather than half-drawn.
 
 Driven by `maximumWidth`, not layout stretch: these cells use
 `QSizePolicy.Ignored`, which carries the Expand flag, so a stretch of 0 would not
 reliably close them.
+
+### The heat transition
+
+Going from one heat's results to the next start list is a five-step dissolve, not
+a cut, mirroring `mode_to_intro()` in `scoreboard.html`. 500ms per step:
+
+1. **Podium tints fade** back to the row stripes
+2. **Columns close**
+3. **The table fades out**
+4. **The new heat is painted while it is invisible**
+5. **The table fades back in**
+
+Three things make it work:
+
+- **The table pauses.** From step 1 until step 4, incoming frames merge into the
+  snapshot but are not painted (`BoardWindow.paused`). Otherwise the next heat's
+  names would appear on top of the outgoing results. The header bar keeps updating
+  live, as it does in the browser.
+- **A race cancels it.** `cancel_heat_transition()` snaps straight to the current
+  state if a lane starts running mid-dissolve — a swimmer on the blocks outranks
+  an animation.
+- **An empty board skips it.** Two seconds of dissolving nothing just looks slow,
+  so a heat loaded onto a clear board collapses outright.
+
+The previous heat's `lane_time`/`lane_place`/`lane_delta` keys are dropped from the
+snapshot at the moment of the heat change — *except* any that arrived in that same
+frame, which belong to the new heat. They are not merely hidden behind the closed
+columns: the operator can reopen those at any moment, and `refresh()` repaints
+from the snapshot.
+
+Qt stylesheets do not animate, so the podium fade interpolates the colour itself
+and re-applies it; the browser gets that free from a CSS `background-color`
+transition.
 
 ### Why every cell is a `FitLabel`
 
@@ -354,7 +385,10 @@ intact).
 This is a working scaffold, not the finished display. Still to do:
 
 - **Splash / carousel.** `/live` shows sponsor images between heats
-  (`carousel_images`, `carousel_interval`) and an intro splash. Not implemented.
-- **Race-end transitions.** The browser fades between board and results on
-  `race_finished`; here the board simply keeps the final times on screen.
+  (`carousel_images`, `carousel_interval`) and an intro splash. Not implemented,
+  so there is no idle mode: the board holds the last start list indefinitely
+  rather than timing out to a splash the way `INTRO_TIMEOUT` does in the browser.
 - **Background image.** `/live` renders `scoreboard_bg.png` behind the table.
+- **Results hold.** The browser pauses on results for `RESULTS_TIMEOUT` and
+  distinguishes a brief result from a full one; here results simply stay until
+  the next heat arrives.
