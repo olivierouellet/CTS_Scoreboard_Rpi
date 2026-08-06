@@ -61,6 +61,52 @@ together, and a display that waits for a successful HTTP call looks broken for
 the first thirty seconds; instead it draws with fallback theming plus a status
 message and adopts the real config when `/config` answers.
 
+## Font sizing
+
+Nothing is sized in absolute pixels. Every size derives from the window, so the
+same code fills a 1080p TV and a 4K one without a second layout.
+
+**The ceiling.** `_FONT_MAIN = 0.52` in `board.py`: on each resize,
+`LaneRow.set_row_height` sets the row's text to 52% of the row height and hands
+the same number to the name label as its *maximum*. Names therefore never grow
+larger than the lane / club / time / place text beside them — a short name simply
+matches its row rather than ballooning to fill the column. Relay member names use
+`_FONT_ALT = 0.30`; the header bar uses 55% of its own height.
+
+| ceiling | 6 lanes | 8 lanes | 10 lanes |
+| --- | --- | --- | --- |
+| **1080p** | 83px | 63px | 52px |
+| **4K** | 170px | 130px | 105px |
+
+**The floor.** `FitLabel(min_px=10)` in `widgets.py`. Below 10px the search stops
+and the text clips instead of shrinking further. In practice it is unreachable —
+a 44-character name still resolves to 27px at 1080p, and only a ~90-character
+string gets near it.
+
+What a row actually renders at, 8 lanes:
+
+```text
+1080p  →  short 63px · typical 44px · long 27px · 90-char 13px
+4K     →  short 130px · typical 91px · long 56px · 90-char 27px
+```
+
+### Open question: the spread
+
+The ceiling is settled; the *variation between rows* is not. At 1080p a short
+name draws at 63px next to a long one at 27px, which reads as ragged in a way the
+browser version never did — CSS truncated everything to one uniform size instead.
+
+Three options, in order of preference:
+
+1. **Fit per heat.** Measure the longest name in the current heat, then apply that
+   one size to all rows. Keeps every name complete *and* makes the block uniform.
+   Costs a second measuring pass on each heat change.
+2. **Leave it.** Maximum information, uneven look.
+3. **Raise the floor** to ~50% of the ceiling and elide beyond it. Caps the
+   raggedness, but reintroduces the truncation this display exists to avoid.
+
+Not worth deciding from a screenshot — judge it with real names on the real TV.
+
 ## Testing
 
 `tests/test_scoreboard_config.py` covers config normalisation and is deliberately
