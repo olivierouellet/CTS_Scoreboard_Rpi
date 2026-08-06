@@ -158,12 +158,7 @@ function onPasswordInput(form) {
             {% if provision_stale %}
             <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
                 <i class="bi bi-exclamation-triangle-fill mt-1"></i>
-                <div>
-                    <strong>Update needs a reinstall to finish.</strong>
-                    A recent update changed system setup the in-app updater can't apply on its own.
-                    Run the installer again on this device — the <strong>Reinstall</strong> desktop shortcut,
-                    or <code>bash install/install.sh server</code> from the repo over SSH.
-                </div>
+                <div>{{ t.reinstall_banner | safe }}</div>
             </div>
             {% endif %}
             <div class="tab-content">

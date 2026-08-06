@@ -170,6 +170,9 @@ tab_account          = "Cuenta"
 # ── Panel de ajustes (interfaz de administración del servidor) ─────────────
 [settings]
 
+# Aviso mostrado en Ajustes cuando una actualización de código requiere una reinstalación completa.
+reinstall_banner = '''<strong>La actualización necesita una reinstalación.</strong> Una actualización reciente cambió la configuración del sistema que el actualizador integrado no puede aplicar por sí solo. Vuelve a ejecutar el instalador en este dispositivo — el acceso directo <strong>Reinstalar</strong> del escritorio, o <code>bash install/install.sh server</code> desde el repositorio por SSH.'''
+
 # Barra lateral
 ui_theme        = "Tema"
 ui_theme_light  = "Claro"
