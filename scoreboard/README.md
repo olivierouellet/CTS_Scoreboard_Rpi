@@ -122,6 +122,42 @@ Two rules the code depends on:
   minute; `tests/test_scoreboard_format.py` cross-checks it against
   `meet_data._delta_html` so the two can't drift.
 
+### The column reveal
+
+Time, delta and place collapse to nothing when a heat loads and slide open over
+500ms when the race starts, matching `.timing-anim`'s `0.5s ease` in the browser.
+It is purely cosmetic, and the contrast is the whole point: between heats the
+board is a calm start list with the names given the full width, then the race
+begins and the timing columns arrive.
+
+| trigger | effect |
+| --- | --- |
+| `current_event` **or** `current_heat` changes | collapse, instantly |
+| first lane starts running | reveal, animated |
+| `columns_state {hidden}` from `/operator` | either, animated |
+| `reset()` / idle board | expanded |
+
+Either half of the `(event, heat)` pair changing counts as a new race — event 3
+heat 1 → event 4 heat 1 is a new start list even though the heat number held. Only
+a *change* collapses, since the console resends both fields constantly.
+
+Collapsing is instant because it happens while the previous heat's numbers are
+being cleared anyway; only the reveal is worth animating. The board starts
+expanded so an idle display looks finished rather than half-drawn.
+
+Driven by `maximumWidth`, not layout stretch: these cells use
+`QSizePolicy.Ignored`, which carries the Expand flag, so a stretch of 0 would not
+reliably close them.
+
+### Why every cell is a `FitLabel`
+
+Not just the names. A plain `QLabel` paints straight over its neighbour rather
+than clipping, and at six lanes on 1080p the row is tall enough that `1:12.44`
+at 52% of row height is wider than the time column — it rendered as `1:12.44).06`,
+spilling into the delta. Long translated headers did the same (`COULOIR` in a
+lane column six units wide). Every cell now shrinks to fit, and
+`tests/test_scoreboard_columns.py` measures each one against its column width.
+
 ### The race clock
 
 A lane's time cell has two owners, and which one is in charge is the whole
@@ -292,8 +328,8 @@ are deliberately Qt-free, so they run in CI without the `scoreboard` extra
 installed. Keep pure logic out of `board.py` for that reason — it is the module
 that drags in PyQt5.
 
-`tests/test_scoreboard_startup.py` and `tests/test_scoreboard_clock.py` need Qt and
-`importorskip` without it. Run them where PyQt5 is available:
+`tests/test_scoreboard_startup.py`, `tests/test_scoreboard_clock.py` and
+`tests/test_scoreboard_columns.py` need Qt and `importorskip` without it. Run them where PyQt5 is available:
 
 ```bash
 uv run --extra scoreboard pytest tests/
@@ -322,6 +358,3 @@ This is a working scaffold, not the finished display. Still to do:
 - **Race-end transitions.** The browser fades between board and results on
   `race_finished`; here the board simply keeps the final times on screen.
 - **Background image.** `/live` renders `scoreboard_bg.png` behind the table.
-- **`columns_state`.** The browser collapses optional columns mid-race to widen
-  the name column. The native board ignores it — worth revisiting once real names
-  are on a real TV, since shrink-to-fit may have removed the need.

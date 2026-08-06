@@ -1,0 +1,188 @@
+"""The column reveal, and the overflow rule that makes it safe.
+
+Time / delta / place collapse when a heat loads and slide open when the race
+starts. It is purely cosmetic — the contrast is the point: between heats the
+board is a calm start list, then the race begins and the timing columns arrive.
+The operator's toggle on /operator drives the same mechanism via `columns_state`.
+
+Needs PyQt5 (`uv run --extra scoreboard pytest tests/`); skips without it.
+"""
+import pytest
+
+pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+
+from PyQt5.QtCore import QAbstractAnimation      # noqa: E402
+from PyQt5.QtGui import QFontMetrics             # noqa: E402
+
+from scoreboard.board import BoardWindow         # noqa: E402
+from scoreboard.theme import Config              # noqa: E402
+
+# `qt_app` comes from tests/conftest.py — session-scoped, fonts already loaded.
+
+
+@pytest.fixture
+def board(qt_app):
+    window = BoardWindow(Config({'num_lanes': 6}))
+    window.resize(1920, 1080)
+    window.show()
+    qt_app.processEvents()
+    yield window
+    window.stop_clock()
+    window.close()
+
+
+def _timing_widths(board):
+    row = board.rows[0]
+    return (row.time_label.width(), row.delta_label.width(), row.place_label.width())
+
+
+def _seek(board, qt_app, fraction):
+    """Drive the animation to a point in time — deterministic, no sleeping."""
+    anim = board._col_anim
+    anim.setCurrentTime(int(anim.duration() * fraction))
+    qt_app.processEvents()
+
+
+def test_an_idle_board_shows_every_column(board):
+    """Before any heat arrives the board must look finished, not half-drawn."""
+    assert board.columns_visible
+    assert all(w > 0 for w in _timing_widths(board))
+
+
+def test_a_new_heat_collapses_the_timing_columns(board, qt_app):
+    board.apply_update({'current_event': '3', 'current_heat': '1',
+                        'lane_name1': 'Roy, Zoé'})
+    qt_app.processEvents()
+    assert not board.columns_visible
+    assert _timing_widths(board) == (0, 0, 0)
+    # The freed width goes to the name, which is the visual point of collapsing.
+    assert board.rows[0].name_cell.width() > 900
+
+
+def test_the_race_starting_slides_them_open(board, qt_app):
+    board.apply_update({'current_event': '3', 'current_heat': '1'})
+    qt_app.processEvents()
+    assert _timing_widths(board) == (0, 0, 0)
+
+    board.apply_update({'running_time': '0.00', 'lane_running1': True})
+    assert board._col_anim.state() == QAbstractAnimation.Running, 'reveal not animated'
+
+    _seek(board, qt_app, 0.5)
+    half = _timing_widths(board)
+    assert all(0 < w for w in half), 'columns should be partly open mid-animation'
+
+    _seek(board, qt_app, 1.0)
+    assert board.columns_visible
+    assert all(w > h for w, h in zip(_timing_widths(board), half))
+
+
+def test_the_next_heat_collapses_them_again(board, qt_app):
+    board.apply_update({'current_event': '3', 'current_heat': '1',
+                        'running_time': '0.00', 'lane_running1': True})
+    _seek(board, qt_app, 1.0)
+    assert board.columns_visible
+
+    board.apply_update({'lane_running1': False, 'current_heat': '2'})
+    qt_app.processEvents()
+    assert not board.columns_visible
+
+
+def test_an_event_change_collapses_them_too(board, qt_app):
+    """The trigger is the (event, heat) pair, not the heat alone.
+
+    Moving from event 3 heat 1 to event 4 heat 1 is a new race with a new start
+    list, even though the heat number is unchanged. The browser treats it the same
+    way — either field changing drops it into the intro state.
+    """
+    board.apply_update({'current_event': '3', 'current_heat': '1',
+                        'running_time': '0.00', 'lane_running1': True})
+    _seek(board, qt_app, 1.0)
+    assert board.columns_visible
+
+    board.apply_update({'lane_running1': False, 'current_event': '4'})
+    qt_app.processEvents()
+    assert not board.columns_visible, 'an event change must collapse the columns'
+
+
+def test_repeated_heat_frames_do_not_re_collapse(board, qt_app):
+    """`current_heat` is resent constantly; only a *change* may collapse."""
+    board.apply_update({'current_event': '3', 'current_heat': '1'})
+    board.apply_update({'running_time': '0.00', 'lane_running1': True})
+    _seek(board, qt_app, 1.0)
+
+    board.apply_update({'current_event': '3', 'current_heat': '1',
+                        'running_time': '12.00'})
+    qt_app.processEvents()
+    assert board.columns_visible, 'a repeated heat frame collapsed the board mid-race'
+
+
+def test_operator_toggle_uses_the_same_mechanism(board, qt_app):
+    board.set_columns_visible(False, animate=False)
+    assert not board.columns_visible
+
+    board.set_columns_visible(True)
+    _seek(board, qt_app, 1.0)
+    assert board.columns_visible
+    assert all(w > 0 for w in _timing_widths(board))
+
+
+def test_re_asserting_the_current_state_does_not_re_animate(board):
+    """Repeated `columns_state` frames must not make the board stutter."""
+    board.set_columns_visible(True, animate=False)
+    board.set_columns_visible(True)
+    assert board._col_anim.state() != QAbstractAnimation.Running
+
+
+def test_reset_restores_the_idle_look(board, qt_app):
+    board.apply_update({'current_event': '3', 'current_heat': '1'})
+    qt_app.processEvents()
+    assert not board.columns_visible
+
+    board.reset()
+    assert board.columns_visible
+
+
+# ── Overflow ───────────────────────────────────────────────────────────────────
+
+def test_no_cell_paints_outside_its_column(board, qt_app):
+    """Every cell shrinks to fit; a plain QLabel would paint over its neighbour.
+
+    This is what makes narrow columns safe. Before the cells became `FitLabel`s,
+    `1:12.44` at a six-lane row height was wider than the time column and spilled
+    into the delta, rendering as `1:12.44).06` on screen.
+    """
+    board.apply_update({
+        'current_event': '3', 'current_heat': '1',
+        **{f'lane_name{i}': 'Vandenbroucke-Mortensen, Alexandra' for i in range(1, 7)},
+        **{f'lane_club{i}': 'CN Saint-Jean-sur-Richelieu' for i in range(1, 7)},
+        **{f'lane_time{i}': '1:12.44' for i in range(1, 7)},
+        **{f'lane_place{i}': str(i) for i in range(1, 7)},
+        **{f'lane_delta_seconds{i}': -12.34 for i in range(1, 7)},
+    })
+    board.set_columns_visible(True, animate=False)
+    qt_app.processEvents()
+
+    overflowing = []
+    for row in board.rows:
+        cells = ((row.lane_label, 'lane'), (row.name_label, 'name'),
+                 (row.club_label, 'club'), (row.time_label, 'time'),
+                 (row.delta_label, 'delta'), (row.place_label, 'place'))
+        for label, name in cells:
+            if not label.isVisible() or not label.text():
+                continue
+            needed = QFontMetrics(label.font()).horizontalAdvance(label.text())
+            if needed > label.width():
+                overflowing.append(f'lane {row.lane} {name}: '
+                                   f'{needed}px of text in {label.width()}px')
+    assert not overflowing, 'cells painting outside their column: ' + '; '.join(overflowing)
+
+
+def test_headers_shrink_to_fit_too(board, qt_app):
+    """Translated headers are long — `COULOIR` in a lane column six units wide."""
+    board.header_row.cells['lane'].setText('COULOIR')
+    board.header_row.cells['place'].setText('CLASSEMENT')
+    qt_app.processEvents()
+    for key in ('lane', 'place'):
+        label = board.header_row.cells[key]
+        needed = QFontMetrics(label.font()).horizontalAdvance(label.text())
+        assert needed <= label.width(), f'{key} header overflows its column'

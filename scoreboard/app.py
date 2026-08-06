@@ -210,9 +210,9 @@ class ScoreboardApp:
             # ticker would keep counting up over the final times.
             self.window.stop_clock()
         elif event == 'columns_state':
-            # The browser collapses optional columns during a race; the native
-            # board keeps them, since it has no reflow cost.
-            pass
+            # The operator's manual toggle on /operator, same mechanism as the
+            # automatic reveal at race start.
+            self.window.set_columns_visible(not (data or {}).get('hidden', False))
 
 
 def main(argv=None) -> int:

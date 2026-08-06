@@ -14,10 +14,10 @@ Two things differ from the browser, deliberately:
 import re
 import time
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import QEasingCurve, Qt, QTimer, QVariantAnimation
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
-                             QSizePolicy, QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QWIDGETSIZE_MAX, QApplication, QFrame, QHBoxLayout,
+                             QLabel, QSizePolicy, QVBoxLayout, QWidget)
 
 from .format import fmt_clock, fmt_delta, parse_clock
 from .theme import Config
@@ -29,6 +29,11 @@ _CLOCK_TICK_MS = 50
 
 # Column stretch weights, chosen to match the browser's vw widths.
 _W_LANE, _W_NAME, _W_CLUB, _W_TIME, _W_DELTA, _W_PLACE = 6, 38, 20, 17, 9, 6
+
+# The three columns that slide in when a race starts, and how long that takes.
+# 500ms matches `.timing-anim { transition: … 0.5s ease }` in timing_display.css.
+_COL_ANIM_MS = 500
+_COL_TOTAL_WEIGHT = _W_LANE + _W_NAME + _W_CLUB + _W_TIME + _W_DELTA + _W_PLACE
 
 _LANE_SUFFIX = re.compile(r'(\d+)$')
 
@@ -55,7 +60,7 @@ class LaneRow(QFrame):
         row.setContentsMargins(12, 0, 12, 0)
         row.setSpacing(10)
 
-        self.lane_label = QLabel(str(lane))
+        self.lane_label = FitLabel(str(lane))
         self.lane_label.setAlignment(Qt.AlignCenter)
 
         # Name and relay members share one cell, stacked — matching the browser's
@@ -76,13 +81,16 @@ class LaneRow(QFrame):
         self.club_label = FitLabel()
         self.club_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-        self.time_label = QLabel()
+        # All shrink-to-fit: a long time (`1:12.44`) at a tall row's font size is
+        # wider than its column, and a plain QLabel paints straight over the
+        # neighbouring cell instead of clipping.
+        self.time_label = FitLabel()
         self.time_label.setAlignment(Qt.AlignCenter)
 
-        self.delta_label = QLabel()
+        self.delta_label = FitLabel()
         self.delta_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-        self.place_label = QLabel()
+        self.place_label = FitLabel()
         self.place_label.setAlignment(Qt.AlignCenter)
 
         for widget, weight in ((self.lane_label,  _W_LANE),
@@ -121,17 +129,20 @@ class LaneRow(QFrame):
         self.delta_label.setVisible(cfg.show_delta)
         self.place_label.setVisible(cfg.show_position)
 
+    def animated_cells(self):
+        """(widget, weight) for the columns that slide in at race start."""
+        return ((self.time_label,  _W_TIME),
+                (self.delta_label, _W_DELTA),
+                (self.place_label, _W_PLACE))
+
     def set_row_height(self, height: int):
         """Rescale fonts to the row height (called on window resize)."""
-        main = int(height * _FONT_MAIN)
-        alt  = int(height * _FONT_ALT)
+        main = max(8, int(height * _FONT_MAIN))
+        alt  = max(8, int(height * _FONT_ALT))
         for label in (self.lane_label, self.club_label, self.time_label,
-                      self.delta_label, self.place_label):
-            font = label.font()
-            font.setPixelSize(max(8, main))
-            label.setFont(font)
-        self.name_label.set_max_px(main)
-        self.alt_label.set_max_px(max(8, alt))
+                      self.delta_label, self.place_label, self.name_label):
+            label.set_max_px(main)
+        self.alt_label.set_max_px(alt)
 
     def _style_delta(self, better):
         color = self.cfg.color('delta_better' if better else 'delta_worse')
@@ -193,8 +204,8 @@ class HeaderCell(QWidget):
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
-        self.label = QLabel()
-        self.value = QLabel()
+        self.label = FitLabel()
+        self.value = FitLabel()
         row.addWidget(self.label)
         row.addWidget(self.value)
         row.addStretch(1)
@@ -210,9 +221,7 @@ class HeaderCell(QWidget):
 
     def set_pixel_size(self, px: int):
         for part in (self.label, self.value):
-            font = part.font()
-            font.setPixelSize(max(10, px))
-            part.setFont(font)
+            part.set_max_px(max(10, px))
 
     def set_text(self, label: str, value: str):
         self.label.setText(label)
@@ -240,7 +249,7 @@ class HeaderRow(QFrame):
                 ('delta', _W_DELTA, Qt.AlignRight | Qt.AlignVCenter),
                 ('place', _W_PLACE, Qt.AlignCenter))
         for key, weight, align in spec:
-            label = QLabel()
+            label = FitLabel()
             label.setAlignment(align)
             label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             row.addWidget(label, weight)
@@ -265,11 +274,15 @@ class HeaderRow(QFrame):
         self.cells['delta'].setVisible(cfg.show_delta and cfg.show_delta_header)
         self.cells['place'].setVisible(cfg.show_position and cfg.show_position_header)
 
+    def animated_cells(self):
+        """(widget, weight) for the columns that slide in at race start."""
+        return ((self.cells['time'],  _W_TIME),
+                (self.cells['delta'], _W_DELTA),
+                (self.cells['place'], _W_PLACE))
+
     def set_row_height(self, height: int):
         for label in self.cells.values():
-            font = label.font()
-            font.setPixelSize(max(8, int(height * _FONT_MAIN)))
-            label.setFont(font)
+            label.set_max_px(max(8, int(height * _FONT_MAIN)))
 
 
 class BoardWindow(QWidget):
@@ -295,6 +308,18 @@ class BoardWindow(QWidget):
         self._clock_timer = QTimer(self)
         self._clock_timer.setInterval(_CLOCK_TICK_MS)
         self._clock_timer.timeout.connect(self._tick_clock)
+
+        # ── Column reveal ──────────────────────────────────────────────────────
+        # Time / delta / place slide open when a race starts. Purely cosmetic, and
+        # the reason it reads well is the contrast: between heats the board is a
+        # calm start list, then the race begins and the timing columns arrive.
+        # Starts expanded so an idle board looks finished rather than half-drawn.
+        self._col_fraction = 1.0
+        self._heat_key = None        # (event, heat) — a change collapses the columns
+        self._col_anim = QVariantAnimation(self)
+        self._col_anim.setDuration(_COL_ANIM_MS)
+        self._col_anim.setEasingCurve(QEasingCurve.InOutCubic)
+        self._col_anim.valueChanged.connect(self._apply_col_fraction)
         self.setWindowTitle(cfg.meet_title or 'Splouch')
 
         root = QVBoxLayout(self)
@@ -314,7 +339,7 @@ class BoardWindow(QWidget):
         self.heat_cell  = HeaderCell(cfg)
         self.name_label = FitLabel()
         self.name_label.setAlignment(Qt.AlignCenter)
-        self.chrono_label = QLabel()
+        self.chrono_label = FitLabel()
         self.chrono_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         bar.addWidget(self.title_label, 30)
@@ -448,9 +473,9 @@ class BoardWindow(QWidget):
         self.name_label.set_max_px(int(head_h * 0.55))
         for cell in (self.event_cell, self.heat_cell):
             cell.set_pixel_size(int(head_h * 0.55))
-        font = self.chrono_label.font()
-        font.setPixelSize(max(10, int(head_h * 0.55)))
-        self.chrono_label.setFont(font)
+        self.chrono_label.set_max_px(max(10, int(head_h * 0.55)))
+        if self._col_fraction < 1.0:
+            self._apply_col_fraction(self._col_fraction)   # widths are width-relative
         self.status_box.setGeometry(self.rect())
         font = self.status.font()
         font.setPixelSize(max(16, int(self.height() * 0.055)))
@@ -495,6 +520,47 @@ class BoardWindow(QWidget):
     def status_text(self) -> str:
         """The current headline, or ``''`` when no status is showing."""
         return self.status.text() if self.status_box.isVisible() else ''
+
+    # ── Column reveal ──────────────────────────────────────────────────────────
+
+    def _animated_cells(self):
+        for container in [self.header_row, *self.rows]:
+            yield from container.animated_cells()
+
+    def _apply_col_fraction(self, fraction):
+        """Squeeze the timing columns to *fraction* of their natural width.
+
+        Driven by ``maximumWidth`` rather than layout stretch: these cells use
+        ``QSizePolicy.Ignored``, which carries the Expand flag, so a stretch of 0
+        would not reliably close them.
+        """
+        self._col_fraction = float(fraction)
+        width = max(1, self.width())
+        for cell, weight in self._animated_cells():
+            if self._col_fraction >= 1.0:
+                cell.setMaximumWidth(QWIDGETSIZE_MAX)   # hand control back to the layout
+            else:
+                natural = width * weight / _COL_TOTAL_WEIGHT
+                cell.setMaximumWidth(int(natural * self._col_fraction))
+
+    def set_columns_visible(self, visible: bool, animate: bool = True):
+        """Slide the timing columns open or shut.
+
+        Idempotent: re-asserting the current state does not restart the animation,
+        so repeated ``columns_state`` frames cannot make the board stutter.
+        """
+        target = 1.0 if visible else 0.0
+        self._col_anim.stop()
+        if not animate or self._col_fraction == target:
+            self._apply_col_fraction(target)
+            return
+        self._col_anim.setStartValue(self._col_fraction)
+        self._col_anim.setEndValue(target)
+        self._col_anim.start()
+
+    @property
+    def columns_visible(self) -> bool:
+        return self._col_fraction >= 1.0
 
     # ── Live clock ─────────────────────────────────────────────────────────────
 
@@ -544,6 +610,7 @@ class BoardWindow(QWidget):
         # seconds so it can be read, then the flag comes back and the lane
         # rejoins the clock. Freezing the split is the whole point of the flag —
         # without it the lap time would be overwritten before anyone saw it.
+        was_racing = any(row.running for row in self.rows)
         for key, value in data.items():
             if not key.startswith('lane_running'):
                 continue
@@ -553,6 +620,19 @@ class BoardWindow(QWidget):
             lane = int(match.group(1))
             if 1 <= lane <= len(self.rows):
                 self.rows[lane - 1].running = bool(value)
+
+        # A new heat empties the board back to a start list; the race starting
+        # brings the timing columns back. Collapsing is instant because it happens
+        # while the previous heat's numbers are being cleared anyway — only the
+        # reveal is worth animating.
+        if 'current_event' in data or 'current_heat' in data:
+            heat = (data.get('current_event', self.snapshot.get('current_event')),
+                    data.get('current_heat',  self.snapshot.get('current_heat')))
+            if heat != self._heat_key:
+                self._heat_key = heat
+                self.set_columns_visible(False, animate=False)
+        if not was_racing and any(row.running for row in self.rows):
+            self.set_columns_visible(True)
 
         if 'current_event' in data:
             self.event_cell.set_text(self.cfg.labels.get('event', 'EVENT'),
@@ -602,6 +682,8 @@ class BoardWindow(QWidget):
 
     def reset(self):
         self.stop_clock()
+        self._heat_key = None
+        self.set_columns_visible(True, animate=False)
         self.snapshot.clear()
         self.event_cell.set_text('', '')
         self.heat_cell.set_text('', '')
