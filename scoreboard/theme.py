@@ -68,6 +68,9 @@ class Config:
         self.fonts      = {**DEFAULT_FONTS,   **(raw.get('theme_fonts')     or {})}
         self.labels     = {**DEFAULT_LABELS,  **(raw.get('labels')          or {})}
         self.strings    = {**DEFAULT_STRINGS, **(raw.get('display_strings') or {})}
+        # Carousel overlay (Settings → Display → Splash Screen).
+        self.carousel_images = list(raw.get('carousel_images') or [])
+        self.carousel_interval = max(1, int(raw.get('carousel_interval') or 10))
         for flag in _SHOW_FLAGS:
             setattr(self, flag, bool(raw.get(flag, True)))
 

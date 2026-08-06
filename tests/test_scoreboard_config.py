@@ -8,6 +8,8 @@ covered separately — see scoreboard/README.md.
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scoreboard.theme import DEFAULT_COLORS, DEFAULT_FONTS, Config  # noqa: E402
@@ -57,3 +59,41 @@ def test_labels_are_taken_from_the_server_locale():
     cfg = Config({'labels': {'lane': 'COULOIR', 'name': 'NOM'}})
     assert cfg.labels['lane'] == 'COULOIR'
     assert cfg.labels['time'] == 'TIME'   # untranslated keys keep the fallback
+
+
+# ── Carousel (Settings → Display → Splash Screen) ──────────────────────────────
+
+def test_carousel_defaults_are_empty_and_sane():
+    cfg = Config()
+    assert cfg.carousel_images == []
+    assert cfg.carousel_interval == 10
+
+
+def test_carousel_values_come_from_the_server():
+    cfg = Config({'carousel_images': ['a.png', 'b.png'], 'carousel_interval': 4})
+    assert cfg.carousel_images == ['a.png', 'b.png']
+    assert cfg.carousel_interval == 4
+
+
+@pytest.mark.parametrize('bad', [0, -5, None, ''])
+def test_a_zero_or_missing_interval_falls_back(bad):
+    """A zero interval would spin the carousel timer as fast as Qt allows."""
+    assert Config({'carousel_interval': bad}).carousel_interval >= 1
+
+
+def test_a_null_image_list_does_not_crash():
+    assert Config({'carousel_images': None}).carousel_images == []
+
+
+def test_config_endpoint_exposes_the_carousel(monkeypatch, tmp_path):
+    """`/live` builds this list for its template; native clients need it too."""
+    import state
+    import web
+    (tmp_path / 'sponsor.png').write_bytes(b'x')
+    (tmp_path / 'nested').mkdir()                 # directories must be skipped
+    monkeypatch.setattr(state, 'IMAGES_DIR', str(tmp_path))
+    monkeypatch.setitem(state.settings, 'carousel_interval', 7)
+
+    cfg = web.display_config()
+    assert cfg['carousel_images'] == ['sponsor.png']
+    assert cfg['carousel_interval'] == 7

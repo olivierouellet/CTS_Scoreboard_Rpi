@@ -26,6 +26,7 @@ from PyQt5.QtWidgets import (QWIDGETSIZE_MAX, QApplication, QFrame,
                              QSizePolicy, QVBoxLayout, QWidget)
 
 from .format import fmt_clock, fmt_delta, parse_clock
+from .splash import SplashOverlay
 from .theme import Config
 from .widgets import FitLabel
 
@@ -495,6 +496,9 @@ class BoardWindow(QWidget):
         status_layout.addStretch(1)
         self.status_box.hide()
 
+        # The carousel overlay, above the board and above the status message.
+        self.splash = SplashOverlay(cfg, self)
+
         self.apply_theme()
 
     # ── Appearance ─────────────────────────────────────────────────────────────
@@ -528,6 +532,8 @@ class BoardWindow(QWidget):
         self.header_row.apply_theme()
         for row in self.rows:
             row.apply_theme()
+        if hasattr(self, 'splash'):
+            self.splash.apply_config(cfg)
 
     def keyPressEvent(self, event):   # noqa: N802 — Qt naming
         """Operator keys: leave the board without an SSH session.
@@ -589,6 +595,7 @@ class BoardWindow(QWidget):
         # not work. This handles only what belongs to the window.
         if self._col_fraction < 1.0:
             self._apply_col_fraction(self._col_fraction)   # widths are width-relative
+        self.splash.setGeometry(self.rect())
         self.status_box.setGeometry(self.rect())
         font = self.status.font()
         font.setPixelSize(max(16, int(self.height() * 0.055)))
@@ -633,6 +640,24 @@ class BoardWindow(QWidget):
     def status_text(self) -> str:
         """The current headline, or ``''`` when no status is showing."""
         return self.status.text() if self.status_box.isVisible() else ''
+
+    # ── Splash overlay ─────────────────────────────────────────────────────────
+
+    def show_splash(self):
+        self.splash.setGeometry(self.rect())
+        self.splash.show_splash()
+        self.splash.raise_()
+
+    def hide_splash(self):
+        self.splash.hide_splash()
+
+    @property
+    def splash_visible(self) -> bool:
+        return self.splash.isVisible()
+
+    @property
+    def any_lane_running(self) -> bool:
+        return any(row.running for row in self.rows)
 
     # ── Heat transition ────────────────────────────────────────────────────────
 

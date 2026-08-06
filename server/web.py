@@ -108,6 +108,16 @@ def display_config():
     # no template, so they ride along here.
     cfg['locale'] = state.settings.get('locale', 'en')
     cfg['display_strings'] = state.display_strings()
+    # Carousel overlay: the same list `/live` builds for its template, so a native
+    # client can show the same splash. Filenames only — the images themselves come
+    # from GET /images/{filename}.
+    try:
+        cfg['carousel_images'] = sorted(
+            f for f in os.listdir(state.IMAGES_DIR)
+            if os.path.isfile(os.path.join(state.IMAGES_DIR, f)))
+    except OSError:
+        cfg['carousel_images'] = []
+    cfg['carousel_interval'] = int(state.settings.get('carousel_interval', 10))
     return cfg
 
 

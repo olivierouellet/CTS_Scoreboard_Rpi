@@ -1,0 +1,238 @@
+"""The splash / carousel overlay.
+
+Raised by the carousel button on `/operator` (`display_overlay {active}`) and
+dismissed by the same button *or* by a race starting. Sponsor images come from the
+server over HTTP, so the fetch must not touch the GUI thread.
+
+Needs PyQt5 (`uv run --extra scoreboard pytest tests/`); skips without it.
+"""
+import http.server
+import os
+import socketserver
+import tempfile
+import threading
+import time
+
+import pytest
+
+pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+
+from PyQt5.QtGui import QColor, QPixmap          # noqa: E402
+
+from scoreboard.board import BoardWindow         # noqa: E402
+from scoreboard.theme import Config              # noqa: E402
+
+# `qt_app` comes from tests/conftest.py — session-scoped, fonts already loaded.
+
+_MAX_BLOCKING_SECONDS = 1.0
+
+
+@pytest.fixture(scope='module')
+def image_server(qt_app):
+    """Serves three PNGs at /images/<name>, as the real server does."""
+    directory = tempfile.mkdtemp()
+    payloads = {}
+    for name, colour in (('a.png', '#c00000'), ('b.png', '#00c000'),
+                         ('c.png', '#0000c0')):
+        pixmap = QPixmap(400, 300)
+        pixmap.fill(QColor(colour))
+        path = os.path.join(directory, name)
+        pixmap.save(path, 'PNG')
+        with open(path, 'rb') as f:
+            payloads['/images/' + name] = f.read()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):                                    # noqa: N802
+            body = payloads.get(self.path)
+            if body is None:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/png')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = socketserver.TCPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f'http://127.0.0.1:{server.server_address[1]}'
+    server.shutdown()
+    server.server_close()
+
+
+def _pump(qt_app, seconds):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        qt_app.processEvents()
+        time.sleep(0.01)
+
+
+def _config(**overrides):
+    base = {'num_lanes': 4, 'meet_title': 'Championnat provincial',
+            'carousel_images': ['a.png', 'b.png', 'c.png'], 'carousel_interval': 1}
+    base.update(overrides)
+    return Config(base)
+
+
+@pytest.fixture
+def board(qt_app, image_server):
+    window = BoardWindow(_config())
+    window.resize(1920, 1080)
+    window.show()
+    window.splash.apply_config(window.cfg, image_server)
+    _pump(qt_app, 1.0)                      # let the images arrive
+    yield window
+    window.hide_splash()
+    window.stop_clock()
+    window.close()
+
+
+def test_images_are_fetched_without_blocking_the_gui_thread(qt_app, image_server):
+    """The board must stay responsive while sponsor images download."""
+    window = BoardWindow(_config())
+    window.resize(1920, 1080)
+    window.show()
+    started = time.monotonic()
+    window.splash.apply_config(window.cfg, image_server)
+    assert time.monotonic() - started < _MAX_BLOCKING_SECONDS, \
+        'apply_config blocked — images are being fetched inline'
+    _pump(qt_app, 1.0)
+    assert len(window.splash._pixmaps) == 3
+    window.close()
+
+
+def test_the_operator_button_shows_and_hides_it(board, qt_app):
+    assert not board.splash_visible
+
+    board.show_splash()
+    _pump(qt_app, 1.0)                      # the overlay fades in over 0.8s
+    assert board.splash_visible
+    assert board.splash._fade.opacity() == 1.0
+
+    board.hide_splash()
+    _pump(qt_app, 1.0)
+    assert not board.splash_visible
+
+
+def test_the_meet_title_is_on_the_splash(board):
+    """`live.html` omits it; `scoreboard.html` has it. We follow scoreboard.html.
+
+    The title comes from Settings → Display → Title, which reaches us as
+    `meet_title` in /config.
+    """
+    assert board.splash.title.text() == 'Championnat provincial'
+    assert board.splash.title.isVisible() or not board.splash.isVisible()
+
+
+def test_the_background_image_is_loaded(board):
+    """Sponsor logos are usually transparent PNGs and need something behind them."""
+    assert not board.splash._background.isNull(), 'scoreboard_bg.png did not load'
+
+
+def test_the_carousel_cross_fades_between_slides(board, qt_app):
+    """Driven directly: a wall-clock window can span two ticks, and two flips
+    land back on the layer you started from."""
+    board.show_splash()
+    _pump(qt_app, 0.9)
+    before_layer = board.splash._front
+    before_index = board.splash._index
+
+    board.splash._advance()
+    qt_app.processEvents()
+    assert board.splash._index == (before_index + 1) % 3, 'did not advance one slide'
+    assert board.splash._front != before_layer, 'layers did not swap'
+    assert board.splash._crossfades, 'no cross-fade animation was started'
+
+
+def test_the_carousel_timer_runs_while_it_is_up(board, qt_app):
+    board.show_splash()
+    _pump(qt_app, 0.9)
+    assert board.splash._timer.isActive()
+    assert board.splash._timer.interval() == 1000    # carousel_interval, in ms
+
+    board.hide_splash()
+    _pump(qt_app, 1.0)
+    assert not board.splash._timer.isActive(), 'timer left running behind the board'
+
+
+def test_a_single_image_does_not_rotate(qt_app, image_server):
+    """Nothing to cross-fade to; the timer would just burn cycles."""
+    window = BoardWindow(_config(carousel_images=['a.png']))
+    window.resize(1920, 1080)
+    window.show()
+    window.splash.apply_config(window.cfg, image_server)
+    _pump(qt_app, 0.8)
+    window.show_splash()
+    _pump(qt_app, 0.9)
+    assert not window.splash._timer.isActive()
+    window.hide_splash()
+    window.close()
+
+
+def test_no_images_still_shows_title_and_background(qt_app):
+    """A meet with no sponsor images should still get a tidy splash."""
+    window = BoardWindow(_config(carousel_images=[]))
+    window.resize(1920, 1080)
+    window.show()
+    window.show_splash()
+    _pump(qt_app, 0.9)
+    assert window.splash_visible
+    assert window.splash.title.text() == 'Championnat provincial'
+    window.hide_splash()
+    window.close()
+
+
+def test_a_race_starting_is_what_dismisses_it(board, qt_app):
+    """The predicate app.py uses — the operator should not have to remember."""
+    board.show_splash()
+    _pump(qt_app, 0.9)
+    assert board.splash_visible
+    assert not board.any_lane_running
+
+    board.apply_update({'running_time': '0.00', 'lane_running1': True})
+    qt_app.processEvents()
+    assert board.any_lane_running, 'the dismissal predicate never fires'
+
+
+def test_app_tells_the_server_when_a_race_dismisses_the_splash(qt_app, image_server):
+    """Hiding silently would leave the /operator button lit with nothing behind it.
+
+    The next press would then appear to do nothing, because the server still
+    believes the overlay is on.
+    """
+    from scoreboard.app import ScoreboardApp
+    app = ScoreboardApp(image_server, fullscreen=False)
+    sent = []
+    app.link.send = lambda event, data=None: sent.append((event, data))
+    try:
+        app.window.splash.apply_config(app.window.cfg, image_server)
+        app.window.show_splash()
+        _pump(qt_app, 0.9)
+        assert app.window.splash_visible
+
+        app._on_frame('update_scoreboard', {'running_time': '0.00',
+                                            'lane_running1': True})
+        _pump(qt_app, 1.0)
+        assert not app.window.splash_visible, 'a race must dismiss the splash'
+        assert ('set_overlay', {'active': False}) in sent, \
+            'the server was not told, so /operator would be out of sync'
+    finally:
+        app.link.stop()
+
+
+def test_display_overlay_frames_drive_it(qt_app, image_server):
+    from scoreboard.app import ScoreboardApp
+    app = ScoreboardApp(image_server, fullscreen=False)
+    try:
+        app._on_frame('display_overlay', {'active': True})
+        _pump(qt_app, 0.9)
+        assert app.window.splash_visible
+
+        app._on_frame('display_overlay', {'active': False})
+        _pump(qt_app, 1.0)
+        assert not app.window.splash_visible
+    finally:
+        app.link.stop()

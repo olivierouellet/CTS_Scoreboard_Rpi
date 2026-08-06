@@ -5,10 +5,14 @@ The native display for the kiosk Pi. Replaces the Chromium kiosk that rendered
 
 > **`/live` is the reference, not `/scoreboard`.** The kiosk pointed at
 > `http://splouch.local`, which redirects to `/live`. The two templates have
-> diverged: `live.html` has no splash mode, and it *cuts* between heats where
-> `scoreboard.html` dissolves. Column widths differ too — delta is 15vw in
-> `/live`, 9vw in `/scoreboard`. Where this display departs from `/live`, it is
-> noted as a deliberate choice.
+> diverged, and where this display departs from `/live` it is called out:
+>
+> | | `/live` (the kiosk) | `/scoreboard` | here |
+> | --- | --- | --- | --- |
+> | between heats | instant cut | five-step dissolve | dissolve |
+> | delta column | 15vw | 9vw | 15vw |
+> | title on the splash | absent | present | present |
+> | idle splash timeout | yes | yes | not implemented |
 
 ## Why native
 
@@ -86,6 +90,7 @@ icon.
 | `widgets.py` | `FitLabel` — the shrink-to-fit label |
 | `theme.py` | normalises `/config` (colours, fonts, labels, strings, `show_*` flags) |
 | `cache.py` | remembers the last `/config` so a cold boot starts themed and translated |
+| `splash.py` | the carousel overlay — title, sponsor images, background |
 | `format.py` | value formatting (deltas); Qt-free so CI can test it |
 | `fonts.py` | registers the bundled TTFs, resolves family names, falls back to monospace |
 
@@ -220,6 +225,37 @@ Cells also use `QSizePolicy.Ignored` in **both** directions with a zero minimum.
 Their fonts are derived from the row height, so a font-driven minimum height feeds
 straight back into the layout — a 1080p board inflated to 1460px tall, which on a
 fullscreen TV means the bottom lane is cut off.
+
+### The splash / carousel overlay
+
+Raised over the whole board by the carousel button on `/operator`, which arrives
+as `display_overlay {active}`.
+
+| what | behaviour |
+| --- | --- |
+| shown by | the `/operator` carousel button |
+| hidden by | the same button, **or** any lane starting to run |
+| contents | meet title along the top, sponsor images cross-fading beneath |
+| background | `shared/static/img/scoreboard_bg.png` |
+| timings | 0.8s fade in/out, 1s cross-fade, slide interval from `carousel_interval` |
+
+**A race dismisses it**, so the operator does not have to remember. The display
+also sends `set_overlay {active: false}` back rather than just hiding: otherwise
+the button on `/operator` stays lit with nothing behind it, and the next press
+appears to do nothing because the server still believes the overlay is on.
+
+**The meet title is a deliberate addition.** `live.html` has no title on its
+carousel — `scoreboard.html` does, and this follows `scoreboard.html`. It comes
+from Settings → Display → Title (`meet_title` in `/config`).
+
+**The background is `scoreboard_bg.png`**, not a black rectangle. Sponsor logos are
+usually transparent PNGs, so what sits behind them is most of what the audience
+sees while the overlay is up. It is read from the repo, like the fonts — same git
+ref as the server, so no fetch needed.
+
+**Images are fetched off the GUI thread** from `GET /images/{filename}`, one signal
+per image as it lands, so the first slide appears while the rest are still coming
+in. `/config` carries `carousel_images` and `carousel_interval`.
 
 ### The race clock
 
@@ -391,8 +427,9 @@ are deliberately Qt-free, so they run in CI without the `scoreboard` extra
 installed. Keep pure logic out of `board.py` for that reason — it is the module
 that drags in PyQt5.
 
-`tests/test_scoreboard_startup.py`, `tests/test_scoreboard_clock.py` and
-`tests/test_scoreboard_columns.py` need Qt and `importorskip` without it. Run them where PyQt5 is available:
+`tests/test_scoreboard_startup.py`, `test_scoreboard_clock.py`,
+`test_scoreboard_columns.py` and `test_scoreboard_splash.py` need Qt and
+`importorskip` without it. Run them where PyQt5 is available:
 
 ```bash
 uv run --extra scoreboard pytest tests/
@@ -416,11 +453,11 @@ intact).
 
 This is a working scaffold, not the finished display. Still to do:
 
-- **Splash / carousel.** `/live` shows sponsor images between heats
-  (`carousel_images`, `carousel_interval`) and an intro splash. Not implemented,
-  so there is no idle mode: the board holds the last start list indefinitely
-  rather than timing out to a splash the way `INTRO_TIMEOUT` does in the browser.
-- **Background image.** `/live` renders `scoreboard_bg.png` behind the table.
+- **Automatic idle splash.** The overlay is operator-driven only. `/live` also
+  drops to a splash on its own after `INTRO_TIMEOUT` / `RESULTS_TIMEOUT`; here the
+  board holds the last start list until someone presses the button.
+- **Background image behind the board.** `scoreboard_bg.png` backs the splash, but
+  `/live` also renders it behind the lane table itself.
 - **Results hold.** The browser pauses on results for `RESULTS_TIMEOUT` and
   distinguishes a brief result from a full one; here results simply stay until
   the next heat arrives.

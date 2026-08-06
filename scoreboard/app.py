@@ -172,11 +172,29 @@ class ScoreboardApp:
         else:
             self.window.set_config(new_config)
 
+        # After any rebuild, so the surviving window is the one that gets it.
+        self.window.splash.apply_config(new_config, self.server)
+
         self.config = new_config
         # A language change lands here too — repaint the waiting screen so it
         # switches immediately instead of at the next tick.
         if self._waiting:
             self._tick_waiting()
+
+    # ── Splash ─────────────────────────────────────────────────────────────────
+
+    def _dismiss_splash_if_racing(self):
+        """A race starting takes the splash down, without the operator acting.
+
+        We tell the server rather than just hiding locally, so the toggle on
+        /operator and every browser client agree with the TV. Hiding silently
+        would leave the button lit with nothing behind it, and the next press
+        would appear to do nothing.
+        """
+        if not (self.window.splash_visible and self.window.any_lane_running):
+            return
+        self.window.hide_splash()
+        self.link.send('set_overlay', {'active': False})
 
     # ── Server events (docs/api.md §2 `/ws/scoreboard`) ────────────────────────
 
@@ -195,6 +213,7 @@ class ScoreboardApp:
     def _on_frame(self, event: str, data):
         if event == 'update_scoreboard':
             self.window.apply_update(data or {})
+            self._dismiss_splash_if_racing()
         elif event == 'reload':
             # Settings or theme changed — re-fetch config and redraw.
             self.config_loader.request()
@@ -202,8 +221,11 @@ class ScoreboardApp:
             active = bool((data or {}).get('active'))
             self.window.set_status('⚠ TEST SESSION' if active else '')
         elif event == 'display_overlay':
-            # The operator blanked the board (medal ceremony, announcements).
-            self.window.set_status(' ' if (data or {}).get('active') else '')
+            # The carousel button on /operator. Shows the splash over the board.
+            if (data or {}).get('active'):
+                self.window.show_splash()
+            else:
+                self.window.hide_splash()
         elif event == 'race_finished':
             # Results are confirmed. Belt-and-braces: the console normally clears
             # every `lane_running` flag first, but if a frame were missed the

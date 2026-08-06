@@ -124,7 +124,7 @@ JSON/asset endpoints (everything else the servers expose is HTML for the browser
 ### Local (Pi)
 | method · path | returns |
 | --- | --- |
-| `GET /config` | **display config JSON** — `num_lanes`, `theme_colors`, `theme_fonts`, `show_*` flags, `labels`, `meet_title`, `locale`, `display_strings` (§6). Lets the Qt display theme *and translate* itself without a rendered page |
+| `GET /config` | **display config JSON** — `num_lanes`, `theme_colors`, `theme_fonts`, `show_*` flags, `labels`, `meet_title`, `locale`, `display_strings`, `carousel_images`, `carousel_interval` (§6). Lets the Qt display theme *and translate* itself without a rendered page |
 | `GET /manifest.json` | PWA manifest (app title, icons) |
 | `GET /home_icon`, `/home_icon_512` | meet home-screen icon PNG |
 | `GET /picker_image` | active picker image PNG |
