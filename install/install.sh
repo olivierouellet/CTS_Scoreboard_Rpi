@@ -165,6 +165,39 @@ configure_static_ip() {
     info "Static IP configured: ${ip%/*}"
 }
 
+# ── Version checkout ───────────────────────────────────────────────────────────
+# Shared by the server and kiosk roles so both resolve $VERSION_CHOICE to the SAME
+# ref. That is what keeps the Qt display and the server speaking the same
+# WebSocket contract — see notes/native_app_strategy.md.
+checkout_version() {
+    local dir="$1"
+    if [[ "$VERSION_CHOICE" == "latest" ]]; then
+        local latest_tag
+        latest_tag=$(git -C "$dir" tag -l --sort=-version:refname \
+                     | grep -E '^v[0-9]{4}\.[0-9]{2}\.[0-9]+$' | head -1)
+        if [[ -n "$latest_tag" ]]; then
+            git -C "$dir" checkout -B release "$latest_tag"
+            info "Version: $latest_tag"
+        else
+            warn "No release tags found — using master."
+        fi
+    else
+        git -C "$dir" checkout master 2>/dev/null \
+            || git -C "$dir" checkout main 2>/dev/null || true
+        info "Version: master"
+    fi
+}
+
+# ── uv (Python package manager) ────────────────────────────────────────────────
+ensure_uv() {
+    section "uv (Python package manager)"
+    if ! command -v uv &>/dev/null; then
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+    fi
+    info "uv $(uv --version)"
+}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # SERVER (Pi #1)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -215,27 +248,9 @@ if [[ "$ROLE" == "server" ]]; then
         git -C "$INSTALL_DIR" fetch --tags
     fi
 
-    if [[ "$VERSION_CHOICE" == "latest" ]]; then
-        LATEST_TAG=$(git -C "$INSTALL_DIR" tag -l --sort=-version:refname \
-                     | grep -E '^v[0-9]{4}\.[0-9]{2}\.[0-9]+$' | head -1)
-        if [[ -n "$LATEST_TAG" ]]; then
-            git -C "$INSTALL_DIR" checkout -B release "$LATEST_TAG"
-            info "Version: $LATEST_TAG"
-        else
-            warn "No release tags found — using master."
-        fi
-    else
-        git -C "$INSTALL_DIR" checkout master 2>/dev/null \
-            || git -C "$INSTALL_DIR" checkout main 2>/dev/null || true
-        info "Version: master"
-    fi
+    checkout_version "$INSTALL_DIR"
 
-    section "uv (Python package manager)"
-    if ! command -v uv &>/dev/null; then
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-    fi
-    info "uv $(uv --version)"
+    ensure_uv
 
     section "Python dependencies"
     cd "$INSTALL_DIR"
@@ -575,10 +590,78 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════════
 if [[ "$ROLE" == "kiosk" ]]; then
 
+    section "Project"
+    # The kiosk now runs code (the Qt scoreboard in scoreboard/) rather than a
+    # browser pointed at a URL, so it needs the repo — and, crucially, the SAME
+    # git ref as the server, so the two agree on the WebSocket contract.
+    # See notes/native_app_strategy.md.
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-install.sh}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+    if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/../scoreboard/app.py" ]]; then
+        INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+        info "Running from project directory: $INSTALL_DIR"
+        # Self-update before provisioning, exactly as the server role does, so a
+        # re-run installs the latest display code rather than re-running whatever
+        # stale copy is on disk. Skipped when the tree has local edits.
+        if [[ -d "$INSTALL_DIR/.git" ]]; then
+            git -C "$INSTALL_DIR" checkout -- uv.lock 2>/dev/null || true
+            if [[ -z "$(git -C "$INSTALL_DIR" status --porcelain 2>/dev/null)" ]]; then
+                info "Fetching latest code before reinstalling…"
+                git -C "$INSTALL_DIR" fetch --tags --quiet || true
+                git -C "$INSTALL_DIR" pull --quiet --ff-only 2>/dev/null || true
+            else
+                warn "Working tree has local changes — reinstalling on-disk code (no pull)."
+            fi
+        fi
+    elif [[ -d "$INSTALL_DIR/.git" ]]; then
+        info "Updating existing repo at $INSTALL_DIR"
+        git -C "$INSTALL_DIR" fetch --tags
+        git -C "$INSTALL_DIR" pull
+    else
+        info "Cloning $REPO_URL → $INSTALL_DIR"
+        git clone "$REPO_URL" "$INSTALL_DIR"
+        git -C "$INSTALL_DIR" fetch --tags
+    fi
+
+    checkout_version "$INSTALL_DIR"
+
+    ensure_uv
+
+    section "Qt scoreboard dependencies"
+    # --extra scoreboard pulls PyQt5, which only the display role needs; the
+    # server Pi and the cloud VM stay Qt-free (see pyproject.toml).
+    cd "$INSTALL_DIR"
+    # Qt needs its platform plugins and system libs from apt even when PyQt5
+    # itself comes from a wheel — the wheel bundles Qt's own libraries but not
+    # the X11/Wayland client libs they link against.
+    # fonts-overpass provides the default theme family (Overpass Mono). The repo's
+    # shared/static/fonts/ holds woff2, which Qt cannot read — see scoreboard/fonts.py.
+    sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libgl1 \
+                            fonts-overpass fonts-dejavu-core || true
+    if ! uv sync --extra scoreboard; then
+        error "Failed to install the Qt dependencies."
+        error "On 32-bit Raspberry Pi OS there is no PyQt5 wheel — reflash with the 64-bit image."
+        exit 1
+    fi
+    info "Virtual environment ready at $INSTALL_DIR/.venv (with PyQt5)"
+
+    section "Server address"
+    # Which server this display follows. Kept outside the repo so a git pull or a
+    # version switch never overwrites a site-specific address.
+    SCOREBOARD_ENV="$TARGET_HOME/.config/splouch/scoreboard.env"
+    mkdir -p "$(dirname "$SCOREBOARD_ENV")"
+    if [[ ! -f "$SCOREBOARD_ENV" ]]; then
+        printf '# Splouch scoreboard — server this display connects to.\nSPLOUCH_SERVER=%s\n' \
+               "$SCOREBOARD_URL" > "$SCOREBOARD_ENV"
+        info "Server address written to $SCOREBOARD_ENV ($SCOREBOARD_URL)"
+    else
+        info "Server address already set in $SCOREBOARD_ENV — keeping it."
+    fi
+
     section "Desktop autologin"
     if command -v raspi-config &>/dev/null; then
         sudo raspi-config nonint do_boot_behaviour B4
-        info "Desktop autologin enabled — kiosk will boot straight to Chromium."
+        info "Desktop autologin enabled — kiosk will boot straight to the scoreboard."
     else
         warn "raspi-config not found — enable manually via: sudo raspi-config → System Options → Boot / Auto Login → Desktop Autologin"
     fi
@@ -602,18 +685,21 @@ EOF
         info "Display resolution already configured — skipping."
     fi
 
-    section "Chromium kiosk autostart"
-    CHROMIUM_BIN="chromium-browser"
-    command -v chromium-browser &>/dev/null || CHROMIUM_BIN="chromium"
-    KIOSK_CMD="$CHROMIUM_BIN --kiosk --app=$SCOREBOARD_URL --noerrdialogs --disable-infobars --password-store=basic"
+    section "Scoreboard autostart"
+    # A launcher script rather than an inline command: it resolves the repo and
+    # the venv from its own location, so moving or re-cloning the checkout never
+    # leaves a stale autostart line behind. It also restarts the app if it exits.
+    KIOSK_CMD="$INSTALL_DIR/install/scripts/start-scoreboard.sh"
+    chmod +x "$KIOSK_CMD"
 
     # Raspberry Pi OS Bookworm/Trixie — Wayland session via labwc
     LABWC_AUTOSTART="$HOME/.config/labwc/autostart"
     mkdir -p "$(dirname "$LABWC_AUTOSTART")"
     touch "$LABWC_AUTOSTART"
-    if ! grep -q "# Splouch kiosk" "$LABWC_AUTOSTART"; then
-        printf '\n# Splouch kiosk\n%s &\n' "$KIOSK_CMD" >> "$LABWC_AUTOSTART"
-    fi
+    # Drop any previous Splouch line (the Chromium kiosk from before the Qt
+    # display) so a re-run replaces it instead of launching both.
+    sed -i '/# Splouch kiosk/,+1d' "$LABWC_AUTOSTART"
+    printf '\n# Splouch kiosk\n%s &\n' "$KIOSK_CMD" >> "$LABWC_AUTOSTART"
 
     # Older Raspberry Pi OS releases — LXDE / X11 session
     AUTOSTART_DIR=/etc/xdg/lxsession/LXDE-pi
@@ -624,14 +710,12 @@ EOF
 @xset s noblank
 @$KIOSK_CMD
 EOF
-    info "Kiosk autostart configured ($CHROMIUM_BIN) → $SCOREBOARD_URL"
+    info "Kiosk autostart configured (Qt scoreboard) → $SCOREBOARD_URL"
 
     section "Desktop wallpaper"
-    WALLPAPER="$HOME/.config/splouch/scoreboard_bg.png"
-    WALLPAPER_URL="${REPO_URL%.git}"
-    WALLPAPER_URL="${WALLPAPER_URL/github.com/raw.githubusercontent.com}/master/shared/static/img/scoreboard_bg.png"
-    mkdir -p "$(dirname "$WALLPAPER")"
-    if curl -fsSL "$WALLPAPER_URL" -o "$WALLPAPER"; then
+    # Now served from the checkout, like the server role — the kiosk has the repo.
+    WALLPAPER="$INSTALL_DIR/shared/static/img/scoreboard_bg.png"
+    if [[ -f "$WALLPAPER" ]]; then
         PCMANFM_CONF="$HOME/.config/pcmanfm/LXDE-pi"
         mkdir -p "$PCMANFM_CONF"
         for conf in "$PCMANFM_CONF/desktop-items-0.conf" "$PCMANFM_CONF/desktop-items-1.conf"; do
@@ -645,7 +729,7 @@ WALLEOF
         pcmanfm --set-wallpaper "$WALLPAPER" --wallpaper-mode=fit 2>/dev/null || true
         info "Desktop wallpaper set to scoreboard_bg.png"
     else
-        warn "Could not download wallpaper from $WALLPAPER_URL — skipping."
+        warn "Wallpaper image not found — skipping."
     fi
 
     section "VNC remote access"
@@ -667,7 +751,11 @@ WALLEOF
 
     section "Done — Pi #2 (kiosk)"
     echo
-    echo -e "  Displays    : ${BOLD}$SCOREBOARD_URL${NC}"
+    echo -e "  Display     : ${BOLD}Qt scoreboard${NC} → $SCOREBOARD_URL"
+    echo -e "  Project dir : $INSTALL_DIR"
+    echo -e "  Server addr : $SCOREBOARD_ENV"
+    echo -e "  Run by hand : ${BOLD}$INSTALL_DIR/install/scripts/start-scoreboard.sh${NC}"
+    echo -e "  Windowed    : ${BOLD}cd $INSTALL_DIR && .venv/bin/python -m scoreboard --windowed${NC}"
     echo
     warn "Pi #1 (server) must be running and reachable at $KIOSK_GATEWAY before the kiosk boots."
     echo

@@ -13,6 +13,13 @@ dependencies = [
     "pillow>=12.3.0",
 ]
 
+# Qt TV display (scoreboard/). Optional so the server Pi and the cloud VM never
+# pull Qt: only the kiosk role installs it, via `uv sync --extra scoreboard`.
+# PyQt5 rather than PySide6 — Qt 5 is lighter on a 2GB Pi 4, and PyQt5 ships
+# manylinux aarch64 wheels, so 64-bit Raspberry Pi OS needs no source build.
+[project.optional-dependencies]
+scoreboard = ["pyqt5>=5.15"]
+
 [dependency-groups]
 dev = ["pytest"]
 

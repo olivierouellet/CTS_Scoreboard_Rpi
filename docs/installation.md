@@ -16,7 +16,7 @@ Earlier releases (Bookworm / Python 3.11) are not supported.
 | Item | Purpose |
 | --- | --- |
 | Raspberry Pi 3B+ or 4 | **Pi #1** — serial decoder + scoreboard server + admin UI |
-| Raspberry Pi 4 | **Pi #2** — Chromium kiosk driving the TV |
+| Raspberry Pi 4 (64-bit OS) | **Pi #2** — Qt scoreboard driving the TV |
 | Unmanaged network switch | Wired pool-deck network for all devices |
 | Cat5e cables | Pi #1 ↔ switch ↔ Pi #2 (and a laptop) |
 | Console serial adapter | Depends on your timing console — see the per-console guides in [`docs/consoles/`](consoles/) |
@@ -45,7 +45,7 @@ venue WiFi (`wlan0`) for internet access and remote management.
 | Device | IP address | Role |
 | --- | --- | --- |
 | Pi #1 | `10.10.10.10/24` (static, `eth0`) | Serial decoder + FastAPI server + admin UI |
-| Pi #2 | DHCP | Chromium kiosk — scoreboard on the TV |
+| Pi #2 | DHCP | Qt kiosk — scoreboard on the TV |
 | Laptop | DHCP or static | Admin browser to `http://splouch.local` (or `10.10.10.10:5000`) |
 
 **Firewall:** Pi #1 blocks incoming connections over WiFi — SSH and VNC are reachable only
@@ -79,7 +79,9 @@ The script:
 
 ## Pi #2 — Kiosk
 
-Flash **Raspberry Pi OS Trixie — Desktop** (not Lite — Chromium needs a desktop session) with SSH enabled.
+Flash **Raspberry Pi OS Trixie — Desktop, 64-bit** with SSH enabled. Desktop (not Lite)
+because the display needs a graphical session; 64-bit because PyQt5 ships no 32-bit
+Raspberry Pi wheel.
 
 SSH in and run:
 
@@ -87,9 +89,33 @@ SSH in and run:
 curl -fsSL https://raw.githubusercontent.com/olivierouellet/Splouch/master/install/install.sh -o install.sh && bash install.sh kiosk
 ```
 
-The script enables desktop autologin and configures Chromium to open fullscreen on boot pointing at `http://splouch.local`.
+The script:
 
-> Pi #1 must be running and reachable before the kiosk boots.
+- Clones the repo to `~/Splouch` at the **same version** you install on Pi #1 — display
+  and server must agree on the WebSocket contract
+- Installs Qt via `uv sync --extra scoreboard` (only this role pulls PyQt5)
+- Writes the server address to `~/.config/splouch/scoreboard.env`
+- Enables desktop autologin and autostarts the [Qt scoreboard](../scoreboard/README.md)
+  fullscreen on boot
+- Forces 1920×1080 HDMI output
+
+> **Install the same version on both Pis.** The kiosk now runs code, not just a browser.
+> Pick the same answer at the version prompt on Pi #1 and Pi #2.
+>
+> Pi #1 must be running and reachable before the kiosk boots — though the display no
+> longer needs it at startup: it opens immediately and connects when the server appears.
+
+Useful commands on the kiosk:
+
+```bash
+~/Splouch/install/scripts/start-scoreboard.sh                    # run it by hand
+cd ~/Splouch && .venv/bin/python -m scoreboard --windowed         # windowed, for testing
+```
+
+### Upgrading a kiosk from the Chromium display
+
+Re-run `bash install.sh kiosk`. The script replaces the Chromium autostart line with the
+Qt launcher, so there is nothing to uninstall first. Chromium itself is left in place.
 
 ---
 
@@ -149,7 +175,18 @@ uv sync
 sudo systemctl restart splouch
 ```
 
-Pi #2 only needs updating if the scoreboard template changed — a reboot is enough since Chromium reloads from Pi #1 on startup.
+**Pi #2 must now be updated too.** The kiosk used to reload the scoreboard from Pi #1 on
+every boot, so a reboot was enough. It now runs the Qt display from its own checkout, so
+it needs the same version as Pi #1 or the two can disagree on the WebSocket contract:
+
+```bash
+cd ~/Splouch
+git pull
+uv sync --extra scoreboard
+sudo reboot
+```
+
+Update Pi #1 first, then Pi #2 to the same version.
 
 ---
 

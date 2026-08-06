@@ -120,13 +120,24 @@ A separate idea explored: showing officially validated heat results (not just li
 
 ## Repository structure (multi-platform)
 
-As Tremplin grows beyond the browser-based scoreboard to a Qt TV display and native iOS/Android apps, plan for separate repos rather than a monorepo:
+The split is **per toolchain, not per surface**. A separate repo is worth its coordination cost only when a client has its own language, its own dependency manager, and its own release process. That is true of the phone apps and false of the Qt display:
 
-- **Tremplin** (this repo) — server, web scoreboard/admin UI.
-- **Tremplin-tv** — Qt TV display client for the Pi.
-- **Tremplin-ios** — iOS app.
-- **Tremplin-android** — Android app.
+- **Splouch** (this repo) — server, cloud relay, web scoreboard/admin UI, **and the Qt scoreboard** (`scoreboard/`).
+- **Splouch-ios** — iOS app (Swift, Xcode, App Store review, code signing).
+- **Splouch-android** — Android app (Kotlin, Gradle, Play Store review).
 
-Each platform has its own toolchain, dependencies, and (for mobile) app store release process, so keeping them separate avoids cluttering CI and PRs across unrelated stacks.
+### Why the Qt display stays in this repo
 
-Avoid a dedicated "common" repo unless real shared *logic* emerges across platforms (unlikely given how different Python/Qt/Swift/Kotlin are). Instead, treat the WebSocket/REST API exposed by `extensions.py` and `relay.py` as the shared contract: document it (OpenAPI/JSON schema or markdown) in this repo's `docs/`, version it with the server's API version, and have each client repo follow it as the source of truth.
+- **The kiosk role already exists.** `install/install.sh` provisions three roles — `server`, `kiosk`, `cloud`. The Qt app replaces the Chromium autostart block *inside* the kiosk role; it is not a new deployment target. Users install it with the same script, the same command, the same version prompt.
+- **Version lockstep, for free.** Today the kiosk holds no code — it renders whatever HTML the server serves, so display and server can never disagree. A Qt app ends that: the display becomes a real client carrying its own copy of the WebSocket contract. In one repo, `install.sh kiosk <version>` and `install.sh server <version>` resolve to the same git ref, so the two are in lockstep by construction. Across two repos, every change to an `update_scoreboard` payload becomes a coordinated two-repo release.
+- **Same toolchain.** Python, `uv`, one `pyproject.toml`, Raspberry Pi OS. No store, no signing, no separate CI. The "own toolchain / own release process" argument that justifies splitting Swift and Kotlin simply does not apply here.
+- **Shared assets are real.** The Qt display needs `shared/locales/` (en/fr/es), `shared/static/fonts/`, `shared/static/img/`, and `server/themes/`. The current kiosk installer already downloads `scoreboard_bg.png` over `raw.githubusercontent.com` — a cross-repo split would force generalising that hack instead of retiring it.
+- **One update path.** `server/routes/system.py::_run_update` (git fetch → checkout → `uv sync` → `refresh-service.sh`) and the `PROVISION_VERSION` reinstall banner already exist. Extending them to the kiosk role is incremental; a second repo needs a second copy.
+
+Dependency weight is the one real cost — Qt has no business on the server Pi or the cloud VM. That is solved with an optional dependency group, not a repo boundary: `[project.optional-dependencies] scoreboard = [...]`, installed only by the kiosk role via `uv sync --extra scoreboard`. The cloud installs from `cloud/requirements.txt` and is unaffected.
+
+This is not a one-way door in the expensive direction. Extracting `scoreboard/` later with `git filter-repo` — if it ever grows its own release cadence — is cheap. Re-merging two repos whose protocols have drifted is not.
+
+### The shared contract
+
+Avoid a dedicated "common" repo unless real shared *logic* emerges across platforms (unlikely given how different Python/Qt/Swift/Kotlin are). Treat the WebSocket/REST API in `server/app.py` and `server/relay.py` as the shared contract: it is documented in [`docs/api.md`](../docs/api.md), versioned with the server's API version, and each *external* client repo follows it as the source of truth. `scoreboard/` follows the same document — living in this repo is a delivery convenience, not a licence to reach into `server/` internals.
