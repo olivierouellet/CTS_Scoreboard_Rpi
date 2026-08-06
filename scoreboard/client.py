@@ -48,6 +48,45 @@ def fetch_config(base: str, timeout: float = 10.0) -> dict:
         return json.loads(resp.read().decode('utf-8'))
 
 
+class ConfigLoader(QObject):
+    """Fetches ``GET /config`` off the GUI thread.
+
+    The fetch *must not* run inline. When the kiosk Pi boots before the server —
+    the normal case, since both power up together — the request does not fail
+    fast: the host is often reachable enough to accept a connection but not yet
+    answering, so ``urlopen`` blocks for the full timeout. Called directly that
+    freezes the GUI thread, and if it happens before the first paint the TV shows
+    nothing at all for ten seconds. Running it in a thread keeps the board on
+    screen and responsive while the server catches up.
+
+    ``request()`` is a no-op while a fetch is already in flight, so the retry
+    timer cannot pile up threads against a server that is slow rather than down.
+    """
+
+    loaded = pyqtSignal(object)   # parsed config dict
+    failed = pyqtSignal(str)      # human-readable reason
+
+    def __init__(self, base_url: str, parent=None):
+        super().__init__(parent)
+        self._base = base_url
+        self._busy = threading.Lock()
+
+    def request(self):
+        if not self._busy.acquire(blocking=False):
+            return
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        try:
+            data = fetch_config(self._base)
+        except Exception as e:
+            self.failed.emit(str(e))
+        else:
+            self.loaded.emit(data)
+        finally:
+            self._busy.release()
+
+
 class ServerLink(QObject):
     """Owns the WebSocket thread and re-publishes frames as Qt signals.
 

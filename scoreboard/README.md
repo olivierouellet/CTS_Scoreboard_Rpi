@@ -94,10 +94,52 @@ Two rules the code depends on:
   minute; `tests/test_scoreboard_format.py` cross-checks it against
   `meet_data._delta_html` so the two can't drift.
 
-The window opens *before* the server is reachable. At a meet both Pis power up
-together, and a display that waits for a successful HTTP call looks broken for
-the first thirty seconds; instead it draws with fallback theming plus a status
-message and adopts the real config when `/config` answers.
+### Starting before the server does
+
+The display depends on the server for two separate things, over two separate
+connections:
+
+| | what | when |
+| --- | --- | --- |
+| `GET /config` | plain HTTP request/response — theme, labels, lane count, column flags | at startup, and again on every `reload` |
+| `/ws/scoreboard` | WebSocket — the live frames | held open for the whole meet |
+
+Both fail while the server Pi is still booting, and each recovers on its own:
+`ConfigLoader` retries on a timer, `ServerLink` runs its own reconnect loop.
+
+The window therefore opens **before either succeeds**. At a meet both Pis power up
+together and the kiosk usually wins — it has no service to start — so the board
+draws immediately with fallback theming and a waiting message, then adopts the
+real config when `/config` answers.
+
+**Neither call may run on the GUI thread.** This is the whole reason `ConfigLoader`
+exists rather than a direct `fetch_config()`. A server that is reachable but not
+yet answering does not fail fast; it hangs for the full 10s timeout. Called inline
+from `ScoreboardApp.__init__` that runs *before the first paint*, so the TV shows
+nothing at all — measured at 10.05s to first paint before the fix, 0.05s after.
+`tests/test_scoreboard_startup.py` guards this.
+
+### The waiting screen
+
+| headline | when |
+| --- | --- |
+| *Waiting for the timing server* | never connected yet |
+| *Lost connection to the timing server* | the link dropped mid-meet, so the board on screen is stale |
+
+Under it, a dimmer line: `splouch.local · retrying · 47 s`. The elapsed count ticks
+every second, and it is there for one reason — it is the only thing on screen that
+tells an operator the display is still trying rather than hung. A static message
+looks identical to a crash.
+
+The headlines are **English-only**, deliberately: they appear before `GET /config`
+lands, and `/config` is what carries the meet's locale and labels. Translating them
+means adding keys to the server's locale files first.
+
+> A WebSocket is only HTTP for its handshake: the client opens with a normal
+> `GET /ws/scoreboard` carrying `Upgrade: websocket`, the server replies `101
+> Switching Protocols`, and from then on the connection carries frames, not
+> HTTP messages. Same host and port as `/config` either way — it is all one
+> uvicorn process.
 
 ### Fonts
 
@@ -162,10 +204,19 @@ Not worth deciding from a screenshot — judge it with real names on the real TV
 
 ## Testing
 
-`tests/test_scoreboard_config.py` (config normalisation) and
-`tests/test_scoreboard_format.py` (delta formatting) are deliberately Qt-free, so
-they run in CI without the `scoreboard` extra installed. Keep pure logic out of
-`board.py` for that reason — it is the module that drags in PyQt5.
+`tests/test_scoreboard_config.py` (config normalisation),
+`tests/test_scoreboard_format.py` (delta formatting) and
+`tests/test_scoreboard_fonts.py` (family-name matching, bundled-font inventory)
+are deliberately Qt-free, so they run in CI without the `scoreboard` extra
+installed. Keep pure logic out of `board.py` for that reason — it is the module
+that drags in PyQt5.
+
+`tests/test_scoreboard_startup.py` does need Qt and `importorskip`s without it.
+Run it where PyQt5 is available:
+
+```bash
+uv run --extra scoreboard pytest tests/
+```
 
 Widget behaviour needs a `QApplication`. Drive it headless with
 `QT_QPA_PLATFORM=offscreen`, build a `BoardWindow`, feed it frames, and assert on

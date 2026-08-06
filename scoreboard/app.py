@@ -1,20 +1,28 @@
 """Application entry point — wires the server link to the board window.
 
 Startup order is deliberate: the window opens *before* the server is reachable.
-At a meet the TV Pi and the server Pi power up together, and a display that waits
-for a successful HTTP call before drawing anything looks broken for the first
-thirty seconds. Instead the board opens with fallback theming and a status
-message, then adopts the real config once ``GET /config`` answers.
+At a meet the TV Pi and the server Pi power up together, and the kiosk usually
+wins — it has no service to start. So the board draws immediately with fallback
+theming and a status message, then adopts the real config once ``GET /config``
+answers.
+
+That only holds because **nothing blocking runs on the GUI thread**. Both server
+calls are asynchronous: ``ConfigLoader`` fetches ``/config`` in a worker thread,
+``ServerLink`` runs the WebSocket in another. An inline ``fetch_config()`` here
+would defeat the whole design — a server that is reachable but not yet answering
+blocks for the full timeout, and before the first paint that means a blank TV,
+not merely a stale one.
 """
 import argparse
 import os
 import sys
+import time
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QApplication
 
 from .board import BoardWindow
-from .client import ServerLink, fetch_config
+from .client import ConfigLoader, ServerLink
 from .fonts import load_app_fonts
 from .theme import Config
 
@@ -22,6 +30,20 @@ DEFAULT_SERVER = os.environ.get('SPLOUCH_SERVER', 'http://splouch.local')
 
 # Re-fetch /config this often after a failure, until it succeeds.
 _CONFIG_RETRY_MS = 5000
+
+# How often to refresh the "waiting" line's elapsed count.
+_WAIT_TICK_MS = 1000
+
+# Headlines are English-only: they are shown *before* GET /config lands, which is
+# what carries the meet's locale and labels. Translating them would need new keys
+# in the server's locale files. See scoreboard/README.md.
+_WAITING = 'Waiting for the timing server'
+_LOST    = 'Lost connection to the timing server'
+
+
+def _host_of(url: str) -> str:
+    """`http://splouch.local` -> `splouch.local` — the scheme is noise on a TV."""
+    return url.split('://', 1)[-1].rstrip('/')
 
 
 class ScoreboardApp:
@@ -37,13 +59,27 @@ class ScoreboardApp:
         self.link.frame.connect(self._on_frame)
         self.link.connected.connect(self._on_connected)
 
-        self.window.set_status(f'Connecting to {server}…')
+        self._waiting_since = time.monotonic()
+        self._waiting_head  = _WAITING
+        self.window.set_status(_WAITING, _host_of(server))
         self._show(self.window, fullscreen)
+
+        # Ticks the elapsed count on the waiting screen. Without it the TV looks
+        # identical whether the app is retrying or has hung, which is exactly the
+        # ambiguity a black screen creates at a meet.
+        self._wait_timer = QTimer()
+        self._wait_timer.setInterval(_WAIT_TICK_MS)
+        self._wait_timer.timeout.connect(self._tick_waiting)
+        self._wait_timer.start()
+
+        self.config_loader = ConfigLoader(server)
+        self.config_loader.loaded.connect(self._on_config)
+        self.config_loader.failed.connect(self._on_config_failed)
 
         self._config_timer = QTimer()
         self._config_timer.setInterval(_CONFIG_RETRY_MS)
-        self._config_timer.timeout.connect(self._load_config)
-        self._load_config()
+        self._config_timer.timeout.connect(self.config_loader.request)
+        self.config_loader.request()
         self.link.start()
 
     @staticmethod
@@ -59,23 +95,47 @@ class ScoreboardApp:
         if not fullscreen:
             window.show()
 
+    # ── Waiting screen ─────────────────────────────────────────────────────────
+
+    def _tick_waiting(self):
+        """Refresh the elapsed count under the waiting headline."""
+        seconds = int(time.monotonic() - self._waiting_since)
+        if seconds < 60:
+            elapsed = f'{seconds} s'
+        else:
+            elapsed = f'{seconds // 60} min {seconds % 60:02d} s'
+        self.window.set_status(self._waiting_head,
+                               f'{_host_of(self.server)} · retrying · {elapsed}')
+
+    def _start_waiting(self, headline: str):
+        self._waiting_head  = headline
+        self._waiting_since = time.monotonic()
+        self._tick_waiting()
+        self._wait_timer.start()
+
+    def _stop_waiting(self):
+        self._wait_timer.stop()
+        self.window.set_status('')
+
     # ── Config ─────────────────────────────────────────────────────────────────
 
-    def _load_config(self):
-        """Fetch /config; keep retrying on a timer until it lands.
+    def _on_config_failed(self, reason: str):
+        """A /config fetch failed — keep retrying until the server appears.
+
+        Only noisy about it before the first success; after that the board already
+        has usable config and a failed refresh is not worth a log line per retry.
+        """
+        if not self._have_config:
+            print(f'[scoreboard] config fetch failed ({reason}) — retrying', flush=True)
+            self._config_timer.start()
+
+    def _on_config(self, raw: dict):
+        """Apply a freshly fetched config.
 
         A lane-count change alters the number of rows, which means rebuilding the
         window rather than restyling it — so it is handled separately from a
         pure theme change.
         """
-        try:
-            raw = fetch_config(self.server)
-        except Exception as e:
-            if not self._have_config:
-                print(f'[scoreboard] config fetch failed ({e}) — retrying', flush=True)
-                self._config_timer.start()
-            return
-
         self._config_timer.stop()
         self._have_config = True
         new_config = Config(raw)
@@ -83,7 +143,8 @@ class ScoreboardApp:
         if new_config.num_lanes != self.config.num_lanes:
             was_full = self.window.isFullScreen()
             snapshot = dict(self.window.snapshot)
-            status   = self.window.status.text() if self.window.status.isVisible() else ''
+            status   = self.window.status_text()
+            detail   = self.window.status_detail.text()
 
             # Build and show the replacement BEFORE closing the old window.
             # Closing the only visible window emits QApplication::lastWindowClosed,
@@ -95,7 +156,7 @@ class ScoreboardApp:
             self.window = BoardWindow(new_config)
             self.window.snapshot.update(snapshot)
             self.window.refresh()
-            self.window.set_status(status)
+            self.window.set_status(status, detail)
             self._show(self.window, was_full)
             old_window.close()
             old_window.deleteLater()
@@ -108,19 +169,21 @@ class ScoreboardApp:
 
     def _on_connected(self, ok: bool):
         if ok:
-            self.window.set_status('')
+            self._stop_waiting()
             # The server's per-connection state (theme, lane count) may have moved
             # while we were away; a reconnect is the cheapest place to resync.
-            self._load_config()
+            self.config_loader.request()
         else:
-            self.window.set_status(f'Reconnecting to {self.server}…')
+            # Distinguish "never connected" from "the link dropped mid-meet" —
+            # the second means the board on screen is stale, which matters more.
+            self._start_waiting(_LOST if self._have_config else _WAITING)
 
     def _on_frame(self, event: str, data):
         if event == 'update_scoreboard':
             self.window.apply_update(data or {})
         elif event == 'reload':
             # Settings or theme changed — re-fetch config and redraw.
-            self._load_config()
+            self.config_loader.request()
         elif event == 'test_mode':
             active = bool((data or {}).get('active'))
             self.window.set_status('⚠ TEST SESSION' if active else '')

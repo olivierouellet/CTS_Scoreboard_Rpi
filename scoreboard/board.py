@@ -276,9 +276,24 @@ class BoardWindow(QWidget):
         # ── Status overlay ─────────────────────────────────────────────────────
         # Shown until the first connection; also covers a mid-meet drop so the TV
         # says why it is frozen instead of silently showing stale times.
-        self.status = QLabel('', self)
+        #
+        # Two lines: a headline anyone in the stands can read, and a dimmer detail
+        # line for whoever is fixing it. The detail carries a live elapsed count,
+        # which is the only thing on screen that distinguishes "still trying" from
+        # "crashed" — the question a black screen always raises.
+        self.status_box = QWidget(self)
+        status_layout = QVBoxLayout(self.status_box)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(0)
+        self.status = QLabel('')
         self.status.setAlignment(Qt.AlignCenter)
-        self.status.hide()
+        self.status_detail = QLabel('')
+        self.status_detail.setAlignment(Qt.AlignCenter)
+        status_layout.addStretch(1)
+        status_layout.addWidget(self.status)
+        status_layout.addWidget(self.status_detail)
+        status_layout.addStretch(1)
+        self.status_box.hide()
 
         self.apply_theme()
 
@@ -298,8 +313,13 @@ class BoardWindow(QWidget):
         self.chrono_label.setStyleSheet(
             f"color: {cfg.color('time')}; background: transparent; border: none;")
         self.chrono_label.setFont(QFont(cfg.timing_family))
+        self.status_box.setStyleSheet(f"background-color: {cfg.color('bg')};")
         self.status.setStyleSheet(
-            f"color: {cfg.color('header_value')}; background-color: {cfg.color('bg')};")
+            f"color: {cfg.color('header_value')}; background: transparent;")
+        self.status.setFont(QFont(cfg.family))
+        self.status_detail.setStyleSheet(
+            f"color: {cfg.color('th_text')}; background: transparent;")
+        self.status_detail.setFont(QFont(cfg.family))
         self.header_row.apply_theme()
         for row in self.rows:
             row.apply_theme()
@@ -364,10 +384,13 @@ class BoardWindow(QWidget):
             font = label.font()
             font.setPixelSize(max(10, int(head_h * 0.55)))
             label.setFont(font)
-        self.status.setGeometry(self.rect())
+        self.status_box.setGeometry(self.rect())
         font = self.status.font()
-        font.setPixelSize(max(14, int(self.height() * 0.05)))
+        font.setPixelSize(max(16, int(self.height() * 0.055)))
         self.status.setFont(font)
+        font = self.status_detail.font()
+        font.setPixelSize(max(11, int(self.height() * 0.028)))
+        self.status_detail.setFont(font)
 
     # ── State ──────────────────────────────────────────────────────────────────
 
@@ -386,13 +409,25 @@ class BoardWindow(QWidget):
         self.apply_theme()
         self.refresh()
 
-    def set_status(self, text: str):
-        """Show (or clear, with ``''``) the full-screen status message."""
+    def set_status(self, text: str, detail: str = ''):
+        """Show (or clear, with ``''``) the full-screen status message.
+
+        *text* is the headline, sized to be read from the stands. *detail* is a
+        dimmer second line for whoever is troubleshooting — the server address, a
+        retry count. Pass a single space as *text* to blank the board with no
+        message (the operator's display-overlay toggle).
+        """
         self.status.setText(text)
-        self.status.setVisible(bool(text))
+        self.status_detail.setText(detail)
+        self.status_detail.setVisible(bool(detail))
+        self.status_box.setVisible(bool(text))
         if text:
-            self.status.setGeometry(self.rect())
-            self.status.raise_()
+            self.status_box.setGeometry(self.rect())
+            self.status_box.raise_()
+
+    def status_text(self) -> str:
+        """The current headline, or ``''`` when no status is showing."""
+        return self.status.text() if self.status_box.isVisible() else ''
 
     def apply_update(self, data: dict):
         """Merge a partial ``update_scoreboard`` frame and redraw what changed."""
