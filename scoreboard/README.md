@@ -79,7 +79,7 @@ icon.
 | `widgets.py` | `FitLabel` — the shrink-to-fit label |
 | `theme.py` | normalises `/config` (colours, fonts, labels, `show_*` flags) |
 | `format.py` | value formatting (deltas); Qt-free so CI can test it |
-| `fonts.py` | registers bundled faces, falls back to monospace |
+| `fonts.py` | registers the bundled TTFs, resolves family names, falls back to monospace |
 
 Two rules the code depends on:
 
@@ -98,6 +98,21 @@ The window opens *before* the server is reachable. At a meet both Pis power up
 together, and a display that waits for a successful HTTP call looks broken for
 the first thirty seconds; instead it draws with fallback theming plus a status
 message and adopts the real config when `/config` answers.
+
+### Fonts
+
+The theme faces ship with the repo as TTF in
+[`shared/static/fonts/`](../shared/static/fonts/) — alongside the woff2 the browser
+uses, since Qt cannot read woff2 — and `fonts.py` registers them at startup. No
+system font packages are required.
+
+One trap is worth knowing before you touch font names. The browser declares its
+own family label in CSS (`@font-face { font-family: 'DSEG7Classic' }`), which need
+not match anything inside the file; the font itself is called `DSEG7 Classic`,
+with a space. Qt reads the real name, so an exact-match lookup drops both DSEG
+faces to the fallback. `resolve_family()` therefore matches ignoring spaces and
+case. See that directory's [README](../shared/static/fonts/README.md) for
+provenance, licences, and the variable-font caveat.
 
 ## Font sizing
 
@@ -162,10 +177,6 @@ intact).
 
 This is a working scaffold, not the finished display. Still to do:
 
-- **Fonts.** `shared/static/fonts/` holds **woff2**, which Qt cannot load. The
-  kiosk installs `fonts-overpass` from apt for the default family; the DSEG
-  seven-segment faces have no apt package, so drop TTF/OTF copies into
-  `shared/static/fonts/` and `fonts.py` will register them automatically.
 - **Splash / carousel.** `/live` shows sponsor images between heats
   (`carousel_images`, `carousel_interval`) and an intro splash. Not implemented.
 - **Per-lane running clocks.** The header shows `running_time`; the browser also

@@ -634,10 +634,11 @@ if [[ "$ROLE" == "kiosk" ]]; then
     # Qt needs its platform plugins and system libs from apt even when PyQt5
     # itself comes from a wheel — the wheel bundles Qt's own libraries but not
     # the X11/Wayland client libs they link against.
-    # fonts-overpass provides the default theme family (Overpass Mono). The repo's
-    # shared/static/fonts/ holds woff2, which Qt cannot read — see scoreboard/fonts.py.
+    # The theme fonts ship with the repo as TTF (shared/static/fonts/) and the app
+    # registers them itself, so no font packages are needed — fonts-dejavu-core is
+    # only the last-resort monospace fallback if a theme names something we lack.
     sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libgl1 \
-                            fonts-overpass fonts-dejavu-core || true
+                            fonts-dejavu-core || true
     if ! uv sync --extra scoreboard; then
         error "Failed to install the Qt dependencies."
         error "On 32-bit Raspberry Pi OS there is no PyQt5 wheel — reflash with the 64-bit image."

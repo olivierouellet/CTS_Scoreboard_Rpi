@@ -1,16 +1,19 @@
 """Font registration and family resolution.
 
-The web clients load their faces over CSS ``@font-face`` from
-``shared/static/fonts/``, which holds **woff2** — a browser-only container that
-Qt's font database cannot read. So the Qt display resolves its families in three
-steps:
+``shared/static/fonts/`` holds each face twice: **woff2** for the browser clients
+(smaller, and all CSS can load) and **TTF** for Qt, which cannot read woff2 at
+all. The TTFs are the upstream originals, unmodified — see that directory's
+README for provenance and licences.
 
-1. Register any TTF/OTF found in ``shared/static/fonts/`` (drop the desired faces
-   there and they are picked up automatically — woff2 files are ignored).
-2. Otherwise use the family if the system already has it (the kiosk installs
-   ``fonts-overpass``, which provides the default *Overpass Mono*).
-3. Otherwise fall back to the platform's monospace face, so a missing font
-   degrades to a readable board instead of Qt's proportional default.
+Family resolution runs in three steps:
+
+1. Register every TTF/OTF in ``shared/static/fonts/`` (add a face there and it is
+   picked up automatically; woff2 files are skipped).
+2. Match the requested family — exactly if possible, otherwise ignoring spaces
+   and case, because the browser's CSS name for a font and the font's own
+   internal name do not always agree. See :func:`resolve_family`.
+3. Fall back to the platform's monospace face, so a missing font degrades to a
+   readable board rather than Qt's proportional default.
 
 Resolution is cached: it is called once per label restyle, and querying the font
 database is not free.
@@ -57,12 +60,27 @@ def load_app_fonts() -> list[str]:
     return added
 
 
-def resolve_family(family: str) -> str:
-    """Return *family* if Qt can render it, else a monospace fallback.
+def _squash(name: str) -> str:
+    """Normalise a family name for matching: no spaces, no case."""
+    return name.replace(' ', '').replace('-', '').lower()
 
-    A scoreboard in a proportional font is unreadable at a distance — the digits
-    jitter as times tick — so the fallback is deliberately monospace rather than
-    Qt's default.
+
+def resolve_family(family: str) -> str:
+    """Return the Qt family name to use for *family*, else a monospace fallback.
+
+    The name the server sends is not always the name Qt knows the font by. The
+    browser declares its own via ``@font-face { font-family: 'DSEG7Classic' }``,
+    which is an arbitrary CSS label with no obligation to match anything inside
+    the file — while Qt reads the family from the font's ``name`` table, where
+    that same font calls itself ``DSEG7 Classic``. An exact-match-only lookup
+    silently drops both DSEG faces to the fallback.
+
+    So: exact match first, then a space/case-insensitive match, then fall back.
+    The loose match is general rather than a lookup table of known aliases, so a
+    font added to the settings dropdown later needs no change here.
+
+    The fallback is deliberately monospace — a scoreboard in a proportional face
+    is unreadable at a distance, because the digits jitter as times tick.
     """
     if not family:
         family = 'monospace'
@@ -72,14 +90,21 @@ def resolve_family(family: str) -> str:
     resolved = family
     try:
         from PyQt5.QtGui import QFontDatabase
-        if family not in QFontDatabase().families():
-            from PyQt5.QtGui import QFont
-            fallback = QFont()
-            fallback.setStyleHint(QFont.Monospace)
-            fallback.setFamily('monospace')
-            resolved = QFont(fallback.defaultFamily()).family() or 'monospace'
-            print(f'[scoreboard] font "{family}" unavailable — using {resolved}',
-                  flush=True)
+        families = QFontDatabase().families()
+        if family not in families:
+            wanted = _squash(family)
+            match = next((f for f in families if _squash(f) == wanted), None)
+            if match:
+                resolved = match
+                print(f'[scoreboard] font "{family}" matched as "{match}"', flush=True)
+            else:
+                from PyQt5.QtGui import QFont
+                fallback = QFont()
+                fallback.setStyleHint(QFont.Monospace)
+                fallback.setFamily('monospace')
+                resolved = QFont(fallback.defaultFamily()).family() or 'monospace'
+                print(f'[scoreboard] font "{family}" unavailable — using {resolved}',
+                      flush=True)
     except Exception:
         pass
 
