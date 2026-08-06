@@ -427,6 +427,26 @@ def _mobile_strings():
     except Exception:
         return {}
 
+def display_strings(code=None):
+    """Status strings for the native TV display, English-merged.
+
+    Same fallback rule as :func:`settings_strings`: an untranslated key falls back
+    to English rather than rendering blank on the TV. Driven by the ``locale``
+    setting (Settings → Display → Scoreboard language), so the display follows the
+    same language as the board it replaces.
+    """
+    code = code or settings.get('locale', 'en')
+
+    def _section(c):
+        try:
+            with open(_locale_path(c), 'rb') as f:
+                return tomllib.load(f).get('display', {})
+        except Exception:
+            return {}
+
+    base = _section('en')
+    return base if code == 'en' else {**base, **_section(code)}
+
 def _settings_section(code):
     try:
         with open(_locale_path(code), 'rb') as f:

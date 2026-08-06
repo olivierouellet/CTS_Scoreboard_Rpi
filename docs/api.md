@@ -124,7 +124,7 @@ JSON/asset endpoints (everything else the servers expose is HTML for the browser
 ### Local (Pi)
 | method · path | returns |
 | --- | --- |
-| `GET /config` | **display config JSON** — `num_lanes`, `theme_colors`, `theme_fonts`, `show_*` flags, `labels`, `meet_title` (§6). Lets the Qt display theme itself without a rendered page |
+| `GET /config` | **display config JSON** — `num_lanes`, `theme_colors`, `theme_fonts`, `show_*` flags, `labels`, `meet_title`, `locale`, `display_strings` (§6). Lets the Qt display theme *and translate* itself without a rendered page |
 | `GET /manifest.json` | PWA manifest (app title, icons) |
 | `GET /home_icon`, `/home_icon_512` | meet home-screen icon PNG |
 | `GET /picker_image` | active picker image PNG |
@@ -214,8 +214,17 @@ have no template, so config is exposed as JSON — all three additions below are
 **additive** (the browser UI is unchanged):
 
 1. **Local `GET /config`** — what `web._globals()` injects (`num_lanes`, `theme_colors`,
-   `theme_fonts`, `show_*` flags, `labels`) plus `meet_title`. The Qt display fetches
-   this once on startup and again on a `reload` event.
+   `theme_fonts`, `show_*` flags, `labels`) plus `meet_title`, `locale` and
+   `display_strings`. The Qt display fetches this once on startup and again on a
+   `reload` event.
+
+   `display_strings` is the `[display]` section of the active locale file —
+   status messages the *client* renders rather than the server (`waiting_server`,
+   `connection_lost`, `retrying`), selected by the `locale` setting (Settings →
+   Display → Scoreboard language) and English-merged so an untranslated key never
+   renders blank. A native client needs these because it must say something while
+   `/config` itself is still unreachable; the Qt display caches the last config on
+   disk for exactly that reason.
 2. **Cloud `GET /meet/{meet_id}/config`** — the meet's `settings` block (§5.4) plus
    `name`/`location`/`sport`/`meet_date`/`live`, so a phone can theme and render the
    board without scraping the HTML page.

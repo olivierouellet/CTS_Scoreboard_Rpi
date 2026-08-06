@@ -61,6 +61,12 @@ a2hs_action      = "Sur l'écran d'accueil"
 a2hs_suffix      = "pour le plein écran"
 a2hs_install     = "Installer"
 
+# Affichage TV natif (scoreboard/) — messages affichés à la place du tableau.
+[display]
+waiting_server  = "En attente du serveur de chronométrage"
+connection_lost = "Connexion au serveur de chronométrage perdue"
+retrying        = "nouvelle tentative"
+
 [preview]
 meet      = "Compétition"
 pool      = "Piscine"

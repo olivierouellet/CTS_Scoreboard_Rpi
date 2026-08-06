@@ -22,6 +22,7 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QApplication
 
 from .board import BoardWindow
+from .cache import load_cached_config, save_cached_config
 from .client import ConfigLoader, ServerLink
 from .fonts import load_app_fonts
 from .theme import Config
@@ -34,12 +35,6 @@ _CONFIG_RETRY_MS = 5000
 # How often to refresh the "waiting" line's elapsed count.
 _WAIT_TICK_MS = 1000
 
-# Headlines are English-only: they are shown *before* GET /config lands, which is
-# what carries the meet's locale and labels. Translating them would need new keys
-# in the server's locale files. See scoreboard/README.md.
-_WAITING = 'Waiting for the timing server'
-_LOST    = 'Lost connection to the timing server'
-
 
 def _host_of(url: str) -> str:
     """`http://splouch.local` -> `splouch.local` — the scheme is noise on a TV."""
@@ -50,8 +45,11 @@ class ScoreboardApp:
     """Owns the window, the link, and the config-refresh policy."""
 
     def __init__(self, server: str, fullscreen: bool = True):
-        self.server  = server
-        self.config  = Config()
+        self.server = server
+        # Start from the last config the server gave us. The board then comes up
+        # already themed and in the right language instead of showing an English
+        # fallback for however long the server takes to boot.
+        self.config  = Config(load_cached_config() or {})
         self.window  = BoardWindow(self.config)
         self.link    = ServerLink(server)
         self._have_config = False
@@ -60,8 +58,7 @@ class ScoreboardApp:
         self.link.connected.connect(self._on_connected)
 
         self._waiting_since = time.monotonic()
-        self._waiting_head  = _WAITING
-        self.window.set_status(_WAITING, _host_of(server))
+        self._waiting_key   = 'waiting_server'
         self._show(self.window, fullscreen)
 
         # Ticks the elapsed count on the waiting screen. Without it the TV looks
@@ -70,7 +67,7 @@ class ScoreboardApp:
         self._wait_timer = QTimer()
         self._wait_timer.setInterval(_WAIT_TICK_MS)
         self._wait_timer.timeout.connect(self._tick_waiting)
-        self._wait_timer.start()
+        self._start_waiting('waiting_server')
 
         self.config_loader = ConfigLoader(server)
         self.config_loader.loaded.connect(self._on_config)
@@ -98,17 +95,24 @@ class ScoreboardApp:
     # ── Waiting screen ─────────────────────────────────────────────────────────
 
     def _tick_waiting(self):
-        """Refresh the elapsed count under the waiting headline."""
+        """Redraw the waiting screen with a fresh elapsed count.
+
+        Reads the headline from the *current* config every tick rather than
+        caching the rendered string, so a config arriving mid-wait switches the
+        language on screen immediately.
+        """
+        strings = self.config.strings
         seconds = int(time.monotonic() - self._waiting_since)
         if seconds < 60:
             elapsed = f'{seconds} s'
         else:
             elapsed = f'{seconds // 60} min {seconds % 60:02d} s'
-        self.window.set_status(self._waiting_head,
-                               f'{_host_of(self.server)} · retrying · {elapsed}')
+        self.window.set_status(
+            strings.get(self._waiting_key, self._waiting_key),
+            f"{_host_of(self.server)} · {strings.get('retrying', 'retrying')} · {elapsed}")
 
-    def _start_waiting(self, headline: str):
-        self._waiting_head  = headline
+    def _start_waiting(self, key: str):
+        self._waiting_key   = key
         self._waiting_since = time.monotonic()
         self._tick_waiting()
         self._wait_timer.start()
@@ -116,6 +120,10 @@ class ScoreboardApp:
     def _stop_waiting(self):
         self._wait_timer.stop()
         self.window.set_status('')
+
+    @property
+    def _waiting(self) -> bool:
+        return self._wait_timer.isActive()
 
     # ── Config ─────────────────────────────────────────────────────────────────
 
@@ -138,6 +146,7 @@ class ScoreboardApp:
         """
         self._config_timer.stop()
         self._have_config = True
+        save_cached_config(raw)
         new_config = Config(raw)
 
         if new_config.num_lanes != self.config.num_lanes:
@@ -164,6 +173,10 @@ class ScoreboardApp:
             self.window.set_config(new_config)
 
         self.config = new_config
+        # A language change lands here too — repaint the waiting screen so it
+        # switches immediately instead of at the next tick.
+        if self._waiting:
+            self._tick_waiting()
 
     # ── Server events (docs/api.md §2 `/ws/scoreboard`) ────────────────────────
 
@@ -176,7 +189,8 @@ class ScoreboardApp:
         else:
             # Distinguish "never connected" from "the link dropped mid-meet" —
             # the second means the board on screen is stale, which matters more.
-            self._start_waiting(_LOST if self._have_config else _WAITING)
+            self._start_waiting(
+                'connection_lost' if self._have_config else 'waiting_server')
 
     def _on_frame(self, event: str, data):
         if event == 'update_scoreboard':

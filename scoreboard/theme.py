@@ -32,6 +32,15 @@ DEFAULT_LABELS = {
     'chrono': 'CHRONO',
 }
 
+# Status messages, from the locale file's [display] section. Translated by the
+# server per Settings → Display → Scoreboard language; these English values are
+# the floor for a first-ever boot with no cached config yet.
+DEFAULT_STRINGS = {
+    'waiting_server':  'Waiting for the timing server',
+    'connection_lost': 'Lost connection to the timing server',
+    'retrying':        'retrying',
+}
+
 # Column visibility flags, and the header-label flags that are independent of them
 # (the browser hides a column and its header separately — mirror that).
 _SHOW_FLAGS = (
@@ -54,9 +63,11 @@ class Config:
         self.raw        = raw
         self.meet_title = raw.get('meet_title', '') or ''
         self.num_lanes  = max(1, min(12, int(raw.get('num_lanes', 8) or 8)))
-        self.colors     = {**DEFAULT_COLORS, **(raw.get('theme_colors') or {})}
-        self.fonts      = {**DEFAULT_FONTS,  **(raw.get('theme_fonts')  or {})}
-        self.labels     = {**DEFAULT_LABELS, **(raw.get('labels')       or {})}
+        self.locale     = raw.get('locale') or 'en'
+        self.colors     = {**DEFAULT_COLORS,  **(raw.get('theme_colors')    or {})}
+        self.fonts      = {**DEFAULT_FONTS,   **(raw.get('theme_fonts')     or {})}
+        self.labels     = {**DEFAULT_LABELS,  **(raw.get('labels')          or {})}
+        self.strings    = {**DEFAULT_STRINGS, **(raw.get('display_strings') or {})}
         for flag in _SHOW_FLAGS:
             setattr(self, flag, bool(raw.get(flag, True)))
 

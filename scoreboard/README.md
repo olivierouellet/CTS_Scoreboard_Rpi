@@ -77,7 +77,8 @@ icon.
 | `client.py` | `GET /config` + the `/ws/scoreboard` receive loop, in a daemon thread |
 | `board.py` | header bar and lane rows; merges partial `update_scoreboard` frames |
 | `widgets.py` | `FitLabel` — the shrink-to-fit label |
-| `theme.py` | normalises `/config` (colours, fonts, labels, `show_*` flags) |
+| `theme.py` | normalises `/config` (colours, fonts, labels, strings, `show_*` flags) |
+| `cache.py` | remembers the last `/config` so a cold boot starts themed and translated |
 | `format.py` | value formatting (deltas); Qt-free so CI can test it |
 | `fonts.py` | registers the bundled TTFs, resolves family names, falls back to monospace |
 
@@ -126,14 +127,34 @@ nothing at all — measured at 10.05s to first paint before the fix, 0.05s after
 | *Waiting for the timing server* | never connected yet |
 | *Lost connection to the timing server* | the link dropped mid-meet, so the board on screen is stale |
 
-Under it, a dimmer line: `splouch.local · retrying · 47 s`. The elapsed count ticks
-every second, and it is there for one reason — it is the only thing on screen that
-tells an operator the display is still trying rather than hung. A static message
-looks identical to a crash.
+Under it, a dimmer line: `splouch.local · retrying · 47 s`. The elapsed
+count ticks every second, and it is there for one reason — it is the only thing on
+screen that tells an operator the display is still trying rather than hung. A
+static message looks identical to a crash.
 
-The headlines are **English-only**, deliberately: they appear before `GET /config`
-lands, and `/config` is what carries the meet's locale and labels. Translating them
-means adding keys to the server's locale files first.
+**Translated** from the `[display]` section of the locale files, selected by
+**Settings → Display → Scoreboard language** — the same setting that translates the
+board itself. The server ships the strings in `/config` as `display_strings`
+(English-merged, so a partially translated locale falls back per key). Add a
+language by adding a `[display]` section to its `.toml`;
+`tests/test_scoreboard_i18n.py` fails if a locale is missing a key.
+
+### The config cache
+
+Those strings create a chicken-and-egg problem: the waiting screen exists to be
+shown *before* `/config` arrives, but `/config` is what carries the language,
+theme and lane count.
+
+`cache.py` resolves it by writing the last config to
+`~/.cache/splouch/scoreboard-config.json` and loading it at startup. Only the very
+first boot after installation looks generic; after that the kiosk comes up in the
+right language and colours even if the server never answers at all.
+
+Two details that matter on a Pi someone switches off at the wall: the write is
+atomic (temp file + `os.replace`), so a power cut cannot leave a truncated cache
+that poisons every later boot; and an unchanged config is not rewritten, since
+`/config` is re-fetched on every reconnect and that would be pure SD-card wear.
+Any unreadable cache reads as absent and falls back to the built-in English.
 
 > A WebSocket is only HTTP for its handshake: the client opens with a normal
 > `GET /ws/scoreboard` carrying `Upgrade: websocket`, the server replies `101

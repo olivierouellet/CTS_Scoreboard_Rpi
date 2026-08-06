@@ -103,6 +103,11 @@ def display_config():
     """
     cfg = _globals()
     cfg['meet_title'] = state.settings.get('meet_title', '')
+    # The display's own status strings ("waiting for the server"), plus the locale
+    # code that selected them. Templates get these from Jinja; a native client has
+    # no template, so they ride along here.
+    cfg['locale'] = state.settings.get('locale', 'en')
+    cfg['display_strings'] = state.display_strings()
     return cfg
 
 
