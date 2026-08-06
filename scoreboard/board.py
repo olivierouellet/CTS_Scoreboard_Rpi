@@ -1,15 +1,19 @@
 """The scoreboard window — header bar plus one row per lane.
 
-Layout mirrors ``server/templates/scoreboard.html`` so the TV looks the same
-before and after the migration: LANE · NAME · CLUB · TIME · DELTA · PLACE, with
-the same theme colours, the same labels, and the same column-visibility flags.
+Layout mirrors ``server/templates/live.html`` — the page the Chromium kiosk
+actually rendered, since ``/`` redirects there. ``scoreboard.html`` is a different,
+diverged template; do not use it as the reference without checking, as its column
+widths and heat transition both differ.
 
-Two things differ from the browser, deliberately:
+Three things depart from the browser, deliberately:
 
 * Names shrink to fit instead of being ellipsised (see :mod:`scoreboard.widgets`).
 * Deltas come from the structured ``lane_delta_seconds<i>`` / ``lane_delta_better<i>``
   fields rather than the HTML ``lane_delta<i>`` blob, as ``docs/api.md`` §5.1
   instructs native clients to do.
+* Heats dissolve into one another instead of cutting. ``/live`` collapses the
+  columns instantly; this follows ``scoreboard.html``'s softer sequence because it
+  reads better on a TV. See the README.
 """
 import re
 import time
@@ -29,8 +33,15 @@ from .widgets import FitLabel
 # look continuous, slow enough to stay cheap on a Pi.
 _CLOCK_TICK_MS = 50
 
-# Column stretch weights, chosen to match the browser's vw widths.
-_W_LANE, _W_NAME, _W_CLUB, _W_TIME, _W_DELTA, _W_PLACE = 6, 38, 20, 17, 9, 6
+# Column stretch weights = the vw widths of `/live`, the page the Chromium kiosk
+# actually rendered: `.lane-column` 5vw and `.club-column` 8vw from
+# timing_display.css, 6/17/15vw for place/time/delta from live.html's expand_cols().
+# Name takes the remainder, as it does in CSS. They sum to 100, so the weights are
+# the percentages directly.
+#
+# Note these are NOT scoreboard.html's numbers — that page gives delta 9vw. `/live`
+# is the reference for this display; see the README.
+_W_LANE, _W_NAME, _W_CLUB, _W_TIME, _W_DELTA, _W_PLACE = 5, 49, 8, 17, 15, 6
 
 # The three columns that slide in when a race starts, and how long that takes.
 # 500ms matches `.timing-anim { transition: … 0.5s ease }` in timing_display.css.
@@ -89,9 +100,9 @@ class LaneRow(QFrame):
         self.club_label = FitLabel()
         self.club_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-        # All shrink-to-fit: a long time (`1:12.44`) at a tall row's font size is
-        # wider than its column, and a plain QLabel paints straight over the
-        # neighbouring cell instead of clipping.
+        # All shrink-to-fit. Qt clips a label to its own rect, so an oversized
+        # value is not lost into the neighbour — it is cut through a glyph, which
+        # is worse: `1:12.44` beside a clipped delta read as `1:12.44).06`.
         self.time_label = FitLabel()
         self.time_label.setAlignment(Qt.AlignCenter)
 
@@ -101,14 +112,24 @@ class LaneRow(QFrame):
         self.place_label = FitLabel()
         self.place_label.setAlignment(Qt.AlignCenter)
 
+        # Size policy Ignored in BOTH directions. Cell fonts are derived from the
+        # row height, so a font-driven minimum height would feed straight back into
+        # the layout and inflate the window — a 1080p board came out 1460px tall,
+        # which on a fullscreen TV means the bottom lane is cut off. Rows are sized
+        # purely by their stretch weights.
         for widget, weight in ((self.lane_label,  _W_LANE),
                                (self.name_cell,   _W_NAME),
                                (self.club_label,  _W_CLUB),
                                (self.time_label,  _W_TIME),
                                (self.delta_label, _W_DELTA),
                                (self.place_label, _W_PLACE)):
-            widget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            widget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+            widget.setMinimumSize(0, 0)
             row.addWidget(widget, weight)
+        for label in (self.name_label, self.alt_label):
+            label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+            label.setMinimumSize(0, 0)
+        self.setMinimumSize(0, 0)
 
         self.apply_theme()
         self.clear()
@@ -143,8 +164,18 @@ class LaneRow(QFrame):
                 (self.delta_label, _W_DELTA),
                 (self.place_label, _W_PLACE))
 
+    def resizeEvent(self, event):     # noqa: N802 — Qt naming
+        super().resizeEvent(event)
+        self.set_row_height(self.height())
+
     def set_row_height(self, height: int):
-        """Rescale fonts to the row height (called on window resize)."""
+        """Rescale fonts to the row height.
+
+        Driven by this row's own resizeEvent, not the window's. Reading a child's
+        height from the parent's resizeEvent gets you the geometry from *before*
+        the layout ran — that returned 480 for a row that ended up 161px tall, so
+        every cell was sized about three times too large.
+        """
         main = max(8, int(height * _FONT_MAIN))
         alt  = max(8, int(height * _FONT_ALT))
         for label in (self.lane_label, self.club_label, self.time_label,
@@ -233,6 +264,19 @@ class LaneRow(QFrame):
         self._podium_bg(place)
 
 
+class HeaderBar(QFrame):
+    """The top bar. Scales its own children for the same reason the rows do."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.scale_children = None      # set by BoardWindow once its cells exist
+
+    def resizeEvent(self, event):     # noqa: N802 — Qt naming
+        super().resizeEvent(event)
+        if self.scale_children is not None:
+            self.scale_children(self.height())
+
+
 class HeaderCell(QWidget):
     """A header pair like ``EVENT 3`` — word and value in *different* colours.
 
@@ -294,9 +338,11 @@ class HeaderRow(QFrame):
         for key, weight, align in spec:
             label = FitLabel()
             label.setAlignment(align)
-            label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+            label.setMinimumSize(0, 0)
             row.addWidget(label, weight)
             self.cells[key] = label
+        self.setMinimumSize(0, 0)
 
         self.apply_theme()
 
@@ -322,6 +368,10 @@ class HeaderRow(QFrame):
         return ((self.cells['time'],  _W_TIME),
                 (self.cells['delta'], _W_DELTA),
                 (self.cells['place'], _W_PLACE))
+
+    def resizeEvent(self, event):     # noqa: N802 — Qt naming
+        super().resizeEvent(event)
+        self.set_row_height(self.height())
 
     def set_row_height(self, height: int):
         for label in self.cells.values():
@@ -374,7 +424,7 @@ class BoardWindow(QWidget):
         root.setSpacing(0)
 
         # ── Header bar ─────────────────────────────────────────────────────────
-        self.header = QFrame()
+        self.header = HeaderBar()
         self.header.setAutoFillBackground(True)
         bar = QHBoxLayout(self.header)
         bar.setContentsMargins(16, 6, 16, 6)
@@ -421,6 +471,7 @@ class BoardWindow(QWidget):
         self._content_fade = QPropertyAnimation(self._content_opacity, b'opacity', self)
         self._content_fade.setEasingCurve(QEasingCurve.InOutQuad)
         root.addWidget(self.content, 1)
+        self.header.scale_children = self._scale_header
 
         # ── Status overlay ─────────────────────────────────────────────────────
         # Shown until the first connection; also covers a mid-meet drop so the TV
@@ -522,21 +573,20 @@ class BoardWindow(QWidget):
             if self._windowed_size is not None:
                 self.resize(self._windowed_size)
 
+    def _scale_header(self, height: int):
+        """Size the top bar's text from the bar's own height."""
+        px = max(10, int(height * 0.55))
+        self.title_label.set_max_px(px)
+        self.name_label.set_max_px(px)
+        self.chrono_label.set_max_px(px)
+        for cell in (self.event_cell, self.heat_cell):
+            cell.set_pixel_size(px)
+
     def resizeEvent(self, event):     # noqa: N802 — Qt naming
         super().resizeEvent(event)
-        # Font sizes track the window, so the same code drives a 1080p TV and a
-        # 4K one without a second layout.
-        if self.rows:
-            row_h = self.rows[0].height()
-            self.header_row.set_row_height(self.header_row.height())
-            for row in self.rows:
-                row.set_row_height(row_h)
-        head_h = self.header.height()
-        self.title_label.set_max_px(int(head_h * 0.55))
-        self.name_label.set_max_px(int(head_h * 0.55))
-        for cell in (self.event_cell, self.heat_cell):
-            cell.set_pixel_size(int(head_h * 0.55))
-        self.chrono_label.set_max_px(max(10, int(head_h * 0.55)))
+        # Rows and the header bar scale themselves from their own resizeEvents —
+        # see LaneRow.set_row_height for why reading their height from here does
+        # not work. This handles only what belongs to the window.
         if self._col_fraction < 1.0:
             self._apply_col_fraction(self._col_fraction)   # widths are width-relative
         self.status_box.setGeometry(self.rect())

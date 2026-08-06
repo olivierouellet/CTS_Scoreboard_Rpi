@@ -158,11 +158,13 @@ def test_reset_restores_the_idle_look(board, qt_app):
 # ── Overflow ───────────────────────────────────────────────────────────────────
 
 def test_no_cell_paints_outside_its_column(board, qt_app):
-    """Every cell shrinks to fit; a plain QLabel would paint over its neighbour.
+    """Every cell shrinks to fit, and elides rather than being cut mid-glyph.
 
-    This is what makes narrow columns safe. Before the cells became `FitLabel`s,
-    `1:12.44` at a six-lane row height was wider than the time column and spilled
-    into the delta, rendering as `1:12.44).06` on screen.
+    Qt clips a label to its own rect, so an oversized value never reaches the
+    neighbouring cell — it is truncated through a character instead, which reads
+    as corruption: `1:12.44` next to a clipped delta rendered as `1:12.44).06`.
+    Below the font floor the text is elided, so it ends in `…` rather than a
+    half-drawn glyph.
     """
     board.apply_update({
         'current_event': '3', 'current_heat': '1',
@@ -183,7 +185,8 @@ def test_no_cell_paints_outside_its_column(board, qt_app):
         for label, name in cells:
             if not label.isVisible() or not label.text():
                 continue
-            needed = QFontMetrics(label.font()).horizontalAdvance(label.text())
+            drawn  = label.displayed_text()
+            needed = QFontMetrics(label.font()).horizontalAdvance(drawn)
             if needed > label.width():
                 overflowing.append(f'lane {row.lane} {name}: '
                                    f'{needed}px of text in {label.width()}px')
@@ -197,7 +200,7 @@ def test_headers_shrink_to_fit_too(board, qt_app):
     qt_app.processEvents()
     for key in ('lane', 'place'):
         label = board.header_row.cells[key]
-        needed = QFontMetrics(label.font()).horizontalAdvance(label.text())
+        needed = QFontMetrics(label.font()).horizontalAdvance(label.displayed_text())
         assert needed <= label.width(), f'{key} header overflows its column'
 
 
@@ -297,3 +300,34 @@ def test_loading_a_heat_onto_an_empty_board_skips_the_dissolve(board, qt_app):
     assert not board.paused
     assert not board.columns_visible
     assert board._content_opacity.opacity() == 1.0
+
+
+def test_text_below_the_font_floor_is_elided_not_cut(board, qt_app):
+    """A 27-character club in an 8vw column cannot fit even at `min_px`.
+
+    Qt would cut it through a glyph, which reads as corruption. Eliding says
+    "there is more" instead. `text()` still returns the full string, so nothing
+    downstream sees the shortened version.
+    """
+    long_club = 'CN Saint-Jean-sur-Richelieu'
+    board.apply_update({'current_event': '3', 'current_heat': '1',
+                        'lane_club1': long_club})
+    board.set_columns_visible(True, animate=False)
+    qt_app.processEvents()
+
+    label = board.rows[0].club_label
+    assert label.text() == long_club, 'the full value must still be readable in code'
+    assert label.displayed_text() != long_club, 'should have been elided'
+    assert label.displayed_text().endswith('…')
+    assert (QFontMetrics(label.font()).horizontalAdvance(label.displayed_text())
+            <= label.width())
+
+
+def test_a_name_that_fits_is_never_elided(board, qt_app):
+    """Shrink-to-fit is the point; eliding is only the last resort."""
+    name = 'Vandenbroucke-Mortensen, Alexandra'
+    board.apply_update({'current_event': '3', 'current_heat': '1',
+                        'lane_name1': name})
+    qt_app.processEvents()
+    label = board.rows[0].name_label
+    assert label.displayed_text() == name, 'a name that fits must stay whole'

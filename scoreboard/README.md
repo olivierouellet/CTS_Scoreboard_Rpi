@@ -3,6 +3,13 @@
 The native display for the kiosk Pi. Replaces the Chromium kiosk that rendered
 `/live` in a browser.
 
+> **`/live` is the reference, not `/scoreboard`.** The kiosk pointed at
+> `http://splouch.local`, which redirects to `/live`. The two templates have
+> diverged: `live.html` has no splash mode, and it *cuts* between heats where
+> `scoreboard.html` dissolves. Column widths differ too — delta is 15vw in
+> `/live`, 9vw in `/scoreboard`. Where this display departs from `/live`, it is
+> noted as a deliberate choice.
+
 ## Why native
 
 - **Names fit.** CSS can only truncate an overlong swimmer name; Qt measures text
@@ -149,8 +156,15 @@ reliably close them.
 
 ### The heat transition
 
-Going from one heat's results to the next start list is a five-step dissolve, not
-a cut, mirroring `mode_to_intro()` in `scoreboard.html`. 500ms per step:
+**A deliberate departure from `/live`.** `live.html`'s `mode_to_intro()` collapses
+the columns instantly — it strips the `timing-anim` class, sets the widths to 0,
+forces a reflow, then puts the class back, which is the standard "change this
+without animating" trick. Only `scoreboard.html` dissolves. This display follows
+`scoreboard.html` here because the dissolve looks better on a TV; everything else
+follows `/live`.
+
+Going from one heat's results to the next start list is a five-step dissolve,
+mirroring `mode_to_intro()` in `scoreboard.html`. 500ms per step:
 
 1. **Podium tints fade** back to the row stripes
 2. **Columns close**
@@ -182,12 +196,30 @@ transition.
 
 ### Why every cell is a `FitLabel`
 
-Not just the names. A plain `QLabel` paints straight over its neighbour rather
-than clipping, and at six lanes on 1080p the row is tall enough that `1:12.44`
-at 52% of row height is wider than the time column — it rendered as `1:12.44).06`,
-spilling into the delta. Long translated headers did the same (`COULOIR` in a
-lane column six units wide). Every cell now shrinks to fit, and
-`tests/test_scoreboard_columns.py` measures each one against its column width.
+Not just the names. Qt clips a label to its own rect, so an oversized value never
+reaches the neighbouring cell — but it is cut *through a glyph*, which reads as
+corruption rather than as truncation. At six lanes on 1080p the row is tall
+enough that `1:12.44` at 52% of row height overflowed the time column, and the
+clipped delta beside it rendered as `1:12.44).06`. Long translated headers did the
+same (`COULOIR` in a five-unit lane column).
+
+Below the font floor (`min_px`, 10px) the text is elided instead, so it ends in
+`…` rather than half a character — a 27-character club in an 8vw column cannot fit
+at any readable size. `text()` still returns the full string; `displayed_text()`
+returns what is painted. `tests/test_scoreboard_columns.py` measures the painted
+text against every column width.
+
+### Sizing is per-row, never from the window
+
+Each `LaneRow` and `HeaderRow` scales its own fonts from its **own** `resizeEvent`.
+Reading a child's height from the window's `resizeEvent` returns the geometry from
+*before* the layout ran: it reported 480px for rows that ended up 161px tall, so
+every cell came out about three times too large.
+
+Cells also use `QSizePolicy.Ignored` in **both** directions with a zero minimum.
+Their fonts are derived from the row height, so a font-driven minimum height feeds
+straight back into the layout — a 1080p board inflated to 1460px tall, which on a
+fullscreen TV means the bottom lane is cut off.
 
 ### The race clock
 

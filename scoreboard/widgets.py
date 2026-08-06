@@ -24,6 +24,7 @@ class FitLabel(QLabel):
         super().__init__(text, parent)
         self._max_px = max_px
         self._min_px = min_px
+        self._full   = text or ''
         self.setTextFormat(Qt.PlainText)
 
     def set_max_px(self, px: int):
@@ -34,19 +35,28 @@ class FitLabel(QLabel):
             self._refit()
 
     def setText(self, text):          # noqa: N802 — Qt naming
-        super().setText(text if text is not None else '')
+        self._full = text if text is not None else ''
         self._refit()
+
+    def text(self):                   # noqa: N802 — Qt naming
+        """The full text, even when what is drawn has been elided."""
+        return self._full
+
+    def displayed_text(self) -> str:
+        """What is actually painted — elided if it would not fit at *min_px*."""
+        return super().text()
 
     def resizeEvent(self, event):     # noqa: N802 — Qt naming
         super().resizeEvent(event)
         self._refit()
 
     def _refit(self):
-        text = self.text()
+        text = self._full
         font = self.font()
         if not text:
             font.setPixelSize(self._max_px)
             self.setFont(font)
+            super().setText('')
             return
 
         avail = max(1, self.width() - 2)   # 1px breathing room each side
@@ -56,6 +66,7 @@ class FitLabel(QLabel):
         font.setPixelSize(self._max_px)
         if QFontMetrics(font).horizontalAdvance(text) <= avail:
             self.setFont(font)
+            super().setText(text)
             return
 
         # Binary search the largest pixel size that fits. Text advance is monotonic
@@ -70,3 +81,12 @@ class FitLabel(QLabel):
                 hi = mid - 1
         font.setPixelSize(best)
         self.setFont(font)
+
+        # Even the floor may not fit — a 27-character club in an 8vw column. Qt
+        # clips a label to its own rect, so the text would simply be cut through a
+        # glyph; an ellipsis says "there is more" instead of looking like a bug.
+        metrics = QFontMetrics(font)
+        if metrics.horizontalAdvance(text) > avail:
+            super().setText(metrics.elidedText(text, Qt.ElideRight, avail))
+        else:
+            super().setText(text)
