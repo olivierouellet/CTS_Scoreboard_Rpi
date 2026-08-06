@@ -168,6 +168,46 @@ class LaneRow(QFrame):
         self._podium_bg(place)
 
 
+class HeaderCell(QWidget):
+    """A header pair like ``EVENT 3`` — word and value in *different* colours.
+
+    The browser renders these as two spans (``header_label`` / ``header_value``),
+    which is why the theme has a colour for each. Drawing them as one string would
+    silently ignore the Label swatch in Settings → Display → Theme.
+    """
+
+    def __init__(self, cfg: Config, parent=None):
+        super().__init__(parent)
+        self.cfg = cfg
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        self.label = QLabel()
+        self.value = QLabel()
+        row.addWidget(self.label)
+        row.addWidget(self.value)
+        row.addStretch(1)
+        self.apply_theme()
+
+    def apply_theme(self):
+        self.label.setStyleSheet(
+            f"color: {self.cfg.color('header_label')}; background: transparent; border: none;")
+        self.value.setStyleSheet(
+            f"color: {self.cfg.color('header_value')}; background: transparent; border: none;")
+        for part in (self.label, self.value):
+            part.setFont(QFont(self.cfg.family))
+
+    def set_pixel_size(self, px: int):
+        for part in (self.label, self.value):
+            font = part.font()
+            font.setPixelSize(max(10, px))
+            part.setFont(font)
+
+    def set_text(self, label: str, value: str):
+        self.label.setText(label)
+        self.value.setText(value)
+
+
 class HeaderRow(QFrame):
     """Column titles. Each title is independently hideable (``show_*_header``)."""
 
@@ -249,16 +289,16 @@ class BoardWindow(QWidget):
 
         self.title_label = FitLabel(cfg.meet_title)
         self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.event_label = QLabel()
-        self.heat_label  = QLabel()
-        self.name_label  = FitLabel()
+        self.event_cell = HeaderCell(cfg)
+        self.heat_cell  = HeaderCell(cfg)
+        self.name_label = FitLabel()
         self.name_label.setAlignment(Qt.AlignCenter)
         self.chrono_label = QLabel()
         self.chrono_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         bar.addWidget(self.title_label, 30)
-        bar.addWidget(self.event_label, 10)
-        bar.addWidget(self.heat_label, 10)
+        bar.addWidget(self.event_cell, 10)
+        bar.addWidget(self.heat_cell, 10)
         bar.addWidget(self.name_label, 34)
         bar.addWidget(self.chrono_label, 16)
         root.addWidget(self.header)
@@ -305,14 +345,19 @@ class BoardWindow(QWidget):
         self.header.setStyleSheet(
             f"background-color: {cfg.color('header_bg')};"
             f"border-bottom: 2px solid {cfg.color('header_border')};")
-        for label in (self.title_label, self.event_label, self.heat_label,
-                      self.name_label):
+        for label in (self.title_label, self.name_label):
             label.setStyleSheet(
                 f"color: {cfg.color('header_value')}; background: transparent; border: none;")
             label.setFont(QFont(cfg.family))
+        for cell in (self.event_cell, self.heat_cell):
+            cell.cfg = cfg
+            cell.apply_theme()
+        # The running clock uses the *digits* font (Settings → Display → Theme →
+        # Digit Font), not the timing font — same split as the browser, where the
+        # chrono is typically a seven-segment face and lane times are not.
         self.chrono_label.setStyleSheet(
             f"color: {cfg.color('time')}; background: transparent; border: none;")
-        self.chrono_label.setFont(QFont(cfg.timing_family))
+        self.chrono_label.setFont(QFont(cfg.digits_family))
         self.status_box.setStyleSheet(f"background-color: {cfg.color('bg')};")
         self.status.setStyleSheet(
             f"color: {cfg.color('header_value')}; background: transparent;")
@@ -380,10 +425,11 @@ class BoardWindow(QWidget):
         head_h = self.header.height()
         self.title_label.set_max_px(int(head_h * 0.55))
         self.name_label.set_max_px(int(head_h * 0.55))
-        for label in (self.event_label, self.heat_label, self.chrono_label):
-            font = label.font()
-            font.setPixelSize(max(10, int(head_h * 0.55)))
-            label.setFont(font)
+        for cell in (self.event_cell, self.heat_cell):
+            cell.set_pixel_size(int(head_h * 0.55))
+        font = self.chrono_label.font()
+        font.setPixelSize(max(10, int(head_h * 0.55)))
+        self.chrono_label.setFont(font)
         self.status_box.setGeometry(self.rect())
         font = self.status.font()
         font.setPixelSize(max(16, int(self.height() * 0.055)))
@@ -436,11 +482,11 @@ class BoardWindow(QWidget):
         self.snapshot.update(data)
 
         if 'current_event' in data:
-            label = self.cfg.labels.get('event', 'EVENT')
-            self.event_label.setText(f"{label} {data['current_event']}")
+            self.event_cell.set_text(self.cfg.labels.get('event', 'EVENT'),
+                                     str(data['current_event']))
         if 'current_heat' in data:
-            label = self.cfg.labels.get('heat', 'HEAT')
-            self.heat_label.setText(f"{label} {data['current_heat']}")
+            self.heat_cell.set_text(self.cfg.labels.get('heat', 'HEAT'),
+                                    str(data['current_heat']))
         if 'event_name' in data:
             self.name_label.setText(data['event_name'])
         if 'running_time' in data:
@@ -466,8 +512,8 @@ class BoardWindow(QWidget):
 
     def reset(self):
         self.snapshot.clear()
-        self.event_label.setText('')
-        self.heat_label.setText('')
+        self.event_cell.set_text('', '')
+        self.heat_cell.set_text('', '')
         self.name_label.setText('')
         self.chrono_label.setText('')
         for row in self.rows:

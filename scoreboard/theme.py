@@ -80,6 +80,18 @@ class Config:
 
     @property
     def timing_family(self) -> str:
-        """Font for times/deltas — often a seven-segment face, hence separate."""
+        """Font for lane times/deltas (Settings → Display → Theme → Timing Font)."""
         timing = self.fonts.get('timing')
         return resolve_family(timing) if timing else self.family
+
+    @property
+    def digits_family(self) -> str:
+        """Font for the running clock (Settings → Display → Theme → Digit Font).
+
+        Separate from ``timing_family`` because the browser treats them
+        separately: the live chrono is usually a seven-segment face (DSEG7) while
+        lane times stay legible in a mono face. Matching that split keeps the TV
+        looking like the page it replaced.
+        """
+        digits = self.fonts.get('digits')
+        return resolve_family(digits) if digits else self.timing_family

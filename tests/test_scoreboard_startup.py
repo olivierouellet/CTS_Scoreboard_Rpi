@@ -14,13 +14,21 @@ Run it on a dev machine or the kiosk itself:
 import os
 import socket
 import sys
+import tempfile
 import threading
 import time
 
 import pytest
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Never touch the developer's real ~/.cache — ScoreboardApp both reads the cached
+# config at startup and writes it on every successful fetch, so an un-isolated run
+# leaves a stale lane count behind that the next run silently picks up.
+os.environ['XDG_CACHE_HOME'] = tempfile.mkdtemp(prefix='splouch-test-')
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
+sys.path.insert(0, os.path.join(REPO, 'server'))
 
 pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
 
@@ -28,6 +36,9 @@ from PyQt5.QtCore import QTimer                       # noqa: E402
 from PyQt5.QtWidgets import QApplication              # noqa: E402
 
 from scoreboard.app import ScoreboardApp              # noqa: E402
+from scoreboard.board import BoardWindow              # noqa: E402
+from scoreboard.fonts import load_app_fonts           # noqa: E402
+from scoreboard.theme import Config                   # noqa: E402
 
 # Generous enough to absorb a slow CI box, tiny next to the 10s fetch timeout
 # it is guarding against.
@@ -36,7 +47,12 @@ _MAX_STARTUP_SECONDS = 2.0
 
 @pytest.fixture(scope='module')
 def qt_app():
-    yield QApplication.instance() or QApplication([])
+    app = QApplication.instance() or QApplication([])
+    # Mirror main(): register the bundled TTFs before anything resolves a family.
+    # Order matters — resolve_family() memoises, so a lookup made before the fonts
+    # are loaded caches the monospace fallback for the life of the process.
+    load_app_fonts()
+    yield app
 
 
 @pytest.fixture
@@ -112,3 +128,67 @@ def test_config_retries_do_not_pile_up_threads(qt_app, hanging_server):
         assert threading.active_count() <= before + 1, 'spawned overlapping fetches'
     finally:
         app.link.stop()
+
+
+# ── Theme fidelity ─────────────────────────────────────────────────────────────
+# Everything an operator can set under Settings → Display → Theme must actually
+# reach a widget. A key the display quietly ignores is invisible in review — it
+# only shows up as "I changed the colour and nothing happened" on meet day, which
+# is how `header_label` and the Digit Font were both missed at first.
+
+def _themed_board(qt_app, colors=None, fonts=None):
+    import state
+    import web
+    state.settings['theme_colors'] = colors or {}
+    state.settings['theme_fonts'] = fonts or {}
+    window = BoardWindow(Config(web.display_config()))
+    window.resize(1920, 1080)
+    window.show()
+    qt_app.processEvents()
+    return window
+
+
+def test_every_theme_colour_reaches_a_widget(qt_app):
+    import state
+    # A distinct sentinel per key, so we can tell which widget took which colour.
+    sentinels = {k: f'#{i:02x}00{i:02x}'
+                 for i, k in enumerate(state.DEFAULT_THEME_COLORS, 1)}
+    w = _themed_board(qt_app, colors=sentinels)
+    w.apply_update({'current_event': '3', 'current_heat': '1',
+                    'lane_time1': '2:20.92', 'lane_place1': '1',
+                    'lane_delta_seconds1': -0.46, 'lane_delta_better1': True})
+    qt_app.processEvents()
+
+    applied = {
+        'bg':            w.styleSheet(),
+        'header_bg':     w.header.styleSheet(),
+        'header_border': w.header.styleSheet(),
+        'header_label':  w.event_cell.label.styleSheet(),
+        'header_value':  w.event_cell.value.styleSheet(),
+        'th_bg':         w.header_row.styleSheet(),
+        'th_text':       w.header_row.cells['lane'].styleSheet(),
+        # rows[0] is lane 1 but holds place 1, so the podium tint overrides its
+        # base colour — use un-placed lanes to check the row stripes.
+        'row_odd':       w.rows[2].styleSheet(),      # lane 3
+        'row_even':      w.rows[1].styleSheet(),      # lane 2
+        'row_text':      w.rows[0].lane_label.styleSheet(),
+        'time':          w.rows[0].time_label.styleSheet(),
+        'delta_better':  w.rows[0].delta_label.styleSheet(),
+        'podium_gold':   w.rows[0].styleSheet(),
+    }
+    missing = [k for k, css in applied.items() if sentinels[k] not in css.lower()]
+    assert not missing, f'theme colours set in Settings but ignored by the TV: {missing}'
+    w.close()
+
+
+def test_the_three_theme_fonts_land_on_the_right_widgets(qt_app):
+    """family / timing / digits are three separate settings, not one."""
+    w = _themed_board(qt_app, fonts={'family': 'Roboto Mono',
+                                     'timing': 'Share Tech Mono',
+                                     'digits': 'DSEG7Classic'})
+    assert w.rows[0].lane_label.font().family() == 'Roboto Mono'
+    assert w.rows[0].time_label.font().family() == 'Share Tech Mono'
+    # The running clock follows Digit Font, matching the browser's `--font-digits`.
+    # Note the resolved name gains a space: the file calls itself "DSEG7 Classic".
+    assert w.chrono_label.font().family() == 'DSEG7 Classic'
+    w.close()

@@ -82,6 +82,33 @@ icon.
 | `format.py` | value formatting (deltas); Qt-free so CI can test it |
 | `fonts.py` | registers the bundled TTFs, resolves family names, falls back to monospace |
 
+### Theming
+
+Everything comes from **Settings → Display → Theme** on the server — the same
+settings that theme the web scoreboard. Nothing is hard-coded but the fallbacks in
+`theme.py`, which only apply before the first `/config` on a fresh install.
+
+All 16 board colours are honoured, including the two that are easy to conflate:
+`header_label` (the word *EVENT*) and `header_value` (the number after it) are
+separate swatches, so the header is built from `HeaderCell` widgets holding two
+labels rather than one string.
+
+The three fonts are three distinct settings and land in three places:
+
+| setting | key | used for |
+| --- | --- | --- |
+| Font | `family` | names, clubs, headers |
+| Timing Font | `timing` | lane times and deltas |
+| Digit Font | `digits` | the running clock — usually a seven-segment face |
+
+Only the `schedule_*` colours are unused, and correctly so: they belong to the
+schedule and next-heats pages, which this display does not render.
+
+`tests/test_scoreboard_startup.py` paints a distinct sentinel colour into every
+key and asserts each one reaches a widget. That test exists because two settings
+— `header_label` and Digit Font — were silently ignored at first, and a theme key
+the display quietly drops is invisible until someone changes it on meet day.
+
 Two rules the code depends on:
 
 - **Frames are partial.** `update_scoreboard` carries only changed keys. They are
