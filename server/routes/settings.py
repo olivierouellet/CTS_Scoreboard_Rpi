@@ -141,10 +141,36 @@ async def route_settings(request: Request):
     return await run_in_threadpool(_settings_view, request, form)
 
 
+def _coerce_like(current, raw):
+    """Parse *raw* form text into the type *current* already has.
+
+    Returns ``None`` when it cannot, so the caller leaves the setting alone rather
+    than replacing a number with a string.
+    """
+    if isinstance(current, bool):
+        return raw not in ('', '0', 'false', 'off', 'False')
+    if isinstance(current, int):
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+    if isinstance(current, float):
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+    if isinstance(current, str):
+        return raw
+    return None                     # dicts/lists never come from a plain field
+
+
 def _settings_view(request, form):
     if request.method == 'POST':
         modified = False
         icon_error = None
+        # Snapshot for the generic sweep near the end of this function: it must
+        # not touch anything a typed handler above has already dealt with.
+        before = dict(state.settings)
 
         if 'meet_file' in form and state._test_session is None:
             file = form['meet_file']
@@ -411,11 +437,27 @@ def _settings_view(request, form):
             if new_pass and new_pass != state.settings.get('password'):
                 state.settings['password'] = new_pass
                 modified = True
+            # Generic sweep, so a form field with no dedicated handler still
+            # saves. Two rules keep it from doing damage:
+            #
+            # 1. Skip anything a typed handler already changed this request. This
+            #    runs *after* them, and it used to overwrite their clamped value
+            #    with the raw form text — silently undoing every `max(...)` bound
+            #    above. A carousel interval of 1s got through a 3s minimum, and a
+            #    finish debounce of 0.1s through a 0.5s one.
+            # 2. Keep the setting's type. Comparing an int against form text is
+            #    always unequal, so every save rewrote `10` as `'10'` and `True`
+            #    as `'1'`, and settings.json drifted to strings. Readers coerce,
+            #    so nothing broke — but relay.py ships these values to the cloud
+            #    as JSON, where a client checking `=== true` would.
             for k in state.settings.keys():
-                if k in ('username', 'password'):
+                if k in ('username', 'password') or k not in form:
                     continue
-                if k in form and state.settings[k] != form.get(k):
-                    state.settings[k] = form.get(k)
+                if state.settings[k] != before.get(k):
+                    continue
+                value = _coerce_like(before.get(k), form.get(k))
+                if value is not None and value != state.settings[k]:
+                    state.settings[k] = value
                     modified = True
 
         if modified:

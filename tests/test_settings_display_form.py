@@ -114,22 +114,20 @@ def test_saving_the_title_tells_the_displays_to_re_read_config(settings, monkeyp
 
 
 def test_changing_the_carousel_also_triggers_a_reload(settings, monkeypatch):
-    """Same reason: `/config` carries `carousel_images` and `carousel_interval`.
-
-    Compared as an int deliberately: a catch-all branch further down the handler
-    re-writes any matching key with the raw form *string*, so this setting can
-    land as `'25'` rather than `25`. Pre-existing, and harmless because every
-    reader coerces — `display_config()` and `Config` both do.
-    """
+    """Same reason: `/config` carries `carousel_images` and `carousel_interval`."""
     emitted = _post({'splash_settings_submit': '1', 'carousel_interval': '25'},
                     monkeypatch)
-    assert int(settings['carousel_interval']) == 25
+    assert settings['carousel_interval'] == 25
     assert ('/scoreboard', 'reload') in emitted
 
 
 def test_a_string_interval_still_reaches_the_display_as_a_number(settings,
                                                                  monkeypatch):
-    """Guards the coercion the test above relies on."""
+    """Settings saved *before* the type fix are still strings on disk.
+
+    Every reader coerces, so those installations keep working and repair
+    themselves the next time each field is saved. This pins that safety net.
+    """
     from scoreboard.theme import Config
     monkeypatch.setitem(state.settings, 'carousel_interval', '25')
     import web
@@ -141,3 +139,65 @@ def test_an_unchanged_title_does_not_broadcast(settings, monkeypatch):
     emitted = _post({'splash_settings_submit': '1', 'meet_title': 'Old title'},
                     monkeypatch)
     assert emitted == []
+
+
+# ── The generic sweep ──────────────────────────────────────────────────────────
+# A catch-all near the end of the handler saves any form field whose name matches
+# a settings key, so a field with no dedicated handler still persists. It runs
+# *after* the typed handlers, which is where two bugs came from.
+
+@pytest.mark.parametrize('key, submit, posted, minimum', [
+    ('intro_timeout',     'flow_settings_submit',   '2',   5),
+    ('results_timeout',   'flow_settings_submit',   '1',   5),
+    ('carousel_interval', 'splash_settings_submit', '1',   3),
+    ('finish_debounce',   'flow_settings_submit',   '0.1', 0.5),
+])
+def test_the_sweep_does_not_undo_a_clamp(key, submit, posted, minimum, monkeypatch):
+    """It used to overwrite the clamped value with the raw form text.
+
+    A carousel interval of 1s got past a 3s minimum — a strobing splash — and a
+    finish debounce of 0.1s past a 0.5s one, which is what stops results flapping
+    on the board at the end of a race.
+    """
+    monkeypatch.setitem(state.settings, key, 300 if 'timeout' in key else 9.0)
+    _post({submit: '1', key: posted}, monkeypatch)
+    assert float(state.settings[key]) >= minimum, 'the clamp was defeated'
+
+
+@pytest.mark.parametrize('key, submit, posted, expected', [
+    ('num_lanes',         'pool_setup_submit',      '10',  10),
+    ('carousel_interval', 'splash_settings_submit', '25',  25),
+    ('intro_timeout',     'flow_settings_submit',   '120', 120),
+])
+def test_numbers_stay_numbers(key, submit, posted, expected, monkeypatch):
+    """Comparing an int against form text is always unequal, so every save used
+    to rewrite `10` as `'10'` and settings.json drifted to strings."""
+    monkeypatch.setitem(state.settings, key, 1 if key == 'num_lanes' else 300)
+    _post({submit: '1', key: posted}, monkeypatch)
+    assert state.settings[key] == expected
+    assert isinstance(state.settings[key], int), \
+        f'{key} came back as {type(state.settings[key]).__name__}'
+
+
+def test_booleans_stay_booleans(monkeypatch):
+    """`relay.py` ships these to the cloud as JSON, where `'1'` is not `true`."""
+    monkeypatch.setitem(state.settings, 'show_name', True)
+    monkeypatch.setitem(state.settings, 'show_club', True)
+    _post({'display_settings_submit': '1', 'show_name': '1'}, monkeypatch)
+    assert state.settings['show_name'] is True
+    assert state.settings['show_club'] is False, 'an unticked box must clear it'
+
+
+def test_the_sweep_still_saves_a_field_with_no_typed_handler(monkeypatch):
+    """Its whole purpose — do not break it while fixing it."""
+    monkeypatch.setitem(state.settings, 'meet_location', 'Old pool')
+    _post({'some_other_submit': '1', 'meet_location': 'Piscine olympique'},
+          monkeypatch)
+    assert state.settings['meet_location'] == 'Piscine olympique'
+
+
+def test_unparseable_input_leaves_the_setting_alone(monkeypatch):
+    """Better a stale number than a string where a number is expected."""
+    monkeypatch.setitem(state.settings, 'num_lanes', 8)
+    _post({'some_other_submit': '1', 'num_lanes': 'eight'}, monkeypatch)
+    assert state.settings['num_lanes'] == 8
