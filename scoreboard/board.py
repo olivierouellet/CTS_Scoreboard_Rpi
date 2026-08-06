@@ -15,8 +15,8 @@ import re
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import (QFrame, QHBoxLayout, QLabel, QSizePolicy,
-                             QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
+                             QSizePolicy, QVBoxLayout, QWidget)
 
 from .format import fmt_delta
 from .theme import Config
@@ -233,6 +233,7 @@ class BoardWindow(QWidget):
         super().__init__(parent)
         self.cfg      = cfg
         self.snapshot = {}
+        self._windowed_size = None    # size to restore when leaving fullscreen
         self.setWindowTitle(cfg.meet_title or 'Splouch')
 
         root = QVBoxLayout(self)
@@ -302,6 +303,50 @@ class BoardWindow(QWidget):
         self.header_row.apply_theme()
         for row in self.rows:
             row.apply_theme()
+
+    def keyPressEvent(self, event):   # noqa: N802 — Qt naming
+        """Operator keys: leave the board without an SSH session.
+
+        The kiosk has no window decorations and no menu, so these are the only way
+        back to the desktop from the TV itself.
+
+        * **Ctrl+Q** quits. Deliberately two-handed: a stray keypress must not take
+          the board down mid-meet. It exits with status 0, which
+          ``start-scoreboard.sh`` reads as "the operator meant it" and does not
+          relaunch — the desktop icon does that.
+        * **F11** / **Ctrl+F** toggle fullscreen, for a quick look at the desktop.
+          F11 is the Linux-wide convention and the one to reach for; Ctrl+F is a
+          second binding for hands used to it. It normally means Find, but this
+          app has nothing to search, so the key is free.
+        * **Esc** leaves fullscreen (never quits), the conventional escape hatch.
+        """
+        key  = event.key()
+        ctrl = bool(event.modifiers() & Qt.ControlModifier)
+        if ctrl and key == Qt.Key_Q:
+            QApplication.instance().quit()
+        elif key == Qt.Key_F11 or (ctrl and key == Qt.Key_F):
+            self.set_fullscreen(not self.isFullScreen())
+        elif key == Qt.Key_Escape and self.isFullScreen():
+            self.set_fullscreen(False)
+        else:
+            super().keyPressEvent(event)
+
+    def set_fullscreen(self, fullscreen: bool):
+        """Enter or leave fullscreen, remembering the windowed size ourselves.
+
+        ``showNormal()`` is supposed to restore the pre-fullscreen geometry, but
+        the kiosk goes fullscreen before the window is ever shown normally, so Qt
+        has nothing recorded and falls back to a default box. Tracking the size
+        here makes Esc/F11 land at a usable size on the first press.
+        """
+        if fullscreen:
+            if not self.isFullScreen():
+                self._windowed_size = self.size()
+            self.showFullScreen()
+        else:
+            self.showNormal()
+            if self._windowed_size is not None:
+                self.resize(self._windowed_size)
 
     def resizeEvent(self, event):     # noqa: N802 — Qt naming
         super().resizeEvent(event)

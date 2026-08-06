@@ -37,6 +37,38 @@ On the kiosk Pi the desktop session autostarts
 which resolves the venv from its own location, reads the server address from
 `~/.config/splouch/scoreboard.env`, and restarts the app if it exits.
 
+## Operator keys
+
+The kiosk window has no decorations and no menu, so these keys are the only way
+off the board without an SSH session.
+
+| key | effect |
+| --- | --- |
+| **Ctrl+Q** | quit to the desktop |
+| **F11** or **Ctrl+F** | toggle fullscreen |
+| **Esc** | leave fullscreen (never quits) |
+
+Ctrl+Q is deliberately two-handed — a stray keypress must not blank the TV
+mid-meet — and Esc deliberately does *not* quit, only un-fullscreens.
+
+F11 is the Linux-wide fullscreen convention and the one to document first;
+Ctrl+F is a second binding for hands used to it. Ctrl+F normally means Find, but
+the board has nothing to search, so nothing is displaced.
+
+**Quit and relaunch are two halves of one design.** `start-scoreboard.sh` relaunches
+the app whenever it exits **non-zero** (a crash, a killed process) but not on a
+clean exit, which is what Ctrl+Q produces. So quitting really does return you to
+the desktop and stay there. Getting back is the **Scoreboard** icon the installer
+puts on the desktop; there is also a **Settings** icon that opens the server's
+admin page in a browser.
+
+Consequence worth remembering: anything that makes the app exit 0 looks like a
+deliberate quit and will *not* relaunch. That is why the lane-count rebuild in
+`app.py` builds the new window before closing the old one — closing the only
+window emits `lastWindowClosed`, which quits cleanly under Qt's default
+`quitOnLastWindowClosed` and would leave the TV black until someone clicked the
+icon.
+
 ## How it works
 
 | module | role |

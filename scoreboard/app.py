@@ -38,17 +38,26 @@ class ScoreboardApp:
         self.link.connected.connect(self._on_connected)
 
         self.window.set_status(f'Connecting to {server}…')
-        if fullscreen:
-            self.window.showFullScreen()
-        else:
-            self.window.resize(1280, 720)
-            self.window.show()
+        self._show(self.window, fullscreen)
 
         self._config_timer = QTimer()
         self._config_timer.setInterval(_CONFIG_RETRY_MS)
         self._config_timer.timeout.connect(self._load_config)
         self._load_config()
         self.link.start()
+
+    @staticmethod
+    def _show(window, fullscreen: bool):
+        """Show *window*, sizing it first so F11/Esc has a sane windowed size.
+
+        ``showNormal()`` restores the geometry the window had before it went
+        fullscreen — with no prior resize that is a useless 100px box, so set one
+        even on the kiosk path where it is never seen directly.
+        """
+        window.resize(1280, 720)
+        window.set_fullscreen(fullscreen)
+        if not fullscreen:
+            window.show()
 
     # ── Config ─────────────────────────────────────────────────────────────────
 
@@ -75,16 +84,21 @@ class ScoreboardApp:
             was_full = self.window.isFullScreen()
             snapshot = dict(self.window.snapshot)
             status   = self.window.status.text() if self.window.status.isVisible() else ''
-            self.window.close()
+
+            # Build and show the replacement BEFORE closing the old window.
+            # Closing the only visible window emits QApplication::lastWindowClosed,
+            # which quits the app under the default quitOnLastWindowClosed — and
+            # because that is a *clean* exit (status 0), start-scoreboard.sh would
+            # treat it as a deliberate quit and not restart. Overlapping the two
+            # windows keeps the count above zero and the signal unfired.
+            old_window  = self.window
             self.window = BoardWindow(new_config)
             self.window.snapshot.update(snapshot)
             self.window.refresh()
             self.window.set_status(status)
-            if was_full:
-                self.window.showFullScreen()
-            else:
-                self.window.resize(1280, 720)
-                self.window.show()
+            self._show(self.window, was_full)
+            old_window.close()
+            old_window.deleteLater()
         else:
             self.window.set_config(new_config)
 

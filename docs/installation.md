@@ -105,6 +105,18 @@ The script:
 > Pi #1 must be running and reachable before the kiosk boots — though the display no
 > longer needs it at startup: it opens immediately and connects when the server appears.
 
+### Leaving and reopening the scoreboard
+
+| key | effect |
+| --- | --- |
+| **Ctrl+Q** | quit to the desktop |
+| **F11** or **Ctrl+F** | toggle fullscreen |
+| **Esc** | leave fullscreen (does not quit) |
+
+Quitting with Ctrl+Q returns you to the desktop and stays there — it is treated as
+deliberate, so nothing relaunches. Double-click the **Scoreboard** icon on the desktop
+to start it again. A **Settings** icon opens the server's admin page in a browser.
+
 Useful commands on the kiosk:
 
 ```bash

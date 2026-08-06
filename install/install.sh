@@ -712,6 +712,44 @@ EOF
 EOF
     info "Kiosk autostart configured (Qt scoreboard) → $SCOREBOARD_URL"
 
+    section "Desktop shortcuts"
+    # Ctrl+Q quits the scoreboard to the desktop; this icon is how it gets back.
+    # Without it the only way to restart the display is an SSH session.
+    mkdir -p "$TARGET_HOME/Desktop"
+    cat > "$TARGET_HOME/Desktop/Scoreboard.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Scoreboard
+Comment=Start the Splouch TV scoreboard
+Exec=$KIOSK_CMD
+Icon=video-display
+Terminal=false
+StartupNotify=false
+EOF
+    cat > "$TARGET_HOME/Desktop/Settings.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Settings
+Comment=Open the scoreboard admin page on the server
+Exec=xdg-open ${SCOREBOARD_URL}/settings
+Icon=preferences-system
+Terminal=false
+StartupNotify=false
+EOF
+    chmod +x "$TARGET_HOME/Desktop/Scoreboard.desktop" \
+             "$TARGET_HOME/Desktop/Settings.desktop"
+
+    # Disable PCManFM's "execute this file?" dialog so one double-click launches.
+    mkdir -p "$TARGET_HOME/.config/libfm"
+    if grep -q "quick_exec" "$TARGET_HOME/.config/libfm/libfm.conf" 2>/dev/null; then
+        sed -i 's/quick_exec=.*/quick_exec=1/' "$TARGET_HOME/.config/libfm/libfm.conf"
+    else
+        echo -e "[config]\nquick_exec=1" >> "$TARGET_HOME/.config/libfm/libfm.conf"
+    fi
+    info "Desktop shortcuts created (Scoreboard, Settings)."
+
     section "Desktop wallpaper"
     # Now served from the checkout, like the server role — the kiosk has the repo.
     WALLPAPER="$INSTALL_DIR/shared/static/img/scoreboard_bg.png"
@@ -754,6 +792,8 @@ WALLEOF
     echo -e "  Display     : ${BOLD}Qt scoreboard${NC} → $SCOREBOARD_URL"
     echo -e "  Project dir : $INSTALL_DIR"
     echo -e "  Server addr : $SCOREBOARD_ENV"
+    echo -e "  Quit to desktop : ${BOLD}Ctrl+Q${NC}   ·  Fullscreen: ${BOLD}F11${NC} or ${BOLD}Ctrl+F${NC}  ·  Leave fullscreen: ${BOLD}Esc${NC}"
+    echo -e "  Reopen      : ${BOLD}Scoreboard${NC} icon on the desktop"
     echo -e "  Run by hand : ${BOLD}$INSTALL_DIR/install/scripts/start-scoreboard.sh${NC}"
     echo -e "  Windowed    : ${BOLD}cd $INSTALL_DIR && .venv/bin/python -m scoreboard --windowed${NC}"
     echo
