@@ -236,7 +236,7 @@ def _settings_view(request, form):
             if sort_val in ('lane', 'place') and sort_val != state.settings.get('results_sort', 'lane'):
                 state.settings['results_sort'] = sort_val
                 modified = True
-            for key in ('meet_title', 'locale', 'label_style'):
+            for key in ('locale', 'label_style'):
                 if key in form and state.settings.get(key) != form.get(key):
                     state.settings[key] = form.get(key)
                     modified = True
@@ -249,6 +249,11 @@ def _settings_view(request, form):
                     modified = True
 
         if 'splash_settings_submit' in form:
+            # meet_title moved here with its input: it heads the splash screen on
+            # the TV display, so it lives in that card rather than the column one.
+            if 'meet_title' in form and state.settings.get('meet_title') != form.get('meet_title'):
+                state.settings['meet_title'] = form.get('meet_title')
+                modified = True
             splash_file = form.get('splash_file')
             if splash_file and splash_file.filename:
                 filename = os.path.basename(splash_file.filename)
@@ -415,7 +420,12 @@ def _settings_view(request, form):
 
         if modified:
             state.save_settings()
-            if 'display_settings_submit' in form or 'theme_update_submit' in form:
+            # `splash_settings_submit` is in this list because /config carries the
+            # title, the carousel image list and its interval — a native display
+            # only re-reads them on `reload`, so without this it would keep showing
+            # the old title and rotate a stale set of images.
+            if ('display_settings_submit' in form or 'theme_update_submit' in form
+                    or 'splash_settings_submit' in form):
                 bus.emit('/scoreboard', 'reload')
                 bus.emit('/results', 'reload')
                 relay.relay_emit('reload', {})
