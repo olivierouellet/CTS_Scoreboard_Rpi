@@ -653,7 +653,8 @@ class BoardWindow(QWidget):
 
     @property
     def splash_visible(self) -> bool:
-        return self.splash.isVisible()
+        """Up or coming up — False the instant a dismissal begins."""
+        return self.splash.is_up
 
     @property
     def any_lane_running(self) -> bool:

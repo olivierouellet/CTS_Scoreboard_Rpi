@@ -236,3 +236,84 @@ def test_display_overlay_frames_drive_it(qt_app, image_server):
         assert not app.window.splash_visible
     finally:
         app.link.stop()
+
+
+# ── Several kiosks on one server ───────────────────────────────────────────────
+# The overlay is server-global state (`state._overlay_active`), so it has always
+# been all-displays-or-none — the /operator button worked that way for browser
+# clients too. What matters is that each kiosk asks *once*.
+
+def test_a_dismissal_sends_exactly_one_frame(qt_app, image_server):
+    """`update_scoreboard` arrives ~10x/second during a race.
+
+    The splash stays visible for the 800ms of its fade-out, so a naive
+    `isVisible()` check re-fires on every frame — about ten `set_overlay` frames
+    per dismissal, per kiosk, each of which the server then broadcasts to all the
+    others.
+    """
+    from scoreboard.app import ScoreboardApp
+    app = ScoreboardApp(image_server, fullscreen=False)
+    sent = []
+    app.link.send = lambda event, data=None: sent.append((event, data))
+    try:
+        app.window.show_splash()
+        _pump(qt_app, 0.9)
+        for tick in range(10):
+            app._on_frame('update_scoreboard',
+                          {'running_time': f'{tick}.00', 'lane_running1': True})
+            _pump(qt_app, 0.05)
+        assert sent == [('set_overlay', {'active': False})], \
+            f'expected one frame, got {len(sent)}'
+    finally:
+        app.link.stop()
+
+
+def test_redundant_dismissals_from_other_kiosks_are_harmless(qt_app, image_server):
+    """Every kiosk sends one, so each receives N rebroadcasts of the same state.
+
+    `set_overlay` is an absolute set, not a toggle, so they cannot flip-flop; the
+    extra frames must simply do nothing.
+    """
+    from scoreboard.app import ScoreboardApp
+    app = ScoreboardApp(image_server, fullscreen=False)
+    sent = []
+    app.link.send = lambda event, data=None: sent.append((event, data))
+    try:
+        app._on_frame('display_overlay', {'active': True})
+        _pump(qt_app, 0.9)
+        assert app.window.splash_visible
+
+        # This kiosk dismisses, then three others' rebroadcasts arrive.
+        app._on_frame('update_scoreboard', {'lane_running1': True})
+        for _ in range(3):
+            app._on_frame('display_overlay', {'active': False})
+        _pump(qt_app, 1.0)
+
+        assert not app.window.splash_visible
+        assert len(sent) == 1, 'rebroadcasts should not each trigger another send'
+    finally:
+        app.link.stop()
+
+
+def test_the_operator_can_re_raise_it_during_the_fade_out(qt_app, image_server):
+    """Pressing the button again mid-dismissal turns it straight around."""
+    board_cfg = _config()
+    window = BoardWindow(board_cfg)
+    window.resize(1920, 1080)
+    window.show()
+    window.splash.apply_config(board_cfg, image_server)
+    _pump(qt_app, 0.8)
+    try:
+        window.show_splash()
+        _pump(qt_app, 0.9)
+        window.hide_splash()
+        _pump(qt_app, 0.2)                  # mid-fade
+        assert not window.splash_visible
+
+        window.show_splash()
+        _pump(qt_app, 1.0)
+        assert window.splash_visible, 'should have come back up'
+        assert window.splash._fade.opacity() == 1.0
+    finally:
+        window.hide_splash()
+        window.close()

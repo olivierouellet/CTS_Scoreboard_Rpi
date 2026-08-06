@@ -90,6 +90,10 @@ class SplashOverlay(QWidget):
         self._pixmaps = []          # QPixmap, in carousel order
         self._index = 0
         self._front = 0             # which of the two layers is showing
+        # True from the moment a dismissal starts until the fade finishes. The
+        # widget stays visible through those 800ms, so without this `is_up` would
+        # keep reporting True and callers would act on it again — see `is_up`.
+        self._dismissing = False
 
         self._background = QPixmap(_BACKGROUND) if os.path.exists(_BACKGROUND) \
             else QPixmap()
@@ -158,7 +162,27 @@ class SplashOverlay(QWidget):
 
     # ── Show / hide ────────────────────────────────────────────────────────────
 
+    @property
+    def is_up(self) -> bool:
+        """Showing, or on its way up — but False as soon as it starts going down.
+
+        `isVisible()` alone is not enough. A dismissal fades over 800ms and the
+        widget is visible the whole time, so a caller polling this on every
+        `update_scoreboard` frame would re-trigger about ten times per dismissal;
+        multiplied across kiosks, each one asking the server to broadcast to all
+        the others.
+        """
+        return self.isVisible() and not self._dismissing
+
     def show_splash(self):
+        if self._dismissing:
+            # Caught mid-dismissal — turn straight around rather than waiting for
+            # the fade to finish and hide the widget.
+            self._dismissing = False
+            self._run_fade(self._fade.opacity(), 1.0)
+            if len(self._pixmaps) > 1:
+                self._timer.start()
+            return
         if self.isVisible():
             return
         self._index = 0
@@ -172,14 +196,20 @@ class SplashOverlay(QWidget):
         # A single image has nothing to rotate to.
         if len(self._pixmaps) > 1:
             self._timer.start()
+        self._dismissing = False
         self._run_fade(0.0, 1.0)
 
     def hide_splash(self):
         """Fade out, then hide once invisible — a cut back to the board is jarring."""
         self._timer.stop()
-        if not self.isVisible():
+        if self._dismissing or not self.isVisible():
             return
-        self._run_fade(self._fade.opacity(), 0.0, on_done=self.hide)
+        self._dismissing = True
+        self._run_fade(self._fade.opacity(), 0.0, on_done=self._finish_hide)
+
+    def _finish_hide(self):
+        self._dismissing = False
+        self.hide()
 
     def _run_fade(self, start: float, end: float, on_done=None):
         self._fade_anim.stop()

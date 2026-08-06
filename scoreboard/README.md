@@ -244,6 +244,23 @@ also sends `set_overlay {active: false}` back rather than just hiding: otherwise
 the button on `/operator` stays lit with nothing behind it, and the next press
 appears to do nothing because the server still believes the overlay is on.
 
+#### With more than one kiosk
+
+The overlay has always been all-displays-or-none — it is server state
+(`state._overlay_active`), and the `/operator` button already drove every browser
+client at once. Several kiosks therefore behave correctly, with two properties
+worth keeping:
+
+- **Each kiosk sends exactly one frame per dismissal.** `splash_visible` reports
+  the *intent*, not `isVisible()`: it flips to False the moment a dismissal starts
+  rather than when the 800ms fade ends. Without that, `update_scoreboard` (which
+  arrives ~10×/second during a race) re-triggered on every frame — ten
+  `set_overlay` frames per kiosk, each of which the server rebroadcasts to all the
+  others.
+- **`set_overlay` is an absolute set, not a toggle**, so N kiosks all asking for
+  `active: false` converge rather than flip-flopping, and the resulting
+  `display_overlay` rebroadcasts are no-ops on a display already going down.
+
 **The meet title is a deliberate addition.** `live.html` has no title on its
 carousel — `scoreboard.html` does, and this follows `scoreboard.html`. It comes
 from Settings → Display → Title (`meet_title` in `/config`).
