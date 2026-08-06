@@ -376,6 +376,16 @@ th_bronze = "Bronce"
 
 # Red
 net_status = "Estado"
+# Distintivos de las pantallas conectadas (pestaña Red).
+clients_mismatch = "versión diferente"
+clients_mismatch_hint = "Esta pantalla usa una versión diferente del servidor"
+clients_dirty = "modificada"
+clients_dirty_hint = "Esta pantalla tiene cambios locales sin confirmar"
+update_displays = "Actualizar pantallas"
+update_displays_hint = "Lleva cada pantalla conectada a la versión de este servidor. Cada una se reinicia al terminar. Actualice primero el servidor."
+update_running = "actualizando"
+update_ok = "actualizada"
+update_failed = "error al actualizar"
 net_ethernet = "Ethernet"
 net_wifi = "WiFi"
 net_eth_static_ip = "IP estática Ethernet"

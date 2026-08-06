@@ -365,6 +365,20 @@ function onPasswordInput(form) {
 
                     <hr>
 
+                    {# Registered displays. No version picker here on purpose: the
+                       displays follow whatever this server is on, which is the
+                       whole point — see routes/system.route_displays_update. #}
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <button id="btn-update-displays" class="btn btn-secondary btn-sm"
+                                onclick="startDisplaysUpdate()">{{ t.update_displays }}</button>
+                        <span id="displays-update-status" class="text-secondary small"></span>
+                    </div>
+                    <div class="text-body-secondary small mb-2">{{ t.update_displays_hint }}</div>
+                    <div id="displays-list" hx-get="/clients_fragment" hx-trigger="load, every 5s"
+                         hx-swap="innerHTML"></div>
+
+                    <hr>
+
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <button id="btn-os-update" class="btn btn-secondary btn-sm" onclick="startOsUpdate()">{{ t.update_update_os }}</button>
                         <span id="os-update-status" class="text-secondary small"></span>
@@ -1721,6 +1735,22 @@ function onPasswordInput(form) {
 
     function _ensureUpdateSock() {
         if (!_updateSock) _updateSock = splouchSocket('/ws/settings');
+    }
+
+    function startDisplaysUpdate() {
+        var btn = document.getElementById('btn-update-displays');
+        var msg = document.getElementById('displays-update-status');
+        btn.disabled = true;
+        msg.textContent = T.loading;
+        fetch('/displays_update', {method: 'POST'})
+            .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, d: d}; }); })
+            .then(function(res){
+                btn.disabled = false;
+                msg.textContent = res.ok ? '' : (res.d.error || T.js_error);
+                // The list is polled every 5s and carries each display's progress.
+                htmx.trigger('#displays-list', 'load');
+            })
+            .catch(function(){ btn.disabled = false; msg.textContent = T.js_error; });
     }
 
     function loadVersions() {

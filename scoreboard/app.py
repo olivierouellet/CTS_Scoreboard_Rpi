@@ -26,6 +26,8 @@ from .cache import load_cached_config, save_cached_config
 from .client import ConfigLoader, ServerLink
 from .fonts import load_app_fonts
 from .theme import Config
+from .updater import Updater
+from .version import registration
 
 DEFAULT_SERVER = os.environ.get('SPLOUCH_SERVER', 'http://splouch.local')
 
@@ -51,7 +53,7 @@ class ScoreboardApp:
         # fallback for however long the server takes to boot.
         self.config  = Config(load_cached_config() or {})
         self.window  = BoardWindow(self.config)
-        self.link    = ServerLink(server)
+        self.link    = ServerLink(server, register=registration)
         self._have_config = False
 
         self.link.frame.connect(self._on_frame)
@@ -68,6 +70,11 @@ class ScoreboardApp:
         self._wait_timer.setInterval(_WAIT_TICK_MS)
         self._wait_timer.timeout.connect(self._tick_waiting)
         self._start_waiting('waiting_server')
+
+        # Self-update, triggered by the server (see scoreboard/updater.py).
+        self.updater = Updater()
+        self.updater.line.connect(self._on_update_line)
+        self.updater.done.connect(self._on_update_done)
 
         self.config_loader = ConfigLoader(server)
         self.config_loader.loaded.connect(self._on_config)
@@ -181,6 +188,46 @@ class ScoreboardApp:
         if self._waiting:
             self._tick_waiting()
 
+    # ── Self-update ────────────────────────────────────────────────────────────
+
+    def _on_update(self, data):
+        """Server asked us to move to its ref.
+
+        Refused mid-race: a successful update restarts the app, and a black TV
+        while somebody is swimming is worse than being a version behind.
+        """
+        target = (data or {}).get('target', '')
+        if not target:
+            self.link.send('update_log',
+                           {'text': 'No target ref given.', 'error': True,
+                            'done': False})
+            return
+        if self.window.any_lane_running:
+            self.link.send('update_log',
+                           {'text': 'A race is running — not updating now.',
+                            'error': True, 'done': False})
+            return
+        if not self.updater.start(target):
+            return                      # already updating; ignore the repeat
+        self.link.send('update_log', {'text': f'Updating to {target}…',
+                                      'error': False, 'done': None})
+
+    def _on_update_line(self, text: str, error: bool):
+        print(f'[scoreboard] update: {text}', flush=True)
+        self.link.send('update_log', {'text': text, 'error': error, 'done': None})
+
+    def _on_update_done(self, ok: bool):
+        self.link.send('update_log',
+                       {'text': 'Restarting on the new version.' if ok
+                                else 'Update failed — still on the old version.',
+                        'error': not ok, 'done': ok})
+        if not ok:
+            return
+        # Exit non-zero so start-scoreboard.sh relaunches us on the new code.
+        # Give the frame above a moment to reach the server first, or the operator
+        # never learns how it ended.
+        QTimer.singleShot(1000, lambda: os._exit(1))
+
     # ── Splash ─────────────────────────────────────────────────────────────────
 
     def _dismiss_splash_if_racing(self):
@@ -231,6 +278,8 @@ class ScoreboardApp:
             # every `lane_running` flag first, but if a frame were missed the
             # ticker would keep counting up over the final times.
             self.window.stop_clock()
+        elif event == 'update':
+            self._on_update(data)
         elif event == 'columns_state':
             # The operator's manual toggle on /operator, same mechanism as the
             # automatic reveal at race start.

@@ -283,4 +283,6 @@ async def route_clients_fragment(request: Request):
     # mutates _scoreboard_clients (the WS connect/disconnect handlers) — so this
     # snapshot can't be preempted mid-iteration by a connect/disconnect.
     return render(request, 'partials/clients.html',
-                  clients=list(state._scoreboard_clients.values()))
+                  clients=list(state._scoreboard_clients.values()),
+                  server_version=state.git_describe()['version'],
+                  t=state.settings_strings(state.ui_locale(request)))

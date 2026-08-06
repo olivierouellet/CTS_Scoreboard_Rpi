@@ -56,14 +56,32 @@ On connect the server sends, in order: `test_mode`, `display_overlay`,
 | `display_overlay` | `{ "active": bool }` | fullscreen overlay on/off |
 | `columns_state` | `{ "hidden": bool }` | optional columns collapsed/expanded |
 | `reload` | `{}` | settings/theme changed — client should re-fetch config and redraw |
+| `update` | `{ "target": "<ref>" }` | move to *ref* and restart (native clients only) |
 
 **Client → server**
 | event | data | effect |
 | --- | --- | --- |
+| `register` | `{ "role", "hostname", "version", "commit", "dirty" }` | identify a native client; sent on every (re)connect |
+| `update_log` | `{ "text", "error": bool, "done": bool\|null }` | progress while handling `update`; `done` null = still running |
 | `set_overlay` | `{ "active": bool }` | toggle overlay (rebroadcast as `display_overlay`) |
 | `set_columns` | `{ "hidden": bool }` | toggle columns (rebroadcast as `columns_state`) |
 | `adjust_splits` | `{ "lane": 1‑12, "delta": int }` | nudge a lane's split count; server replies `update_scoreboard {"lane_splits<n>": v}` |
 | `next_heat` | `{}` | advance to the next event/heat (Hytek/manual mode) |
+
+**`register`** is optional but expected of native clients. Browser tabs never send
+it, so `role` is what tells the two apart in Settings → Network. `version` is
+`git describe --tags --always --dirty` from the client's own checkout, and `dirty`
+is true when that checkout has uncommitted changes. The server compares `version`
+against its own and flags a mismatch: the display and the server must run the same
+ref, or they can disagree about this contract. Fields are truncated server-side —
+treat the frame as untrusted LAN input.
+
+**`update`** is sent by `POST /displays_update` and always carries the server's own
+ref — a display follows the server, it does not choose. The server refuses to send
+it while any lane is running, and a display refuses to act on it for the same
+reason: finishing an update means restarting. A display must report failure rather
+than restarting into a broken checkout, and must refuse outright if its own
+checkout has local changes.
 
 ### `/ws/results`
 On connect the server sends the last `results_snapshot` (if any) and `next_heats`.

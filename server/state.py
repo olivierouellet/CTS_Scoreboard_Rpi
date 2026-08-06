@@ -6,6 +6,7 @@ import os
 import os.path
 import queue
 import re
+import subprocess
 import sys
 
 import tomllib
@@ -333,6 +334,8 @@ _serial_status      = {'state': 'idle', 'msg': ''}
 # irrelevant. No lock needed.
 _finish_timer_gen   = 0
 _scoreboard_clients = {}
+# Cap on update-log lines kept per display — see app.ws_scoreboard.
+UPDATE_LOG_MAX = 40
 _test_meet_active   = False
 _overlay_active     = False
 _cols_hidden        = False
@@ -396,6 +399,37 @@ _migrate_data_dir()
 _ensure_data_dirs()
 
 # ── Locale / theme utilities ───────────────────────────────────────────────────
+
+_git_describe_cache = None
+
+
+def git_describe():
+    """This checkout's ref, for comparing against a registered display.
+
+    Mirrors ``scoreboard/version.py`` on the display side. They are deliberately
+    separate: ``docs/api.md`` states there is no shared client library, and the
+    display must not import from ``server/``.
+
+    Cached, because the caller is an async route that HTMX polls: two `git`
+    subprocesses per poll would run on the event loop and stall every WebSocket
+    on the box. The value only changes on update, which restarts the service.
+    """
+    global _git_describe_cache
+    if _git_describe_cache is not None:
+        return _git_describe_cache
+
+    def run(*args):
+        try:
+            r = subprocess.run(('git',) + args, cwd=app_dir, capture_output=True,
+                               text=True, timeout=8)
+        except (OSError, subprocess.SubprocessError):
+            return ''
+        return r.stdout.strip() if r.returncode == 0 else ''
+
+    _git_describe_cache = {'version': run('describe', '--tags', '--always', '--dirty'),
+                           'commit':  run('rev-parse', '--short', 'HEAD')}
+    return _git_describe_cache
+
 
 def _locale_path(code):
     custom = os.path.join(CUSTOM_LOCALE_FOLDER, code + '.toml')

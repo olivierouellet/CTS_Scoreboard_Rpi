@@ -376,6 +376,16 @@ th_bronze = "Bronze"
 
 # Réseau
 net_status = "État"
+# Badges des afficheurs connectés (onglet Réseau).
+clients_mismatch = "version différente"
+clients_mismatch_hint = "Cet afficheur utilise une version différente du serveur"
+clients_dirty = "modifié"
+clients_dirty_hint = "Cet afficheur a des modifications locales non validées"
+update_displays = "Mettre à jour les afficheurs"
+update_displays_hint = "Amène chaque afficheur connecté à la version de ce serveur. Chacun redémarre à la fin. Mettez d'abord le serveur à jour."
+update_running = "mise à jour"
+update_ok = "à jour"
+update_failed = "échec de la mise à jour"
 net_ethernet = "Ethernet"
 net_wifi = "WiFi"
 net_eth_static_ip = "IP statique Ethernet"

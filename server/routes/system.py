@@ -325,6 +325,39 @@ async def route_update_start(body: UpdateStart | None = None):
     return {'ok': True}
 
 
+@router.post('/displays_update', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+async def route_displays_update():
+    """Tell every registered display to move to the ref this server is on.
+
+    No target is accepted from the caller: the whole point is lockstep, and
+    letting the operator aim a display at some other ref reintroduces exactly the
+    split this is meant to close. Update the server first, then press this.
+
+    Refused while any lane is running — a display restarts to finish updating.
+    """
+    if state._running_lanes:
+        return JSONResponse({'error': 'A race is running.'}, status_code=409)
+
+    displays = [c for c in state._scoreboard_clients.values() if c.get('role')]
+    if not displays:
+        return JSONResponse({'error': 'No displays are registered.'}, status_code=404)
+
+    target = state.git_describe()['version']
+    # A dirty server has no ref a display could check out. `--dirty` appends a
+    # suffix that is not a real object, so this would fail on every kiosk.
+    if not target or target.endswith('-dirty'):
+        return JSONResponse(
+            {'error': 'This server is not on a clean released version.'},
+            status_code=409)
+
+    for client in displays:
+        client['update_state'] = 'updating'
+        client['update_lines'] = []
+    bus.emit('/scoreboard', 'update', {'target': target})
+    return {'ok': True}
+
+
 @router.post('/os_update_start', response_model=ActionResult,
              dependencies=[Depends(require_login)])
 def route_os_update_start():

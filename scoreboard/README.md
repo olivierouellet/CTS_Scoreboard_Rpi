@@ -93,6 +93,8 @@ icon.
 | `splash.py` | the carousel overlay — title, sponsor images, background |
 | `format.py` | value formatting (deltas); Qt-free so CI can test it |
 | `fonts.py` | registers the bundled TTFs, resolves family names, falls back to monospace |
+| `version.py` | what git ref this checkout is, reported on `register` |
+| `updater.py` | self-update on the server's command, then exit for a relaunch |
 
 ### Theming
 
@@ -225,6 +227,36 @@ Cells also use `QSizePolicy.Ignored` in **both** directions with a zero minimum.
 Their fonts are derived from the row height, so a font-driven minimum height feeds
 straight back into the layout — a 1080p board inflated to 1460px tall, which on a
 fullscreen TV means the bottom lane is cut off.
+
+### Staying in step with the server
+
+The single-repo decision assumes the kiosk and the server run the **same git ref**
+— that is what guarantees they agree about the WebSocket contract. Two pieces keep
+that true without an SSH session per Pi.
+
+**The display registers.** On every connect it sends `register` with its role,
+hostname, `git describe` output and whether the checkout is dirty. Settings →
+Network lists them and flags any display whose ref differs from the server's, or
+that has uncommitted changes. A version split used to be invisible until something
+broke.
+
+**The server can update them.** *Settings → Update → Update displays* broadcasts
+`update` carrying the server's own ref. Each display fetches, checks out, runs
+`uv sync --extra scoreboard`, streams progress back as `update_log`, and exits
+non-zero — `start-scoreboard.sh` relaunches it on the new code, so no systemd unit
+or sudo is involved.
+
+Four rules make it safe:
+
+- **The display follows the server; it cannot be aimed elsewhere.** No target is
+  accepted from the operator, because letting one pick reintroduces the split this
+  exists to close. Update the server first, then press the button.
+- **Never mid-race.** The server refuses while any lane is running and the display
+  refuses too, in case it missed a frame. Finishing an update means restarting.
+- **Only exit on success.** A failed `uv sync` leaves the old code running and
+  reports why. Restarting into a broken checkout means a black TV and a walk to
+  the kiosk — worse than being a version behind.
+- **Never touch a dirty checkout.** `git checkout` would discard someone's work.
 
 ### The splash / carousel overlay
 

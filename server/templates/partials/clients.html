@@ -1,10 +1,44 @@
+{# Clients on /ws/scoreboard. A native display sends `register` on connect
+   (docs/api.md §2) so it can be told apart from a browser tab and, more usefully,
+   so its git ref is visible: the kiosk and the server must be on the same one or
+   they can disagree about the WebSocket contract. Browser tabs send nothing and
+   fall back to just their IP. #}
 {% if clients %}
 <div class="list-group list-group-flush">
     {% for c in clients %}
-    <div class="list-group-item d-flex align-items-center px-0 py-1 bg-transparent">
-        <span class="flex-fill">{{ c.ip }}</span>
-        <span class="text-body-secondary">{{ c.at }}</span>
+    <div class="list-group-item d-flex align-items-center gap-2 px-0 py-1 bg-transparent">
+        <span class="flex-fill text-truncate">
+            {% if c.hostname %}{{ c.hostname }}<span class="text-body-secondary small ms-1">{{ c.ip }}</span>
+            {% else %}{{ c.ip }}{% endif %}
+        </span>
+        {% if c.role %}
+        <span class="badge text-bg-secondary">{{ c.role }}</span>
+        {% endif %}
+        {% if c.version %}
+        <span class="small text-truncate" style="font-family:monospace; max-width:16rem;"
+              title="{{ c.version }}{% if c.dirty %} (uncommitted changes){% endif %}">{{ c.version }}</span>
+            {% if c.dirty %}
+            <span class="badge text-bg-warning" title="{{ t.clients_dirty_hint }}">{{ t.clients_dirty }}</span>
+            {% elif server_version and c.version != server_version %}
+            <span class="badge text-bg-danger"
+                  title="{{ t.clients_mismatch_hint }} ({{ server_version }})">{{ t.clients_mismatch }}</span>
+            {% endif %}
+        {% endif %}
+        {% if c.update_state == 'updating' %}
+        <span class="badge text-bg-info">{{ t.update_running }}</span>
+        {% elif c.update_state == 'ok' %}
+        <span class="badge text-bg-success">{{ t.update_ok }}</span>
+        {% elif c.update_state == 'failed' %}
+        <span class="badge text-bg-danger">{{ t.update_failed }}</span>
+        {% endif %}
+        <span class="text-body-secondary small">{{ c.at }}</span>
     </div>
+    {% if c.update_lines %}
+    {# Only the tail: enough to see why an update failed without burying the list. #}
+    <pre class="small border rounded p-1 mb-1" style="background:#111; color:#e0e0e0;
+         max-height:120px; overflow-y:auto; font-size:0.75em;">{% for l in c.update_lines[-8:] %}<span{% if l.error %} style="color:#ff6b6b"{% endif %}>{{ l.text }}</span>
+{% endfor %}</pre>
+    {% endif %}
     {% endfor %}
 </div>
 {% else %}

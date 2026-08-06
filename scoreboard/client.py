@@ -98,13 +98,18 @@ class ServerLink(QObject):
     frame     = pyqtSignal(str, object)
     connected = pyqtSignal(bool)
 
-    def __init__(self, base_url: str, parent=None):
+    def __init__(self, base_url: str, register=None, parent=None):
         super().__init__(parent)
         self._base   = base_url
         self._stop   = threading.Event()
         self._thread = None
         self._ws     = None
         self._lock   = threading.Lock()
+        # Callable returning the `register` payload, sent on every (re)connect so
+        # the server's client list is right again after a drop. A callable rather
+        # than a dict because it shells out to git — evaluated here, on this
+        # thread, never on the GUI one.
+        self._register = register
 
     def start(self):
         if self._thread is None:
@@ -150,6 +155,14 @@ class ServerLink(QObject):
                 ws.enable_multithreading = True  # send() is called from the GUI thread
                 with self._lock:
                     self._ws = ws
+                if self._register is not None:
+                    try:
+                        ws.send(json.dumps({'event': 'register',
+                                            'data': self._register()}))
+                    except Exception as e:
+                        # Registration is diagnostics — never let it stop the
+                        # board from showing times.
+                        print(f'[scoreboard] register failed: {e}', flush=True)
                 self.connected.emit(True)
                 print(f'[scoreboard] connected to {url}', flush=True)
 

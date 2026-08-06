@@ -163,7 +163,31 @@ async def ws_scoreboard(ws: WebSocket):
         while True:
             msg = await ws.receive_json()
             ev, d = msg.get('event'), msg.get('data') or {}
-            if ev == 'set_overlay':
+            if ev == 'register':
+                # A native display identifying itself (docs/api.md §2). Browser
+                # tabs never send this, so `role` is what tells the two apart in
+                # Settings → Network — and `version` is what makes a kiosk running
+                # a different git ref than the server visible at all.
+                state._scoreboard_clients.setdefault(id(ws), {}).update({
+                    'role':     str(d.get('role', ''))[:20],
+                    'hostname': str(d.get('hostname', ''))[:64],
+                    'version':  str(d.get('version', ''))[:64],
+                    'commit':   str(d.get('commit', ''))[:16],
+                    'dirty':    bool(d.get('dirty', False)),
+                })
+            elif ev == 'update_log':
+                # Progress from a display updating itself (docs/api.md §2). Kept
+                # per-client and capped: this is unauthenticated LAN input, and a
+                # chatty or malfunctioning client must not grow state without end.
+                client = state._scoreboard_clients.setdefault(id(ws), {})
+                lines = client.setdefault('update_lines', [])
+                lines.append({'text': str(d.get('text', ''))[:400],
+                              'error': bool(d.get('error', False))})
+                del lines[:-state.UPDATE_LOG_MAX]
+                done = d.get('done')
+                client['update_state'] = ('updating' if done is None
+                                          else 'ok' if done else 'failed')
+            elif ev == 'set_overlay':
                 state._overlay_active = bool(d.get('active', False))
                 bus.emit('/scoreboard', 'display_overlay', {'active': state._overlay_active})
             elif ev == 'set_columns':
