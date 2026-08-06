@@ -12,15 +12,20 @@ Two things differ from the browser, deliberately:
   instructs native clients to do.
 """
 import re
+import time
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                              QSizePolicy, QVBoxLayout, QWidget)
 
-from .format import fmt_delta
+from .format import fmt_clock, fmt_delta, parse_clock
 from .theme import Config
 from .widgets import FitLabel
+
+# Clock repaint cadence. 50ms matches the browser: fast enough that hundredths
+# look continuous, slow enough to stay cheap on a Pi.
+_CLOCK_TICK_MS = 50
 
 # Column stretch weights, chosen to match the browser's vw widths.
 _W_LANE, _W_NAME, _W_CLUB, _W_TIME, _W_DELTA, _W_PLACE = 6, 38, 20, 17, 9, 6
@@ -40,6 +45,9 @@ class LaneRow(QFrame):
         super().__init__(parent)
         self.lane = lane
         self.cfg  = cfg
+        # While True the time cell belongs to the board's clock ticker, not to
+        # `lane_time<i>` — see BoardWindow._tick_clock.
+        self.running = False
         self.setAutoFillBackground(True)
         self.setFrameShape(QFrame.NoFrame)
 
@@ -158,7 +166,10 @@ class LaneRow(QFrame):
         self.alt_label.setVisible(bool(alt))
 
         self.club_label.setText(snapshot.get(f'lane_club{i}', ''))
-        self.time_label.setText(snapshot.get(f'lane_time{i}', ''))
+        # A running lane's time is driven by the ticker; writing `lane_time<i>`
+        # here would stamp the last split back over the live clock on every frame.
+        if not self.running:
+            self.time_label.setText(snapshot.get(f'lane_time{i}', ''))
 
         self.delta_label.setText(fmt_delta(snapshot.get(f'lane_delta_seconds{i}')))
         self._style_delta(snapshot.get(f'lane_delta_better{i}'))
@@ -274,6 +285,16 @@ class BoardWindow(QWidget):
         self.cfg      = cfg
         self.snapshot = {}
         self._windowed_size = None    # size to restore when leaving fullscreen
+
+        # ── Live clock ─────────────────────────────────────────────────────────
+        # The console streams `running_time` a few times a second. Rendering only
+        # those frames would make the clock visibly step, so we re-base on each
+        # one and interpolate locally in between.
+        self._clock_base = None       # hundredths at the last console update
+        self._clock_at   = None       # monotonic() when that update arrived
+        self._clock_timer = QTimer(self)
+        self._clock_timer.setInterval(_CLOCK_TICK_MS)
+        self._clock_timer.timeout.connect(self._tick_clock)
         self.setWindowTitle(cfg.meet_title or 'Splouch')
 
         root = QVBoxLayout(self)
@@ -475,11 +496,63 @@ class BoardWindow(QWidget):
         """The current headline, or ``''`` when no status is showing."""
         return self.status.text() if self.status_box.isVisible() else ''
 
+    # ── Live clock ─────────────────────────────────────────────────────────────
+
+    def _tick_clock(self):
+        """Repaint the header chrono and every running lane from the local clock.
+
+        All running lanes show the *same* value — the console's race clock — which
+        is what the browser does too. There is no independent per-lane timer: a
+        lane's own elapsed time only becomes meaningful at its split, and that
+        arrives as ``lane_time<i>``.
+        """
+        if self._clock_base is None:
+            return
+        elapsed = int((time.monotonic() - self._clock_at) * 100)
+        text = fmt_clock(self._clock_base + elapsed)
+        self.chrono_label.setText(text)
+        for row in self.rows:
+            if row.running:
+                row.time_label.setText(text)
+
+    def _sync_clock(self):
+        """Run the ticker only while at least one lane is actually swimming."""
+        if any(row.running for row in self.rows):
+            if not self._clock_timer.isActive():
+                self._clock_timer.start()
+        else:
+            self._clock_timer.stop()
+
+    def stop_clock(self):
+        """Freeze every lane at its last time — race over, or board reset."""
+        self._clock_timer.stop()
+        self._clock_base = None
+        for row in self.rows:
+            row.running = False
+
     def apply_update(self, data: dict):
         """Merge a partial ``update_scoreboard`` frame and redraw what changed."""
         if not isinstance(data, dict):
             return
         self.snapshot.update(data)
+
+        # Running flags first: they decide whether the rows redrawn below take
+        # their time from `lane_time<i>` or leave it to the ticker.
+        #
+        # A lane pauses at every wall. The console drops `lane_running<i>` and
+        # sends the split in `lane_time<i>`, which stays on screen for a few
+        # seconds so it can be read, then the flag comes back and the lane
+        # rejoins the clock. Freezing the split is the whole point of the flag —
+        # without it the lap time would be overwritten before anyone saw it.
+        for key, value in data.items():
+            if not key.startswith('lane_running'):
+                continue
+            match = _LANE_SUFFIX.search(key)
+            if not match:
+                continue
+            lane = int(match.group(1))
+            if 1 <= lane <= len(self.rows):
+                self.rows[lane - 1].running = bool(value)
 
         if 'current_event' in data:
             self.event_cell.set_text(self.cfg.labels.get('event', 'EVENT'),
@@ -490,7 +563,20 @@ class BoardWindow(QWidget):
         if 'event_name' in data:
             self.name_label.setText(data['event_name'])
         if 'running_time' in data:
-            self.chrono_label.setText(data['running_time'])
+            # Re-base the local clock on the console's authority. Between these
+            # frames the ticker interpolates; it never free-runs for long.
+            hundredths = parse_clock(data['running_time'])
+            if hundredths is None:
+                # Unrecognised format — show whatever the console said rather than
+                # blanking the header.
+                self.chrono_label.setText(data['running_time'])
+            else:
+                self._clock_base = hundredths
+                self._clock_at   = time.monotonic()
+                # Paint it now. The ticker only runs while a lane is swimming, so
+                # relying on it alone would freeze the header during the seconds
+                # when every lane is paused at a wall.
+                self.chrono_label.setText(fmt_clock(hundredths))
 
         # Lane keys are `lane_<field><n>` — the lane is the trailing digits, which
         # is the only part of the name that is stable across fields
@@ -506,11 +592,16 @@ class BoardWindow(QWidget):
             if row.lane in touched:
                 row.update_from(self.snapshot)
 
+        self._sync_clock()
+        if self._clock_timer.isActive():
+            self._tick_clock()      # paint now rather than up to 50ms from now
+
     def refresh(self):
         for row in self.rows:
             row.update_from(self.snapshot)
 
     def reset(self):
+        self.stop_clock()
         self.snapshot.clear()
         self.event_cell.set_text('', '')
         self.heat_cell.set_text('', '')

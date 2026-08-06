@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scoreboard.format import fmt_delta  # noqa: E402
+from scoreboard.format import fmt_clock, fmt_delta, parse_clock  # noqa: E402
 
 
 @pytest.mark.parametrize('seconds, expected', [
@@ -61,3 +61,51 @@ def test_matches_the_server_formatter():
         server_text = re.sub(r'<[^>]+>', '', html)
         assert fmt_delta(hundredths / 100.0) == server_text, \
             f'diverged at {hundredths} hundredths: {html}'
+
+
+# ── Race clock ─────────────────────────────────────────────────────────────────
+# Mirrors parseHundredths/formatHundredths in the browser templates. The Qt board
+# re-bases on each `running_time` frame and interpolates in between, so these two
+# have to agree with the console's own formatting or the clock would jump on every
+# console update.
+
+@pytest.mark.parametrize('text, hundredths', [
+    ('0.00',    0),
+    ('5.23',    523),
+    ('28.41',   2841),
+    ('59.99',   5999),
+    ('1:00.00', 6000),
+    ('1:05.23', 6523),
+    ('12:34.56', 75456),
+])
+def test_parse_clock(text, hundredths):
+    assert parse_clock(text) == hundredths
+
+
+@pytest.mark.parametrize('hundredths, text', [
+    (0,     '0.00'),
+    (523,   '5.23'),
+    (5999,  '59.99'),
+    (6000,  '1:00.00'),
+    (6523,  '1:05.23'),
+    (75456, '12:34.56'),
+])
+def test_fmt_clock(hundredths, text):
+    """Seconds are padded only once there is a minutes part — `5.23`, `1:05.23`."""
+    assert fmt_clock(hundredths) == text
+
+
+def test_clock_round_trips():
+    for hundredths in range(0, 200000, 7):
+        assert parse_clock(fmt_clock(hundredths)) == hundredths
+
+
+@pytest.mark.parametrize('junk', [None, '', '  ', 'abc', '1:2:3.44', '12.3', '12.345'])
+def test_unparseable_clock_reads_as_none(junk):
+    """The caller falls back to showing the console's raw string, not a crash."""
+    assert parse_clock(junk) is None
+
+
+def test_negative_clock_is_clamped():
+    """A clock cannot run backwards; guard the interpolation arithmetic."""
+    assert fmt_clock(-1) == '0.00'

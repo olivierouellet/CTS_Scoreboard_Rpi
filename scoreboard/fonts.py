@@ -55,6 +55,10 @@ def load_app_fonts() -> list[str]:
         if font_id != -1:
             added.extend(QFontDatabase.applicationFontFamilies(font_id))
     if added:
+        # Registering families changes what resolves, so any answer given before
+        # now is stale — a lookup made first would have cached the monospace
+        # fallback and kept returning it for the life of the process.
+        _RESOLVED.clear()
         print(f'[scoreboard] loaded bundled fonts: {", ".join(sorted(set(added)))}',
               flush=True)
     return added

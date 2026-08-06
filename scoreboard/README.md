@@ -122,6 +122,39 @@ Two rules the code depends on:
   minute; `tests/test_scoreboard_format.py` cross-checks it against
   `meet_data._delta_html` so the two can't drift.
 
+### The race clock
+
+A lane's time cell has two owners, and which one is in charge is the whole
+mechanism:
+
+| `lane_running<i>` | the time cell shows | why |
+| --- | --- | --- |
+| `true` | the race clock, ticking | the swimmer is mid-length |
+| `false` | `lane_time<i>`, frozen | they touched a wall — this is the split |
+
+**A lane pauses at every wall.** The console drops the running flag and sends the
+lap in `lane_time<i>`, which has to stay on screen for the few seconds it takes to
+read before the flag returns and the lane rejoins the clock. Freezing it is the
+entire point: without that, the lap time is overwritten before anyone sees it.
+
+Consequences worth knowing before touching this code:
+
+- **A running lane ignores `lane_time<i>`.** The split stays in the snapshot after
+  it lands, so any later frame touching that lane would stamp the stale split back
+  over the live clock. `LaneRow.update_from` skips the time cell while running.
+- **All running lanes show the same value** — the console's race clock — as in the
+  browser. There is no independent per-lane timer; a lane's own elapsed time only
+  becomes meaningful at its split.
+- **The clock is interpolated locally.** The console sends `running_time` a few
+  times a second, which would visibly step. The board re-bases on each frame and
+  ticks at 50ms in between, so it never free-runs for long.
+- **The header is painted on every frame, not only by the ticker.** The ticker
+  stops when no lane is running, and during the seconds when every lane is paused
+  at a wall the header would otherwise freeze.
+- **`race_finished` calls `stop_clock()`** as a backstop. The console normally
+  clears the flags first, but a missed frame would leave the ticker counting up
+  over the final times.
+
 ### Starting before the server does
 
 The display depends on the server for two separate things, over two separate
@@ -259,12 +292,20 @@ are deliberately Qt-free, so they run in CI without the `scoreboard` extra
 installed. Keep pure logic out of `board.py` for that reason — it is the module
 that drags in PyQt5.
 
-`tests/test_scoreboard_startup.py` does need Qt and `importorskip`s without it.
-Run it where PyQt5 is available:
+`tests/test_scoreboard_startup.py` and `tests/test_scoreboard_clock.py` need Qt and
+`importorskip` without it. Run them where PyQt5 is available:
 
 ```bash
 uv run --extra scoreboard pytest tests/
 ```
+
+They share the session-scoped `qt_app` fixture in `tests/conftest.py`, which also
+points `XDG_CACHE_HOME` at a temp dir. **Do not** give a QApplication a narrower
+fixture scope: whichever fixture yields it holds the only Python reference, so
+PyQt destroys the C++ object at teardown — and Qt discards every font registered
+with `addApplicationFont` along with it. The next module then runs against a
+font-less application while `fonts._APP_FONTS_LOADED` still reports them loaded,
+and every family silently falls back to monospace.
 
 Widget behaviour needs a `QApplication`. Drive it headless with
 `QT_QPA_PLATFORM=offscreen`, build a `BoardWindow`, feed it frames, and assert on
@@ -278,8 +319,6 @@ This is a working scaffold, not the finished display. Still to do:
 
 - **Splash / carousel.** `/live` shows sponsor images between heats
   (`carousel_images`, `carousel_interval`) and an intro splash. Not implemented.
-- **Per-lane running clocks.** The header shows `running_time`; the browser also
-  ticks a local clock per running lane (`lane_running<i>`).
 - **Race-end transitions.** The browser fades between board and results on
   `race_finished`; here the board simply keeps the final times on screen.
 - **Background image.** `/live` renders `scoreboard_bg.png` behind the table.

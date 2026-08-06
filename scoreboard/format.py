@@ -3,6 +3,40 @@
 Kept Qt-free and separate from ``board.py`` so it can be tested in CI without
 PyQt5 installed — these are pure string functions with no widget involvement.
 """
+import re
+
+# `1:05.23`, `59.99`, `5.23` — the clock format every console string uses.
+_CLOCK = re.compile(r'^(?:(\d+):)?(\d{1,2})\.(\d{2})$')
+
+
+def parse_clock(text):
+    """Clock string to hundredths of a second, or ``None`` if unparseable.
+
+    Mirrors ``parseHundredths`` in the browser templates. Used to re-base the
+    locally interpolated clock each time the console sends a new ``running_time``.
+    """
+    if not text:
+        return None
+    match = _CLOCK.match(text.strip())
+    if not match:
+        return None
+    minutes, seconds, hundredths = match.groups()
+    return int(minutes or 0) * 6000 + int(seconds) * 100 + int(hundredths)
+
+
+def fmt_clock(hundredths: int) -> str:
+    """Hundredths to a clock string, exactly as ``formatHundredths`` renders it.
+
+    Note the asymmetry, which is intentional and matches the browser: seconds are
+    zero-padded only once there is a minutes part — `5.23`, but `1:05.23`.
+    """
+    hundredths = max(0, int(hundredths))
+    frac    = hundredths % 100
+    seconds = (hundredths // 100) % 60
+    minutes = hundredths // 6000
+    if minutes:
+        return f'{minutes}:{seconds:02d}.{frac:02d}'
+    return f'{seconds}.{frac:02d}'
 
 
 def fmt_delta(seconds) -> str:

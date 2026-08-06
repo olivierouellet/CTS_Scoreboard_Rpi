@@ -11,48 +11,25 @@ Run it on a dev machine or the kiosk itself:
 
     uv run --extra scoreboard pytest tests/test_scoreboard_startup.py
 """
-import os
 import socket
-import sys
-import tempfile
 import threading
 import time
 
 import pytest
 
-os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-# Never touch the developer's real ~/.cache — ScoreboardApp both reads the cached
-# config at startup and writes it on every successful fetch, so an un-isolated run
-# leaves a stale lane count behind that the next run silently picks up.
-os.environ['XDG_CACHE_HOME'] = tempfile.mkdtemp(prefix='splouch-test-')
-
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, REPO)
-sys.path.insert(0, os.path.join(REPO, 'server'))
-
 pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
 
 from PyQt5.QtCore import QTimer                       # noqa: E402
-from PyQt5.QtWidgets import QApplication              # noqa: E402
 
 from scoreboard.app import ScoreboardApp              # noqa: E402
 from scoreboard.board import BoardWindow              # noqa: E402
-from scoreboard.fonts import load_app_fonts           # noqa: E402
 from scoreboard.theme import Config                   # noqa: E402
+
+# `qt_app` comes from tests/conftest.py — session-scoped, fonts already loaded.
 
 # Generous enough to absorb a slow CI box, tiny next to the 10s fetch timeout
 # it is guarding against.
 _MAX_STARTUP_SECONDS = 2.0
-
-
-@pytest.fixture(scope='module')
-def qt_app():
-    app = QApplication.instance() or QApplication([])
-    # Mirror main(): register the bundled TTFs before anything resolves a family.
-    # Order matters — resolve_family() memoises, so a lookup made before the fonts
-    # are loaded caches the monospace fallback for the life of the process.
-    load_app_fonts()
-    yield app
 
 
 @pytest.fixture

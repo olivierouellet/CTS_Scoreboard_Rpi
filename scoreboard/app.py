@@ -204,11 +204,14 @@ class ScoreboardApp:
         elif event == 'display_overlay':
             # The operator blanked the board (medal ceremony, announcements).
             self.window.set_status(' ' if (data or {}).get('active') else '')
-        elif event in ('race_finished', 'columns_state'):
-            # race_finished: results confirmed — the board already shows final
-            # times, so nothing to redraw yet.
-            # columns_state: the browser collapses optional columns during a race;
-            # the native board keeps them, since it has no reflow cost.
+        elif event == 'race_finished':
+            # Results are confirmed. Belt-and-braces: the console normally clears
+            # every `lane_running` flag first, but if a frame were missed the
+            # ticker would keep counting up over the final times.
+            self.window.stop_clock()
+        elif event == 'columns_state':
+            # The browser collapses optional columns during a race; the native
+            # board keeps them, since it has no reflow cost.
             pass
 
 
