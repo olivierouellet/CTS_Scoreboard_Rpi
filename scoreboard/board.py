@@ -18,6 +18,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (QFrame, QHBoxLayout, QLabel, QSizePolicy,
                              QVBoxLayout, QWidget)
 
+from .format import fmt_delta
 from .theme import Config
 from .widgets import FitLabel
 
@@ -29,17 +30,6 @@ _LANE_SUFFIX = re.compile(r'(\d+)$')
 # Fractions of a row's height used as the font ceiling for each kind of cell.
 _FONT_MAIN = 0.52
 _FONT_ALT  = 0.30   # relay member names, rendered under the team name
-
-
-def _fmt_delta(seconds) -> str:
-    """Signed delta vs seed time, e.g. ``-0.46`` / ``+1.12``; ``''`` when unknown."""
-    if seconds is None:
-        return ''
-    try:
-        val = float(seconds)
-    except (TypeError, ValueError):
-        return ''
-    return f'{val:+.2f}'
 
 
 class LaneRow(QFrame):
@@ -170,7 +160,7 @@ class LaneRow(QFrame):
         self.club_label.setText(snapshot.get(f'lane_club{i}', ''))
         self.time_label.setText(snapshot.get(f'lane_time{i}', ''))
 
-        self.delta_label.setText(_fmt_delta(snapshot.get(f'lane_delta_seconds{i}')))
+        self.delta_label.setText(fmt_delta(snapshot.get(f'lane_delta_seconds{i}')))
         self._style_delta(snapshot.get(f'lane_delta_better{i}'))
 
         place = snapshot.get(f'lane_place{i}', '')

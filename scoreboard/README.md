@@ -46,6 +46,7 @@ which resolves the venv from its own location, reads the server address from
 | `board.py` | header bar and lane rows; merges partial `update_scoreboard` frames |
 | `widgets.py` | `FitLabel` — the shrink-to-fit label |
 | `theme.py` | normalises `/config` (colours, fonts, labels, `show_*` flags) |
+| `format.py` | value formatting (deltas); Qt-free so CI can test it |
 | `fonts.py` | registers bundled faces, falls back to monospace |
 
 Two rules the code depends on:
@@ -54,7 +55,12 @@ Two rules the code depends on:
   merged into `BoardWindow.snapshot`; never replace it.
 - **Deltas come from the structured fields.** Use `lane_delta_seconds<i>` and
   `lane_delta_better<i>`, not the HTML `lane_delta<i>` blob meant for the browser
-  (`docs/api.md` §5.1).
+  (`docs/api.md` §5.1). All three carry the same number — finish minus seed — but
+  the HTML one bakes in formatting *and* styling via CSS classes that resolve to
+  nothing outside the page. `format.fmt_delta` reproduces the server's own
+  formatting from the structured value, including the switch to `m:ss.hh` past a
+  minute; `tests/test_scoreboard_format.py` cross-checks it against
+  `meet_data._delta_html` so the two can't drift.
 
 The window opens *before* the server is reachable. At a meet both Pis power up
 together, and a display that waits for a successful HTTP call looks broken for
@@ -109,8 +115,10 @@ Not worth deciding from a screenshot — judge it with real names on the real TV
 
 ## Testing
 
-`tests/test_scoreboard_config.py` covers config normalisation and is deliberately
-Qt-free, so it runs in CI without the `scoreboard` extra installed.
+`tests/test_scoreboard_config.py` (config normalisation) and
+`tests/test_scoreboard_format.py` (delta formatting) are deliberately Qt-free, so
+they run in CI without the `scoreboard` extra installed. Keep pure logic out of
+`board.py` for that reason — it is the module that drags in PyQt5.
 
 Widget behaviour needs a `QApplication`. Drive it headless with
 `QT_QPA_PLATFORM=offscreen`, build a `BoardWindow`, feed it frames, and assert on
