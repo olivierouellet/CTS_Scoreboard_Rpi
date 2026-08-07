@@ -1,6 +1,6 @@
 """Shared test setup.
 
-Nothing here imports PyQt5 at module level — most of the suite is deliberately
+Nothing here imports PySide6 at module level — most of the suite is deliberately
 Qt-free so it runs in CI without the `scoreboard` extra, and importing Qt here
 would break that. The `qt_app` fixture skips instead.
 """
@@ -23,7 +23,7 @@ for path in (REPO, os.path.join(REPO, 'server')):
         sys.path.insert(0, path)
 
 # Module-level so the QApplication outlives every fixture scope. A fixture that
-# only yields it holds the sole Python reference, so PyQt destroys the C++ object
+# only yields it holds the sole Python reference, so PySide destroys the C++ object
 # at teardown — and Qt discards all fonts registered via addApplicationFont along
 # with it. The next module then gets a fresh, font-less application while
 # `fonts._APP_FONTS_LOADED` still reports them as loaded, and every family
@@ -35,8 +35,8 @@ _QT_APP = None
 def qt_app():
     """A single QApplication for the whole session, with the bundled fonts loaded."""
     global _QT_APP
-    pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
-    from PyQt5.QtWidgets import QApplication
+    pytest.importorskip('PySide6', reason='needs the `scoreboard` extra (PySide6)')
+    from PySide6.QtWidgets import QApplication
 
     from scoreboard.fonts import load_app_fonts
     if _QT_APP is None:

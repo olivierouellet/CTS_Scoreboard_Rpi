@@ -14,6 +14,32 @@ The native display for the kiosk Pi. Replaces the Chromium kiosk that rendered
 > | title on the splash | absent | present | present |
 > | idle splash timeout | yes | yes | not implemented |
 
+## Qt binding
+
+**PySide6 (Qt 6)**, installed by `uv sync --extra scoreboard`. It replaced PyQt5
+for three reasons, in order:
+
+1. **PyQt5 does not run on a 64-bit Raspberry Pi from PyPI.** Neither `pyqt5` nor
+   its `pyqt5-qt5` runtime publishes a linux aarch64 wheel, and piwheels does not
+   build them either, so `uv sync` cannot resolve it at all. The only route was
+   Debian's `python3-pyqt5` plus a `--system-site-packages` venv pinned to
+   `/usr/bin/python3` — which takes the Python version out of uv's hands.
+2. **Licence.** PyQt5 is GPLv3; this project is MIT. PySide6 is LGPL.
+3. **Variable fonts.** Qt 5 has no support; three of the bundled faces are
+   variable and only rendered correctly by accident. Qt 6.7+ handles them.
+
+Porting notes, if you ever touch this boundary again:
+
+- `pyqtSignal` → `Signal`; `exec_()` → `exec()` (the old name still works but is
+  deprecated).
+- `QWIDGETSIZE_MAX` is not exported by PySide6 — `board.py` defines it.
+- `QFontDatabase` query methods are **static** in Qt 6; PyQt5 needed an instance.
+- **Zero-valued enums are truthy** in PySide6. `bool(QAbstractAnimation.Stopped)`
+  is `True`, where PyQt5 returned a falsy `0`. Compare explicitly
+  (`state() != Running`), never `if anim.state():`.
+- Every *unscoped* enum form the board uses still works (`Qt.AlignCenter`,
+  `QFrame.NoFrame`, `QSizePolicy.Ignored`, …) — all 18 were checked.
+
 ## Why native
 
 - **Names fit.** CSS can only truncate an overlong swimmer name; Qt measures text
@@ -38,7 +64,7 @@ The convenience is not a licence to cheat: this package **must not import from
 ## Running
 
 ```bash
-uv sync                                          # PyQt5 comes from apt, see below
+uv sync --extra scoreboard                       # PySide6 — kiosk role only
 .venv/bin/python -m scoreboard --windowed        # development, against splouch.local
 .venv/bin/python -m scoreboard --server http://10.10.10.10:5000 --windowed
 ```
@@ -474,11 +500,11 @@ Not worth deciding from a screenshot — judge it with real names on the real TV
 `tests/test_scoreboard_fonts.py` (family-name matching, bundled-font inventory)
 are deliberately Qt-free, so they run in CI without the `scoreboard` extra
 installed. Keep pure logic out of `board.py` for that reason — it is the module
-that drags in PyQt5.
+that drags in PySide6.
 
 `tests/test_scoreboard_startup.py`, `test_scoreboard_clock.py`,
 `test_scoreboard_columns.py` and `test_scoreboard_splash.py` need Qt and
-`importorskip` without it. Run them where PyQt5 is available:
+`importorskip` without it. Run them where PySide6 is available:
 
 ```bash
 uv run pytest tests/
@@ -487,7 +513,7 @@ uv run pytest tests/
 They share the session-scoped `qt_app` fixture in `tests/conftest.py`, which also
 points `XDG_CACHE_HOME` at a temp dir. **Do not** give a QApplication a narrower
 fixture scope: whichever fixture yields it holds the only Python reference, so
-PyQt destroys the C++ object at teardown — and Qt discards every font registered
+PySide destroys the C++ object at teardown — and Qt discards every font registered
 with `addApplicationFont` along with it. The next module then runs against a
 font-less application while `fonts._APP_FONTS_LOADED` still reports them loaded,
 and every family silently falls back to monospace.

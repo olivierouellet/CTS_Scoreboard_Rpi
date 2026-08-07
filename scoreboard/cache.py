@@ -11,7 +11,7 @@ the display comes up in the right language and colours even if the server never
 answers at all.
 
 Qt-free on purpose (see ``scoreboard/README.md``): this is `json` and `os`, and
-keeping it out of ``client.py`` lets CI test it without PyQt5.
+keeping it out of ``client.py`` lets CI test it without PySide6.
 """
 import json
 import os

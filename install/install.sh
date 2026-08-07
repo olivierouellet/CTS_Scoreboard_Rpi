@@ -629,38 +629,27 @@ if [[ "$ROLE" == "kiosk" ]]; then
 
     section "Qt scoreboard dependencies"
     cd "$INSTALL_DIR"
-    # PyQt5 comes from apt, not pip. There is no PyQt5 wheel for 64-bit Raspberry
-    # Pi OS: neither `pyqt5` nor its `pyqt5-qt5` runtime publishes a linux aarch64
-    # wheel on PyPI, and piwheels does not build them either, so `uv sync` cannot
-    # resolve it at all. Debian ships python3-pyqt5 5.15.11 for arm64 — the same
-    # version PyPI has elsewhere.
+    # Qt itself arrives in the PySide6 wheel, but that wheel links against the
+    # platform's X11/Wayland client libraries, which are not bundled.
     #
     # The theme fonts ship with the repo as TTF (shared/static/fonts/) and the app
     # registers them itself, so no font packages are needed — fonts-dejavu-core is
     # only the last-resort monospace fallback if a theme names something we lack.
-    sudo apt-get install -y python3-pyqt5 libxcb-cursor0 libxkbcommon-x11-0 libgl1 \
-                            fonts-dejavu-core
-    if ! python3 -c 'import PyQt5.QtWidgets' 2>/dev/null; then
-        error "python3-pyqt5 is not importable — cannot run the Qt display."
-        error "Install it manually with: sudo apt-get install python3-pyqt5"
-        exit 1
-    fi
+    sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libgl1 \
+                            libxkbcommon0 libegl1 fonts-dejavu-core || true
 
-    # The venv must be built on the SYSTEM interpreter with --system-site-packages,
-    # or it cannot see apt's PyQt5: uv otherwise downloads its own CPython, whose
-    # site-packages has nothing to do with Debian's dist-packages.
-    info "Creating the virtual environment on the system Python (for apt's PyQt5)…"
-    uv venv --system-site-packages --python /usr/bin/python3 --allow-existing
-    if ! uv sync --python /usr/bin/python3; then
-        error "Failed to install the Python dependencies."
+    # --extra scoreboard pulls PySide6, which only the display role needs; the
+    # server Pi and the cloud VM stay Qt-free (see pyproject.toml).
+    if ! uv sync --extra scoreboard; then
+        error "Failed to install the Qt dependencies."
+        error "PySide6 needs 64-bit Raspberry Pi OS — reflash with the 64-bit image if this is a 32-bit install."
         exit 1
     fi
-    if ! "$INSTALL_DIR/.venv/bin/python" -c 'import PyQt5.QtWidgets' 2>/dev/null; then
-        error "The virtual environment cannot see PyQt5."
-        error "Check that /usr/bin/python3 is Python 3.13+ and python3-pyqt5 is installed."
+    if ! "$INSTALL_DIR/.venv/bin/python" -c 'import PySide6.QtWidgets' 2>/dev/null; then
+        error "PySide6 installed but will not import — check the apt packages above."
         exit 1
     fi
-    info "Virtual environment ready at $INSTALL_DIR/.venv (PyQt5 via system packages)"
+    info "Virtual environment ready at $INSTALL_DIR/.venv (with PySide6)"
 
     section "Server address"
     # Which server this display follows. Kept outside the repo so a git pull or a

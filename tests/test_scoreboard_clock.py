@@ -10,13 +10,13 @@ All running lanes show the *same* value, the console's race clock, exactly as th
 browser does. There is no independent per-lane timer: a lane's own elapsed time
 only becomes meaningful at its split, and that arrives as `lane_time<i>`.
 
-Needs PyQt5 (`uv run pytest tests/`); skips without it.
+Needs PySide6 (`uv run pytest tests/`); skips without it.
 """
 import time
 
 import pytest
 
-pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+pytest.importorskip('PySide6', reason='needs the `scoreboard` extra (PySide6)')
 
 from scoreboard.board import BoardWindow          # noqa: E402
 from scoreboard.theme import Config               # noqa: E402

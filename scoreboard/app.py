@@ -18,8 +18,8 @@ import os
 import sys
 import time
 
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import QApplication
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QApplication
 
 from .board import BoardWindow
 from .cache import load_cached_config, save_cached_config
@@ -306,6 +306,6 @@ def main(argv=None) -> int:
 
     app = ScoreboardApp(args.server, fullscreen=not args.windowed)
     try:
-        return qt_app.exec_()
+        return qt_app.exec()
     finally:
         app.link.stop()

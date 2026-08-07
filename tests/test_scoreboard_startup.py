@@ -6,7 +6,7 @@ block the GUI thread**, because a server that is reachable but not yet answering
 does not fail fast, it hangs for the full timeout. Before the first paint that is
 a blank TV, not a stale one.
 
-Needs PyQt5, so it skips where the `scoreboard` extra is not installed (CI).
+Needs PySide6, so it skips where the `scoreboard` extra is not installed (CI).
 Run it on a dev machine or the kiosk itself:
 
     uv run pytest tests/test_scoreboard_startup.py
@@ -17,9 +17,9 @@ import time
 
 import pytest
 
-pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+pytest.importorskip('PySide6', reason='needs the `scoreboard` extra (PySide6)')
 
-from PyQt5.QtCore import QTimer                       # noqa: E402
+from PySide6.QtCore import QTimer                       # noqa: E402
 
 from scoreboard.app import ScoreboardApp              # noqa: E402
 from scoreboard.board import BoardWindow              # noqa: E402
@@ -80,7 +80,7 @@ def test_board_stays_responsive_while_the_server_hangs(qt_app, hanging_server):
     app = ScoreboardApp(hanging_server, fullscreen=False)
     try:
         QTimer.singleShot(150, qt_app.quit)
-        qt_app.exec_()                     # let the retry timer fire at least once
+        qt_app.exec()                     # let the retry timer fire at least once
 
         started = time.monotonic()
         app._on_frame('update_scoreboard', {'lane_name1': 'Roy, Zoé'})

@@ -156,7 +156,7 @@ class _Res:
 
 def test_the_updater_refuses_a_dirty_checkout(monkeypatch):
     """`git checkout` would discard someone's uncommitted work."""
-    pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+    pytest.importorskip('PySide6', reason='needs the `scoreboard` extra (PySide6)')
     import scoreboard.updater as updater
 
     fake = _FakeSubprocess([_Res(), _Res(stdout=' M scoreboard/board.py\n')])
@@ -170,7 +170,7 @@ def test_the_updater_refuses_a_dirty_checkout(monkeypatch):
 
 def test_a_failed_step_stops_the_update(monkeypatch):
     """And crucially reports failure, so the caller does not restart into it."""
-    pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+    pytest.importorskip('PySide6', reason='needs the `scoreboard` extra (PySide6)')
     import scoreboard.updater as updater
 
     # uv.lock reset, clean dirty-check, then a fetch that fails.
@@ -188,7 +188,7 @@ def test_a_failed_step_stops_the_update(monkeypatch):
 
 
 def test_a_second_request_while_updating_is_ignored(monkeypatch):
-    pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+    pytest.importorskip('PySide6', reason='needs the `scoreboard` extra (PySide6)')
     import scoreboard.updater as updater
 
     up = updater.Updater()
@@ -206,7 +206,7 @@ def test_the_app_refuses_to_update_mid_race(qt_app, monkeypatch):
     Takes the session-scoped `qt_app` fixture: creating a QApplication here and
     not holding a reference gets it garbage-collected, which aborts the process.
     """
-    pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+    pytest.importorskip('PySide6', reason='needs the `scoreboard` extra (PySide6)')
     from scoreboard.app import ScoreboardApp
 
     app = ScoreboardApp('http://127.0.0.1:1', fullscreen=False)

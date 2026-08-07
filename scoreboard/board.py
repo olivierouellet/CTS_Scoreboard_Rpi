@@ -18,12 +18,16 @@ Three things depart from the browser, deliberately:
 import re
 import time
 
-from PyQt5.QtCore import (QEasingCurve, QPropertyAnimation, Qt, QTimer,
+from PySide6.QtCore import (QEasingCurve, QPropertyAnimation, Qt, QTimer,
                           QVariantAnimation)
-from PyQt5.QtGui import QColor, QFont
-from PyQt5.QtWidgets import (QWIDGETSIZE_MAX, QApplication, QFrame,
-                             QGraphicsOpacityEffect, QHBoxLayout, QLabel,
-                             QSizePolicy, QVBoxLayout, QWidget)
+from PySide6.QtGui import QColor, QFont
+from PySide6.QtWidgets import (QApplication, QFrame, QGraphicsOpacityEffect,
+                               QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout,
+                               QWidget)
+
+# Qt's "no maximum" sentinel. PyQt5 exported it from QtWidgets; PySide6 does not,
+# so it is spelled out here — it is a fixed part of the Qt API, not a guess.
+QWIDGETSIZE_MAX = 16777215
 
 from .format import fmt_clock, fmt_delta, parse_clock
 from .splash import SplashOverlay
@@ -294,9 +298,14 @@ class HeaderCell(QWidget):
         row.setSpacing(8)
         self.label = FitLabel()
         self.value = FitLabel()
-        row.addWidget(self.label)
-        row.addWidget(self.value)
-        row.addStretch(1)
+        # Sized by stretch, not sizeHint. A FitLabel derives its font from its own
+        # width, so letting the layout derive the width from the font (via sizeHint)
+        # is circular: one narrow first pass shrinks the text, which shrinks the
+        # hint, which keeps it narrow.
+        for part, weight in ((self.label, 3), (self.value, 2)):
+            part.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+            part.setMinimumSize(0, 0)
+            row.addWidget(part, weight)
         self.apply_theme()
 
     def apply_theme(self):
@@ -471,6 +480,12 @@ class BoardWindow(QWidget):
         self.content.setGraphicsEffect(self._content_opacity)
         self._content_fade = QPropertyAnimation(self._content_opacity, b'opacity', self)
         self._content_fade.setEasingCurve(QEasingCurve.InOutQuad)
+        # One permanent connection dispatching to a stored callback, rather than
+        # connect/disconnect per fade. Blanket `disconnect()` raised TypeError with
+        # nothing connected under PyQt5 but only warns under PySide6, so the
+        # try/except around it quietly stopped guarding anything.
+        self._content_fade_done = None
+        self._content_fade.finished.connect(self._on_content_fade_finished)
         root.addWidget(self.content, 1)
         self.header.scale_children = self._scale_header
 
@@ -736,17 +751,17 @@ class BoardWindow(QWidget):
         self.refresh()
         self._fade_content(1.0, None)                # step 5
 
+    def _on_content_fade_finished(self):
+        callback, self._content_fade_done = self._content_fade_done, None
+        if callback is not None:
+            callback()
+
     def _fade_content(self, target: float, done):
         self._content_fade.stop()
-        try:
-            self._content_fade.finished.disconnect()
-        except TypeError:
-            pass                                     # nothing connected
+        self._content_fade_done = done
         self._content_fade.setDuration(_CONTENT_FADE_MS)
         self._content_fade.setStartValue(self._content_opacity.opacity())
         self._content_fade.setEndValue(target)
-        if done is not None:
-            self._content_fade.finished.connect(done)
         self._content_fade.start()
 
     def cancel_heat_transition(self):

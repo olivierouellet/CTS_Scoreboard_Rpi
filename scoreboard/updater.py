@@ -21,7 +21,7 @@ import shutil
 import subprocess
 import threading
 
-from PyQt5.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -47,8 +47,8 @@ def _find_uv():
 class Updater(QObject):
     """Runs the update in a worker thread, reporting progress as it goes."""
 
-    line = pyqtSignal(str, bool)     # text, is_error
-    done = pyqtSignal(bool)          # True when the app should restart
+    line = Signal(str, bool)     # text, is_error
+    done = Signal(bool)          # True when the app should restart
 
     def __init__(self, parent=None):
         super().__init__(parent)

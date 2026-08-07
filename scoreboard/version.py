@@ -8,7 +8,7 @@ server shows it in Settings → Network.
 
 Deliberately not shared with the server's own copy of this: `docs/api.md` says
 there is no shared client library, and a five-line subprocess call is not worth
-breaking that for. Qt-free, so it can be tested without PyQt5.
+breaking that for. Qt-free, so it can be tested without PySide6.
 """
 import os
 import socket

@@ -1,7 +1,7 @@
 """Value formatting shared by the board's cells.
 
 Kept Qt-free and separate from ``board.py`` so it can be tested in CI without
-PyQt5 installed — these are pure string functions with no widget involvement.
+PySide6 installed — these are pure string functions with no widget involvement.
 """
 import re
 

@@ -6,7 +6,7 @@ gets a pre-rendered HTML blob from `meet_data._delta_html`; the Qt display gets
 the structured seconds and formats them itself, so the two formatters can drift
 apart silently. `test_matches_the_server_formatter` is what stops that.
 
-Qt-free by design — `scoreboard.format` imports nothing from PyQt5, so this runs
+Qt-free by design — `scoreboard.format` imports nothing from PySide6, so this runs
 in CI without the `scoreboard` extra installed.
 """
 import os

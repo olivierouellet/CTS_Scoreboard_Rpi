@@ -1,6 +1,6 @@
 """Config normalisation for the Qt display.
 
-Deliberately Qt-free: `scoreboard.theme` must import without PyQt5 so this runs
+Deliberately Qt-free: `scoreboard.theme` must import without PySide6 so this runs
 in CI and on a dev machine that never installs the `scoreboard` extra. The
 widget behaviour (shrink-to-fit, frame merging) needs a QApplication and is
 covered separately — see scoreboard/README.md.

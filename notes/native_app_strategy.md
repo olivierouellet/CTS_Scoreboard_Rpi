@@ -75,7 +75,7 @@ RPi 3 (1GB) is ruled out for the display role:
 
 RPi 4 2GB is the sweet spot for 1080p: Python + Qt sits around 80–150MB, leaving ample headroom. The 4GB/8GB models are unnecessary for a scoreboard.
 
-Note on Qt version: **PyQt5** is safer than PySide6 on lower-RAM RPi 4 hardware. PySide6 (Qt 6) is fine on 4GB+.
+Note on Qt version: **PySide6 (Qt 6)** — decided after PyQt5 turned out to be unusable on the Pi. Neither `pyqt5` nor `pyqt5-qt5` publishes a linux aarch64 wheel (PyPI or piwheels), so `uv sync` cannot resolve it on 64-bit Raspberry Pi OS at all; the only route was apt plus a system-site-packages venv. PySide6 also avoids PyQt5's GPLv3 under this repo's MIT licence, and supports the variable fonts three of the bundled faces use. The earlier worry about Qt 6 on lower-RAM hardware still needs checking on a 2GB Pi 4.
 
 ### Server RPi (timing console + WebSocket relay)
 
@@ -134,7 +134,7 @@ The split is **per toolchain, not per surface**. A separate repo is worth its co
 - **Shared assets are real.** The Qt display needs `shared/locales/` (en/fr/es), `shared/static/fonts/`, `shared/static/img/`, and `server/themes/`. The current kiosk installer already downloads `scoreboard_bg.png` over `raw.githubusercontent.com` — a cross-repo split would force generalising that hack instead of retiring it.
 - **One update path.** `server/routes/system.py::_run_update` (git fetch → checkout → `uv sync` → `refresh-service.sh`) and the `PROVISION_VERSION` reinstall banner already exist. Extending them to the kiosk role is incremental; a second repo needs a second copy.
 
-Dependency weight is the one real cost — Qt has no business on the server Pi or the cloud VM. It is solved without a repo boundary: Qt is not a Python dependency of this project at all. The kiosk role installs Debian's `python3-pyqt5` from apt (there is no PyQt5 wheel for 64-bit Raspberry Pi OS) and builds its venv with `--system-site-packages`, so the server Pi and the cloud VM stay Qt-free.
+Dependency weight is the one real cost — Qt has no business on the server Pi or the cloud VM. That is solved with an optional dependency group, not a repo boundary: `[project.optional-dependencies] scoreboard = ["pyside6-essentials"]`, installed only by the kiosk role via `uv sync --extra scoreboard`. The cloud installs from `cloud/requirements.txt` and is unaffected.
 
 This is not a one-way door in the expensive direction. Extracting `scoreboard/` later with `git filter-repo` — if it ever grows its own release cadence — is cheap. Re-merging two repos whose protocols have drifted is not.
 

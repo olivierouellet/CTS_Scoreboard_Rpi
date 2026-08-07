@@ -6,9 +6,9 @@ measures text before drawing it, so :class:`FitLabel` picks the largest pixel si
 at which the whole name fits and nobody named "Vandenbroucke-Mortensen" loses
 their surname on the TV.
 """
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFontMetrics
-from PyQt5.QtWidgets import QLabel
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetrics
+from PySide6.QtWidgets import QLabel
 
 
 class FitLabel(QLabel):
@@ -86,7 +86,12 @@ class FitLabel(QLabel):
         # clips a label to its own rect, so the text would simply be cut through a
         # glyph; an ellipsis says "there is more" instead of looking like a bug.
         metrics = QFontMetrics(font)
-        if metrics.horizontalAdvance(text) > avail:
-            super().setText(metrics.elidedText(text, Qt.ElideRight, avail))
-        else:
+        if metrics.horizontalAdvance(text) <= avail:
             super().setText(text)
+            return
+        elided = metrics.elidedText(text, Qt.ElideRight, avail)
+        # With almost no room even the ellipsis does not fit and elidedText returns
+        # "". Showing the full text clipped is better than showing nothing — and in
+        # a layout that sizes from sizeHint, an empty label collapses to zero width
+        # and never grows back, because the next refit then has even less room.
+        super().setText(elided or text)

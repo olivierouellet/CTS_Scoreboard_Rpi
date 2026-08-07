@@ -13,7 +13,7 @@ import threading
 import time
 import urllib.request
 
-from PyQt5.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 # recv() timeout: how often we heartbeat an otherwise idle link.
 _PING_EVERY = 20
@@ -63,8 +63,8 @@ class ConfigLoader(QObject):
     timer cannot pile up threads against a server that is slow rather than down.
     """
 
-    loaded = pyqtSignal(object)   # parsed config dict
-    failed = pyqtSignal(str)      # human-readable reason
+    loaded = Signal(object)   # parsed config dict
+    failed = Signal(str)      # human-readable reason
 
     def __init__(self, base_url: str, parent=None):
         super().__init__(parent)
@@ -95,8 +95,8 @@ class ServerLink(QObject):
     the "waiting for server" overlay.
     """
 
-    frame     = pyqtSignal(str, object)
-    connected = pyqtSignal(bool)
+    frame     = Signal(str, object)
+    connected = Signal(bool)
 
     def __init__(self, base_url: str, register=None, parent=None):
         super().__init__(parent)

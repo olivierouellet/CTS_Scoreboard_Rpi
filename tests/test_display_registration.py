@@ -145,7 +145,7 @@ def test_the_badges_are_translated(code):
 
 def test_the_link_registers_on_every_connect(monkeypatch):
     """Including reconnects — the server's list must be right again after a drop."""
-    pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+    pytest.importorskip('PySide6', reason='needs the `scoreboard` extra (PySide6)')
     from scoreboard.client import ServerLink
 
     sent = []
@@ -180,7 +180,7 @@ def test_the_link_registers_on_every_connect(monkeypatch):
 
 def test_a_failing_register_does_not_stop_the_board(monkeypatch):
     """Registration is diagnostics; it must never cost us the live times."""
-    pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+    pytest.importorskip('PySide6', reason='needs the `scoreboard` extra (PySide6)')
     from scoreboard.client import ServerLink
 
     connected = []

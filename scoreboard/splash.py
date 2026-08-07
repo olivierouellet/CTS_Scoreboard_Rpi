@@ -24,10 +24,10 @@ import threading
 import urllib.parse
 import urllib.request
 
-from PyQt5.QtCore import (QObject, QPropertyAnimation, Qt, QTimer,
-                          pyqtSignal)
-from PyQt5.QtGui import QColor, QPainter, QPixmap
-from PyQt5.QtWidgets import QGraphicsOpacityEffect, QLabel, QWidget
+from PySide6.QtCore import (QObject, QPropertyAnimation, Qt, QTimer,
+                          Signal)
+from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QLabel, QWidget
 
 from .theme import Config
 from .widgets import FitLabel
@@ -51,7 +51,7 @@ class ImageLoader(QObject):
     not show a blank overlay until the last one lands.
     """
 
-    loaded = pyqtSignal(str, bytes)
+    loaded = Signal(str, bytes)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -126,6 +126,10 @@ class SplashOverlay(QWidget):
         self.setGraphicsEffect(self._fade)
         self._fade_anim = QPropertyAnimation(self._fade, b'opacity', self)
         self._fade_anim.setDuration(FADE_MS)
+        # See BoardWindow._on_content_fade_finished for why this is a permanent
+        # connection rather than connect/disconnect per fade.
+        self._fade_done = None
+        self._fade_anim.finished.connect(self._on_fade_finished)
         self._crossfades = []
 
         self.apply_config(cfg)
@@ -211,17 +215,17 @@ class SplashOverlay(QWidget):
         self._dismissing = False
         self.hide()
 
+    def _on_fade_finished(self):
+        callback, self._fade_done = self._fade_done, None
+        if callback is not None:
+            callback()
+
     def _run_fade(self, start: float, end: float, on_done=None):
         self._fade_anim.stop()
-        try:
-            self._fade_anim.finished.disconnect()
-        except TypeError:
-            pass
+        self._fade_done = on_done
         self._fade.setOpacity(start)
         self._fade_anim.setStartValue(start)
         self._fade_anim.setEndValue(end)
-        if on_done is not None:
-            self._fade_anim.finished.connect(on_done)
         self._fade_anim.start()
 
     # ── Carousel ───────────────────────────────────────────────────────────────

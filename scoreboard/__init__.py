@@ -11,6 +11,6 @@ out the same code. It must nonetheless treat the server as a *remote peer*: no
 imports from ``server/``, no shared process state, nothing but the documented API.
 
 Nothing is re-exported here on purpose. Importing ``scoreboard.app`` pulls in
-PyQt5, and the pure-logic modules (``theme``, ``fonts``) must stay importable —
+PySide6, and the pure-logic modules (``theme``, ``fonts``) must stay importable —
 and testable — on a machine with no Qt installed, such as CI.
 """

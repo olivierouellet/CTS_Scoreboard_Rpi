@@ -5,14 +5,14 @@ starts. It is purely cosmetic — the contrast is the point: between heats the
 board is a calm start list, then the race begins and the timing columns arrive.
 The operator's toggle on /operator drives the same mechanism via `columns_state`.
 
-Needs PyQt5 (`uv run pytest tests/`); skips without it.
+Needs PySide6 (`uv run pytest tests/`); skips without it.
 """
 import pytest
 
-pytest.importorskip('PyQt5', reason='needs the `scoreboard` extra (PyQt5)')
+pytest.importorskip('PySide6', reason='needs the `scoreboard` extra (PySide6)')
 
-from PyQt5.QtCore import QAbstractAnimation      # noqa: E402
-from PyQt5.QtGui import QFontMetrics             # noqa: E402
+from PySide6.QtCore import QAbstractAnimation      # noqa: E402
+from PySide6.QtGui import QFontMetrics             # noqa: E402
 
 from scoreboard.board import BoardWindow         # noqa: E402
 from scoreboard.theme import Config              # noqa: E402

@@ -40,7 +40,7 @@ def load_app_fonts() -> list[str]:
         return []
     _APP_FONTS_LOADED = True
 
-    from PyQt5.QtGui import QFontDatabase
+    from PySide6.QtGui import QFontDatabase
 
     added = []
     try:
@@ -93,8 +93,9 @@ def resolve_family(family: str) -> str:
 
     resolved = family
     try:
-        from PyQt5.QtGui import QFontDatabase
-        families = QFontDatabase().families()
+        from PySide6.QtGui import QFontDatabase
+        # Static in Qt 6 — PyQt5 required an instance, PySide6 does not.
+        families = QFontDatabase.families()
         if family not in families:
             wanted = _squash(family)
             match = next((f for f in families if _squash(f) == wanted), None)
@@ -102,7 +103,7 @@ def resolve_family(family: str) -> str:
                 resolved = match
                 print(f'[scoreboard] font "{family}" matched as "{match}"', flush=True)
             else:
-                from PyQt5.QtGui import QFont
+                from PySide6.QtGui import QFont
                 fallback = QFont()
                 fallback.setStyleHint(QFont.Monospace)
                 fallback.setFamily('monospace')
