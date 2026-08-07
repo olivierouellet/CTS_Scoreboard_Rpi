@@ -146,3 +146,51 @@ def test_reset_stops_the_clock(board, qt_app):
     board.reset()
     assert not board._clock_timer.isActive()
     assert board.rows[0].time_label.text() == ''
+
+
+def test_the_race_clock_clears_when_the_heat_ends(board, qt_app):
+    """It has nothing to say once nobody is swimming — the browser hides the cell.
+
+    We clear the *text* instead of hiding the widget, because a hidden widget
+    leaves the layout and everything to its left slides across.
+    """
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    assert board.chrono_label.text()
+
+    board.apply_update({'lane_running1': False, 'lane_time1': '1:12.44'})
+    qt_app.processEvents()
+    assert board.chrono_label.text() == '', 'clock still showing after the heat'
+
+
+def test_clearing_the_clock_does_not_move_the_header(board, qt_app):
+    """The meet title must not jump left and right as heats come and go."""
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    slot  = board.chrono_label.geometry()
+    title = board.title_label.geometry()
+
+    board.apply_update({'lane_running1': False, 'lane_time1': '1:12.44'})
+    qt_app.processEvents()
+    assert board.chrono_label.geometry() == slot, 'the clock gave up its space'
+    assert board.title_label.geometry() == title, 'the title moved'
+
+
+def test_stop_clock_also_clears_it(board, qt_app):
+    """`race_finished` arrives even when a `lane_running` frame was missed."""
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    board.stop_clock()
+    assert board.chrono_label.text() == ''
+
+
+def test_the_next_race_brings_it_back(board, qt_app):
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    board.apply_update({'lane_running1': False})
+    qt_app.processEvents()
+    assert board.chrono_label.text() == ''
+
+    board.apply_update({'running_time': '0.00', 'lane_running2': True})
+    qt_app.processEvents()
+    assert board.chrono_label.text(), 'the clock did not come back for the next race'

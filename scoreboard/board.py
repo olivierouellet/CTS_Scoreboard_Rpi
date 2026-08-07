@@ -39,15 +39,18 @@ from .widgets import FitLabel
 _CLOCK_TICK_MS = 50
 _WALL_CLOCK_TICK_MS = 10_000        # HH:MM only — no need to tick every second
 
-# Header metrics as fractions of the window height, matching the browser's `vh`
-# units: an 85px bar at 1080p, 1.8vh labels, 4vh values, 4.5vh digits.
-_H_BAR    = 0.079
-# 1.8vh in the base CSS, but the >=700px-tall media query — which any TV matches —
-# pins it to 12px so the accents on ÉPREUVE/SÉRIE clear the digits below. Kept
-# proportional here so it still scales at 4K, at roughly that ratio.
-_H_LABEL  = 0.012
-_H_VALUE  = 0.040
-_H_DIGITS = 0.045
+# Header bar height, as a fraction of the window. The browser's 85px at 1080p is
+# the floor of what is readable across a pool deck, so this is deliberately larger.
+_H_BAR = 0.105
+
+# Text sizes as fractions of the BAR, which is safe because the bar's own height
+# is a fixed fraction of the window (above) rather than derived from its content.
+# Sizing them off a content-derived bar is what made the whole header collapse.
+# Ratios keep the browser's proportions: 12px label under 48px digits in an 85px
+# bar. Raising _H_BAR alone now scales the entire header.
+_R_LABEL  = 0.15    # the small EVENT / HEAT word
+_R_VALUE  = 0.50    # meet title, event name
+_R_DIGITS = 0.57    # event/heat numbers, both clocks
 
 # Column stretch weights = the vw widths of `/live`, the page the Chromium kiosk
 # actually rendered: `.lane-column` 5vw and `.club-column` 8vw from
@@ -319,9 +322,9 @@ class HeaderCell(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
         self.label = FitLabel()
-        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setAlignment(Qt.AlignLeft | Qt.AlignBottom)
         self.value = FitLabel()
-        self.value.setAlignment(Qt.AlignCenter)
+        self.value.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         for part in (self.label, self.value):
             part.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
             part.setMinimumSize(0, 0)
@@ -657,21 +660,19 @@ class BoardWindow(QWidget):
         self.wall_clock.setText(time.strftime('%H:%M'))
 
     def _scale_header(self, height: int):
-        """Size the top bar's text.
+        """Size the top bar's text from the bar's height.
 
-        Deliberately ignores *height* and measures the window instead: the browser
-        sizes this text in `vh`, and the bar's own height is itself derived from
-        the window. Taking it from the bar was how every header label ended up
-        tiny — the bar had collapsed to its content, and its content had shrunk to
-        fit the bar.
+        Only safe because `resizeEvent` gives the bar a *fixed* height first. It
+        used to be content-derived, which made this circular: the bar shrank to fit
+        its labels and the labels shrank to fit the bar, settling at 34px.
         """
-        window = max(1, self.height())
-        self.title_label.set_max_px(max(10, int(window * _H_VALUE)))
-        self.name_label.set_max_px(max(10, int(window * _H_VALUE)))
-        self.chrono_label.set_max_px(max(10, int(window * _H_DIGITS)))
-        self.wall_clock.set_max_px(max(10, int(window * _H_DIGITS)))
+        bar = max(1, height)
+        self.title_label.set_max_px(max(10, int(bar * _R_VALUE)))
+        self.name_label.set_max_px(max(10, int(bar * _R_VALUE)))
+        self.chrono_label.set_max_px(max(10, int(bar * _R_DIGITS)))
+        self.wall_clock.set_max_px(max(10, int(bar * _R_DIGITS)))
         for cell in (self.event_cell, self.heat_cell):
-            cell.set_pixel_size(int(window * _H_LABEL), int(window * _H_DIGITS))
+            cell.set_pixel_size(int(bar * _R_LABEL), int(bar * _R_DIGITS))
 
     def resizeEvent(self, event):     # noqa: N802 — Qt naming
         super().resizeEvent(event)
@@ -952,8 +953,18 @@ class BoardWindow(QWidget):
         """Freeze every lane at its last time — race over, or board reset."""
         self._clock_timer.stop()
         self._clock_base = None
+        self._clear_chrono()
         for row in self.rows:
             row.running = False
+
+    def _clear_chrono(self):
+        """Blank the race clock without giving up its place in the header.
+
+        Clearing the *text* rather than hiding the widget: a hidden widget drops
+        out of the layout and every cell to its left slides right, so the meet
+        title would jump each time a heat ended.
+        """
+        self.chrono_label.setText('')
 
     def apply_update(self, data: dict):
         """Merge a partial ``update_scoreboard`` frame and redraw what changed."""
@@ -1040,6 +1051,9 @@ class BoardWindow(QWidget):
             for row in self.rows:
                 if row.lane in touched:
                     row.update_from(self.snapshot)
+
+        if was_racing and not any(row.running for row in self.rows):
+            self._clear_chrono()    # heat over — the clock has nothing to say
 
         self._sync_clock()
         if self._clock_timer.isActive():

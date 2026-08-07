@@ -286,22 +286,28 @@ Four rules make it safe:
 
 ### The header bar
 
-Sized from the **window**, never from itself. `.timing-header-bar` is a fixed
-85px at 1080p in the browser, and its text is in `vh` units, so the Qt bar takes
-a fixed 7.9% of the window height and every label inside is a fraction of the
-window too.
+**The bar height is a fixed fraction of the window** (`_H_BAR`, 10.5% — larger
+than the browser's 85px at 1080p, which is the floor of what reads across a pool
+deck). Every text size is then a fraction of *the bar*, so `_H_BAR` is the single
+knob that scales the whole header.
 
-Deriving those font sizes from the *bar's* height instead is circular and was the
-bug: the bar shrank to fit its content, the content shrank to fit the bar, and the
-whole header settled at 34px with unreadable text.
+That order matters. The bar height must be set first and independently; deriving
+it from its content and the content from it is circular, and was the bug that left
+the header at 34px with unreadable text.
 
-| cell | content | colour | size |
+| cell | content | colour | size (of the bar) |
 | --- | --- | --- | --- |
-| meet title | centred | `header_value` | 4vh |
-| EVENT / HEAT | small word **above** a large number | word `header_label`, number `header_value` | 1.2vh / 4.5vh |
-| event name | centred | `header_value` | 4vh |
-| race clock | digits font | `time` | 4.5vh |
-| wall clock | digits font | `header_value` | 4.5vh |
+| meet title | centred | `header_value` | 50% |
+| EVENT / HEAT | small word **above** a large number, both left-aligned | word `header_label`, number `header_value` | 15% / 57% |
+| event name | centred | `header_value` | 50% |
+| race clock | digits font, blanks between heats | `time` | 57% |
+| wall clock | digits font | `header_value` | 57% |
+
+**The race clock clears when the heat ends** — it has nothing to report once
+nobody is swimming, which is what `stop_chrono()` does in the browser. We clear
+its *text* rather than hiding the widget: a hidden widget drops out of the layout
+and every cell to its left slides across, so the meet title would jump on every
+heat.
 
 So the title, both numbers and the wall clock are all one colour, and the race
 clock is the only header element that stands out. **This diverges from the
