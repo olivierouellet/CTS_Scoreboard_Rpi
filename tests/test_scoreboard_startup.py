@@ -140,11 +140,11 @@ def test_every_theme_colour_reaches_a_widget(qt_app):
         'bg':            w.styleSheet(),
         'header_bg':     w.header.styleSheet(),
         'header_border': w.header.styleSheet(),
-        # The browser draws the event/heat digits in `header_label` too — see
-        # `#current_event` in timing_display.css — so `header_value` is checked on
-        # the meet title, which is what actually uses it.
-        'header_label':  w.event_cell.label.styleSheet() + w.event_cell.value.styleSheet(),
-        'header_value':  w.title_label.styleSheet(),
+        # `header_label` is the small EVENT/HEAT word; `header_value` is every
+        # other header text — title, the numbers themselves, and the wall clock.
+        'header_label':  w.event_cell.label.styleSheet(),
+        'header_value':  (w.title_label.styleSheet() + w.event_cell.value.styleSheet()
+                          + w.wall_clock.styleSheet()),
         'th_bg':         w.header_row.styleSheet(),
         'th_text':       w.header_row.cells['lane'].styleSheet(),
         # rows[0] is lane 1 but holds place 1, so the podium tint overrides its

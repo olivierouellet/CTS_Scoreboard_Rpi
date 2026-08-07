@@ -320,12 +320,14 @@ class HeaderCell(QWidget):
         self.apply_theme()
 
     def apply_theme(self):
+        # The small word takes `header_label`; the number takes `header_value`, so
+        # it matches the meet title and the wall clock. A deliberate divergence:
+        # the browser gives `#current_event` the label colour, which leaves the
+        # header's four text elements in two near-identical greys for no gain.
         self.label.setStyleSheet(
             f"color: {self.cfg.color('header_label')}; background: transparent; border: none;")
-        # The browser draws the event/heat digits in `header_label`, not
-        # `header_value` — see `#current_event` in timing_display.css.
         self.value.setStyleSheet(
-            f"color: {self.cfg.color('header_label')}; background: transparent; border: none;")
+            f"color: {self.cfg.color('header_value')}; background: transparent; border: none;")
         self.label.setFont(QFont(self.cfg.family))
         self.value.setFont(QFont(self.cfg.digits_family))
 
@@ -569,6 +571,8 @@ class BoardWindow(QWidget):
         self.chrono_label.setStyleSheet(
             f"color: {cfg.color('time')}; background: transparent; border: none;")
         self.chrono_label.setFont(QFont(cfg.digits_family))
+        # Same `header_value` as the meet title and the event/heat numbers — the
+        # race clock is the only header element that deliberately stands out.
         self.wall_clock.setStyleSheet(
             f"color: {cfg.color('header_value')}; background: transparent; border: none;")
         self.wall_clock.setFont(QFont(cfg.digits_family))

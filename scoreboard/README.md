@@ -295,17 +295,22 @@ Deriving those font sizes from the *bar's* height instead is circular and was th
 bug: the bar shrank to fit its content, the content shrank to fit the bar, and the
 whole header settled at 34px with unreadable text.
 
-| cell | content | size |
-| --- | --- | --- |
-| meet title | centred, `header_value` | 4vh |
-| EVENT / HEAT | small word **above** a large number, both `header_label` | 1.2vh / 4.5vh |
-| event name | centred, `header_value` | 4vh |
-| race clock | digits font, `time` | 4.5vh |
-| wall clock | digits font, `header_value` | 4.5vh |
+| cell | content | colour | size |
+| --- | --- | --- | --- |
+| meet title | centred | `header_value` | 4vh |
+| EVENT / HEAT | small word **above** a large number | word `header_label`, number `header_value` | 1.2vh / 4.5vh |
+| event name | centred | `header_value` | 4vh |
+| race clock | digits font | `time` | 4.5vh |
+| wall clock | digits font | `header_value` | 4.5vh |
 
-Two details that are easy to get wrong: the event/heat cells are a *vertical*
-stack (`.header_cell` is a column flex), and their digits take the **`header_label`**
-colour, not `header_value` — see `#current_event` in `timing_display.css`.
+So the title, both numbers and the wall clock are all one colour, and the race
+clock is the only header element that stands out. **This diverges from the
+browser**, which gives `#current_event` the *label* colour — leaving the header's
+text in two near-identical greys for no benefit. `header_label` here means only
+the small EVENT/HEAT word.
+
+The event/heat cells are a *vertical* stack, matching `.header_cell`'s column
+flex: small word on top, large number beneath.
 
 The wall clock is the far-right cell (`#meet_datetime`), ticking every 10s since
 it only shows HH:MM.
