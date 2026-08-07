@@ -295,10 +295,12 @@ That order matters. The bar height must be set first and independently; deriving
 it from its content and the content from it is circular, and was the bug that left
 the header at 34px with unreadable text.
 
+Left to right:
+
 | cell | content | colour | size (of the bar) |
 | --- | --- | --- | --- |
-| meet title | centred | `header_value` | 50% |
 | EVENT / HEAT | small word **above** a large number, both left-aligned | word `header_label`, number `header_value` | 15% / 57% |
+| meet title | centred | `header_value` | 50% |
 | event name | centred | `header_value` | 50% |
 | race clock | digits font, blanks between heats | `time` | 57% |
 | wall clock | digits font | `header_value` | 57% |
@@ -317,6 +319,10 @@ the small EVENT/HEAT word.
 
 The event/heat cells are a *vertical* stack, matching `.header_cell`'s column
 flex: small word on top, large number beneath.
+
+**They lead the bar**, hard against the left edge — another divergence from the
+browser, which starts with the meet title and pushes event/heat about a third of
+the way across. Event and heat are what an official looks for first.
 
 The wall clock is the far-right cell (`#meet_datetime`), ticking every 10s since
 it only shows HH:MM.

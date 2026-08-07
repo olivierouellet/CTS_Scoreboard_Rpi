@@ -481,8 +481,11 @@ class BoardWindow(QWidget):
         self.wall_clock = FitLabel()
         self.wall_clock.setAlignment(Qt.AlignCenter)
 
-        for widget, weight in ((self.title_label, 26), (self.event_cell, 9),
-                               (self.heat_cell, 9), (self.name_label, 30),
+        # EVENT and HEAT lead, hard against the left edge — they are what an
+        # official glances at first. The browser puts the meet title there instead;
+        # this is a deliberate divergence.
+        for widget, weight in ((self.event_cell, 9), (self.heat_cell, 9),
+                               (self.title_label, 26), (self.name_label, 30),
                                (self.chrono_label, 14), (self.wall_clock, 12)):
             widget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
             widget.setMinimumSize(0, 0)
