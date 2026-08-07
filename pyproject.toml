@@ -13,12 +13,17 @@ dependencies = [
     "pillow>=12.3.0",
 ]
 
-# Qt TV display (scoreboard/). Optional so the server Pi and the cloud VM never
-# pull Qt: only the kiosk role installs it, via `uv sync --extra scoreboard`.
-# PyQt5 rather than PySide6 — Qt 5 is lighter on a 2GB Pi 4, and PyQt5 ships
-# manylinux aarch64 wheels, so 64-bit Raspberry Pi OS needs no source build.
-[project.optional-dependencies]
-scoreboard = ["pyqt5>=5.15"]
+# NOTE: the Qt TV display (scoreboard/) does NOT declare PyQt5 here.
+#
+# There is no PyQt5 wheel for 64-bit Raspberry Pi OS. Neither `pyqt5` nor its
+# `pyqt5-qt5` runtime publishes a linux aarch64 wheel on PyPI, and piwheels does
+# not build them either, so `uv sync` on a Pi fails to resolve at all. The kiosk
+# role installs Debian's `python3-pyqt5` (arm64, 5.15.11 — the same version PyPI
+# ships elsewhere) and builds its venv with `--system-site-packages` on the system
+# interpreter so it can see it. See install/install.sh and scoreboard/README.md.
+#
+# Qt still lands only on the kiosk: it is an apt package on that Pi, not a Python
+# dependency of this project, so the server Pi and the cloud VM stay Qt-free.
 
 [dependency-groups]
 dev = ["pytest"]

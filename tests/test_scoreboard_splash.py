@@ -4,7 +4,7 @@ Raised by the carousel button on `/operator` (`display_overlay {active}`) and
 dismissed by the same button *or* by a race starting. Sponsor images come from the
 server over HTTP, so the fetch must not touch the GUI thread.
 
-Needs PyQt5 (`uv run --extra scoreboard pytest tests/`); skips without it.
+Needs PyQt5 (`uv run pytest tests/`); skips without it.
 """
 import http.server
 import os

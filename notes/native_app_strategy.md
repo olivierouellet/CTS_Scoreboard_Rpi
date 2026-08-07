@@ -134,7 +134,7 @@ The split is **per toolchain, not per surface**. A separate repo is worth its co
 - **Shared assets are real.** The Qt display needs `shared/locales/` (en/fr/es), `shared/static/fonts/`, `shared/static/img/`, and `server/themes/`. The current kiosk installer already downloads `scoreboard_bg.png` over `raw.githubusercontent.com` — a cross-repo split would force generalising that hack instead of retiring it.
 - **One update path.** `server/routes/system.py::_run_update` (git fetch → checkout → `uv sync` → `refresh-service.sh`) and the `PROVISION_VERSION` reinstall banner already exist. Extending them to the kiosk role is incremental; a second repo needs a second copy.
 
-Dependency weight is the one real cost — Qt has no business on the server Pi or the cloud VM. That is solved with an optional dependency group, not a repo boundary: `[project.optional-dependencies] scoreboard = [...]`, installed only by the kiosk role via `uv sync --extra scoreboard`. The cloud installs from `cloud/requirements.txt` and is unaffected.
+Dependency weight is the one real cost — Qt has no business on the server Pi or the cloud VM. It is solved without a repo boundary: Qt is not a Python dependency of this project at all. The kiosk role installs Debian's `python3-pyqt5` from apt (there is no PyQt5 wheel for 64-bit Raspberry Pi OS) and builds its venv with `--system-site-packages`, so the server Pi and the cloud VM stay Qt-free.
 
 This is not a one-way door in the expensive direction. Extracting `scoreboard/` later with `git filter-repo` — if it ever grows its own release cadence — is cheap. Re-merging two repos whose protocols have drifted is not.
 

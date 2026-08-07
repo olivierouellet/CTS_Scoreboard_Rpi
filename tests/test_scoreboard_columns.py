@@ -5,7 +5,7 @@ starts. It is purely cosmetic — the contrast is the point: between heats the
 board is a calm start list, then the race begins and the timing columns arrive.
 The operator's toggle on /operator drives the same mechanism via `columns_state`.
 
-Needs PyQt5 (`uv run --extra scoreboard pytest tests/`); skips without it.
+Needs PyQt5 (`uv run pytest tests/`); skips without it.
 """
 import pytest
 

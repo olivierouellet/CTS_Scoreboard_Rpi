@@ -80,8 +80,7 @@ The script:
 ## Pi #2 — Kiosk
 
 Flash **Raspberry Pi OS Trixie — Desktop, 64-bit** with SSH enabled. Desktop (not Lite)
-because the display needs a graphical session; 64-bit because PyQt5 ships no 32-bit
-Raspberry Pi wheel.
+because the display needs a graphical session.
 
 SSH in and run:
 
@@ -93,7 +92,8 @@ The script:
 
 - Clones the repo to `~/Splouch` at the **same version** you install on Pi #1 — display
   and server must agree on the WebSocket contract
-- Installs Qt via `uv sync --extra scoreboard` (only this role pulls PyQt5)
+- Installs Qt from apt (`python3-pyqt5`) — there is no PyQt5 wheel for 64-bit
+  Raspberry Pi OS — and builds the venv on the system Python so it can see it
 - Writes the server address to `~/.config/splouch/scoreboard.env`
 - Enables desktop autologin and autostarts the [Qt scoreboard](../scoreboard/README.md)
   fullscreen on boot
@@ -194,11 +194,12 @@ it needs the same version as Pi #1 or the two can disagree on the WebSocket cont
 ```bash
 cd ~/Splouch
 git pull
-uv sync --extra scoreboard
+uv sync
 sudo reboot
 ```
 
-Update Pi #1 first, then Pi #2 to the same version.
+Update Pi #1 first, then Pi #2 to the same version. Easier: **Settings → Update →
+Update displays** moves every connected kiosk to the version the server is on.
 
 ---
 

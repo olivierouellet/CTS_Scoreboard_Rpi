@@ -38,7 +38,7 @@ The convenience is not a licence to cheat: this package **must not import from
 ## Running
 
 ```bash
-uv sync --extra scoreboard                       # PyQt5 — kiosk role only
+uv sync                                          # PyQt5 comes from apt, see below
 .venv/bin/python -m scoreboard --windowed        # development, against splouch.local
 .venv/bin/python -m scoreboard --server http://10.10.10.10:5000 --windowed
 ```
@@ -242,7 +242,7 @@ broke.
 
 **The server can update them.** *Settings → Update → Update displays* broadcasts
 `update` carrying the server's own ref. Each display fetches, checks out, runs
-`uv sync --extra scoreboard`, streams progress back as `update_log`, and exits
+`uv sync`, streams progress back as `update_log`, and exits
 non-zero — `start-scoreboard.sh` relaunches it on the new code, so no systemd unit
 or sudo is involved.
 
@@ -481,7 +481,7 @@ that drags in PyQt5.
 `importorskip` without it. Run them where PyQt5 is available:
 
 ```bash
-uv run --extra scoreboard pytest tests/
+uv run pytest tests/
 ```
 
 They share the session-scoped `qt_app` fixture in `tests/conftest.py`, which also

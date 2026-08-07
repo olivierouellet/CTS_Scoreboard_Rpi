@@ -121,8 +121,7 @@ class Updater(QObject):
                          _FETCH_TIMEOUT):
             if not self._cmd(['git', 'checkout', target], _FETCH_TIMEOUT):
                 return False
-        if not self._cmd([_find_uv(), 'sync', '--extra', 'scoreboard'],
-                         _SYNC_TIMEOUT):
+        if not self._cmd([_find_uv(), 'sync'], _SYNC_TIMEOUT):
             return False
 
         self.line.emit(f'Updated to {target}. Restarting…', False)

@@ -9,7 +9,7 @@ a blank TV, not a stale one.
 Needs PyQt5, so it skips where the `scoreboard` extra is not installed (CI).
 Run it on a dev machine or the kiosk itself:
 
-    uv run --extra scoreboard pytest tests/test_scoreboard_startup.py
+    uv run pytest tests/test_scoreboard_startup.py
 """
 import socket
 import threading

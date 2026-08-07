@@ -1,7 +1,7 @@
 """Updating the kiosks from the server's Settings page.
 
 The server broadcasts `update {target}` on /ws/scoreboard; each display checks out
-that ref, runs `uv sync --extra scoreboard`, reports progress as `update_log`, and
+that ref, runs `uv sync`, reports progress as `update_log`, and
 exits **non-zero** so `start-scoreboard.sh` relaunches it on the new code.
 
 The dangerous outcomes are a display that restarts mid-race and a display that
