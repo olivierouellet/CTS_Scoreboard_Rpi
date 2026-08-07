@@ -66,6 +66,7 @@ a2hs_install     = "Installer"
 waiting_server  = "En attente du serveur de chronométrage"
 connection_lost = "Connexion au serveur de chronométrage perdue"
 retrying        = "nouvelle tentative"
+test_session    = "⚠ SESSION DE TEST"
 
 [preview]
 meet      = "Compétition"

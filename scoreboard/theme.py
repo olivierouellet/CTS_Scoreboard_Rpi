@@ -39,6 +39,7 @@ DEFAULT_STRINGS = {
     'waiting_server':  'Waiting for the timing server',
     'connection_lost': 'Lost connection to the timing server',
     'retrying':        'retrying',
+    'test_session':    '⚠ TEST SESSION',
 }
 
 # Column visibility flags, and the header-label flags that are independent of them

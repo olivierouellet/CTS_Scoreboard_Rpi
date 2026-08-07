@@ -511,6 +511,14 @@ class BoardWindow(QWidget):
         status_layout.addStretch(1)
         self.status_box.hide()
 
+        # Test-session badge. Deliberately NOT the status overlay: that one is
+        # opaque and full-screen, which would hide the very board the operator is
+        # testing. The browser draws a small pill at the bottom centre
+        # (`.test-overlay` in timing_display.css) and so do we.
+        self.test_badge = QLabel('', self)
+        self.test_badge.setAlignment(Qt.AlignCenter)
+        self.test_badge.hide()
+
         # The carousel overlay, above the board and above the status message.
         self.splash = SplashOverlay(cfg, self)
 
@@ -537,6 +545,16 @@ class BoardWindow(QWidget):
         self.chrono_label.setStyleSheet(
             f"color: {cfg.color('time')}; background: transparent; border: none;")
         self.chrono_label.setFont(QFont(cfg.digits_family))
+        # Inverted pill: board text colour at 75% behind, background colour on top.
+        tint = QColor(cfg.color('row_text'))
+        self.test_badge.setStyleSheet(
+            f"color: {cfg.color('bg')};"
+            f"background-color: rgba({tint.red()},{tint.green()},{tint.blue()},0.75);"
+            f"border-radius: 6px;")
+        badge_font = QFont(cfg.family)
+        badge_font.setBold(True)
+        self.test_badge.setFont(badge_font)
+
         self.status_box.setStyleSheet(f"background-color: {cfg.color('bg')};")
         self.status.setStyleSheet(
             f"color: {cfg.color('header_value')}; background: transparent;")
@@ -611,6 +629,8 @@ class BoardWindow(QWidget):
         if self._col_fraction < 1.0:
             self._apply_col_fraction(self._col_fraction)   # widths are width-relative
         self.splash.setGeometry(self.rect())
+        if self.test_badge.isVisible():
+            self._place_test_badge()
         self.status_box.setGeometry(self.rect())
         font = self.status.font()
         font.setPixelSize(max(16, int(self.height() * 0.055)))
@@ -635,6 +655,32 @@ class BoardWindow(QWidget):
         self.title_label.setText(cfg.meet_title)
         self.apply_theme()
         self.refresh()
+
+    def set_test_mode(self, active: bool):
+        """Show or hide the test-session badge.
+
+        A recorded session looks exactly like a real race on screen, so the board
+        has to stay fully visible — the badge only has to be impossible to miss.
+        """
+        self.test_badge.setText(self.cfg.strings.get('test_session', '⚠ TEST SESSION')
+                                if active else '')
+        self.test_badge.setVisible(active)
+        if active:
+            self._place_test_badge()
+            self.test_badge.raise_()
+
+    def _place_test_badge(self):
+        """Bottom centre, matching `.test-overlay`'s 2.5vh offset in the browser."""
+        font = self.test_badge.font()
+        font.setPixelSize(max(10, int(self.height() * 0.022)))
+        self.test_badge.setFont(font)
+        self.test_badge.adjustSize()
+        pad_x, pad_y = int(self.width() * 0.025), int(self.height() * 0.006)
+        width  = self.test_badge.sizeHint().width() + 2 * pad_x
+        height = self.test_badge.sizeHint().height() + 2 * pad_y
+        self.test_badge.setGeometry((self.width() - width) // 2,
+                                    self.height() - height - int(self.height() * 0.025),
+                                    width, height)
 
     def set_status(self, text: str, detail: str = ''):
         """Show (or clear, with ``''``) the full-screen status message.

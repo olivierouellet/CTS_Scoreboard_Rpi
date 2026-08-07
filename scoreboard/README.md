@@ -284,6 +284,18 @@ Four rules make it safe:
   the kiosk — worse than being a version behind.
 - **Never touch a dirty checkout.** `git checkout` would discard someone's work.
 
+### The test-session badge
+
+A recorded session (Settings → Test) replays real console traffic, so the board
+looks exactly like a live race — which is the point, since the operator is
+watching it to check the board. `test_mode {active}` therefore shows a small pill
+at the bottom centre, matching `.test-overlay` in the browser: inverted colours,
+75% opacity, 2.5% up from the bottom.
+
+It must **not** use `set_status()`. That overlay is opaque and full-screen, so
+routing `test_mode` through it hid the entire scoreboard behind the words TEST
+SESSION — which is exactly what happened first time round.
+
 ### The splash / carousel overlay
 
 Raised over the whole board by the carousel button on `/operator`, which arrives

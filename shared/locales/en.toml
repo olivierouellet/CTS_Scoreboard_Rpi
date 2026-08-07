@@ -60,6 +60,7 @@ a2hs_install     = "Install"
 waiting_server  = "Waiting for the timing server"
 connection_lost = "Lost connection to the timing server"
 retrying        = "retrying"
+test_session    = "⚠ TEST SESSION"
 
 [preview]
 meet      = "Meet"

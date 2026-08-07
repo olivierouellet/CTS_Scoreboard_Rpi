@@ -265,8 +265,7 @@ class ScoreboardApp:
             # Settings or theme changed — re-fetch config and redraw.
             self.config_loader.request()
         elif event == 'test_mode':
-            active = bool((data or {}).get('active'))
-            self.window.set_status('⚠ TEST SESSION' if active else '')
+            self.window.set_test_mode(bool((data or {}).get('active')))
         elif event == 'display_overlay':
             # The carousel button on /operator. Shows the splash over the board.
             if (data or {}).get('active'):
