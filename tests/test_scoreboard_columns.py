@@ -331,3 +331,44 @@ def test_a_name_that_fits_is_never_elided(board, qt_app):
     qt_app.processEvents()
     label = board.rows[0].name_label
     assert label.displayed_text() == name, 'a name that fits must stay whole'
+
+
+# ── Delta colour ───────────────────────────────────────────────────────────────
+
+def test_a_faster_swim_takes_the_delta_better_colour(board, qt_app):
+    """`lane_delta_better<i>` picks the colour; the value comes from
+    `lane_delta_seconds<i>`. Both are sent together by the server."""
+    board.apply_update({'lane_place1': '1', 'lane_time1': '1:12.44',
+                        'lane_delta_seconds1': -0.46, 'lane_delta_better1': True,
+                        'lane_place2': '2', 'lane_time2': '1:13.01',
+                        'lane_delta_seconds2': 0.34, 'lane_delta_better2': False})
+    qt_app.processEvents()
+    assert board.cfg.color('delta_better') in board.rows[0].delta_label.styleSheet()
+    assert board.cfg.color('delta_worse') in board.rows[1].delta_label.styleSheet()
+
+
+def test_restyling_keeps_the_faster_colour(board, qt_app):
+    """`apply_theme` runs on every `/config` reload — including the one triggered
+    by editing the colours in Settings → Theme. Forgetting the delta state there
+    repaints a faster swim in the slower colour."""
+    board.apply_update({'lane_place1': '1', 'lane_time1': '1:12.44',
+                        'lane_delta_seconds1': -0.46, 'lane_delta_better1': True})
+    qt_app.processEvents()
+
+    board.rows[0].apply_theme()          # no refresh() afterwards, on purpose
+    qt_app.processEvents()
+    assert board.cfg.color('delta_better') in board.rows[0].delta_label.styleSheet(), \
+        'a restyle lost the faster colour'
+
+
+def test_a_new_theme_colour_reaches_an_existing_delta(board, qt_app):
+    """Changing the colour in Settings → Theme must repaint what is on screen."""
+    board.apply_update({'lane_place1': '1', 'lane_time1': '1:12.44',
+                        'lane_delta_seconds1': -0.46, 'lane_delta_better1': True})
+    qt_app.processEvents()
+
+    board.set_config(Config({'num_lanes': 6,
+                             'theme_colors': {'delta_better': '#00ff00'}}))
+    qt_app.processEvents()
+    assert '#00ff00' in board.rows[0].delta_label.styleSheet()
+    assert board.rows[0].delta_label.text() == '-0.46', 'the value must survive too'

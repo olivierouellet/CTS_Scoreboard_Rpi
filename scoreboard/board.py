@@ -88,6 +88,8 @@ class LaneRow(QFrame):
         # While True the time cell belongs to the board's clock ticker, not to
         # `lane_time<i>` — see BoardWindow._tick_clock.
         self.running = False
+        # Last `lane_delta_better<i>` seen, so a restyle keeps the right colour.
+        self._delta_better = None
         self.setAutoFillBackground(True)
         self.setFrameShape(QFrame.NoFrame)
 
@@ -167,7 +169,7 @@ class LaneRow(QFrame):
             f"color: {cfg.color('time')}; background: transparent;")
         self.time_label.setFont(QFont(cfg.timing_family))
         self.delta_label.setFont(QFont(cfg.timing_family))
-        self._style_delta(None)
+        self._style_delta(self._delta_better)
 
         self.name_cell.setVisible(cfg.show_name)
         self.club_label.setVisible(cfg.show_club)
@@ -200,6 +202,14 @@ class LaneRow(QFrame):
         self.alt_label.set_max_px(alt)
 
     def _style_delta(self, better):
+        """Colour the delta from `lane_delta_better<i>` (Settings → Theme).
+
+        Remembers the value: `apply_theme` re-runs on every `/config` reload, and
+        passing None there would repaint a faster swim in the *slower* colour.
+        It happens to recover today because `set_config` calls `refresh()` straight
+        after — an ordering accident, not a guarantee.
+        """
+        self._delta_better = better
         color = self.cfg.color('delta_better' if better else 'delta_worse')
         self.delta_label.setStyleSheet(f'color: {color}; background: transparent;')
 
