@@ -164,16 +164,17 @@ def test_the_race_clock_clears_when_the_heat_ends(board, qt_app):
 
 
 def test_clearing_the_clock_does_not_move_the_header(board, qt_app):
-    """The meet title must not jump left and right as heats come and go."""
-    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    """Nothing beside the clock may shift as heats come and go."""
+    board.apply_update({'current_event': '3', 'current_heat': '1',
+                        'running_time': '12.30', 'lane_running1': True})
     qt_app.processEvents()
-    slot  = board.chrono_label.geometry()
-    title = board.title_label.geometry()
+    slot = board.chrono_label.geometry()
+    name = board.name_label.geometry()
 
     board.apply_update({'lane_running1': False, 'lane_time1': '1:12.44'})
     qt_app.processEvents()
     assert board.chrono_label.geometry() == slot, 'the clock gave up its space'
-    assert board.title_label.geometry() == title, 'the title moved'
+    assert board.name_label.geometry() == name, 'the event name moved'
 
 
 def test_stop_clock_also_clears_it(board, qt_app):

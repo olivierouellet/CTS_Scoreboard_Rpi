@@ -468,8 +468,9 @@ class BoardWindow(QWidget):
         bar.setContentsMargins(16, 6, 16, 6)
         bar.setSpacing(24)
 
-        self.title_label = FitLabel(cfg.meet_title)
-        self.title_label.setAlignment(Qt.AlignCenter)
+        # No meet title here. It lives on the splash overlay: `live.html` only
+        # ever calls set_header_mode(true), which hides its title cell, so the
+        # header the kiosk actually showed never carried one.
         self.event_cell = HeaderCell(cfg)
         self.heat_cell  = HeaderCell(cfg)
         self.name_label = FitLabel()
@@ -485,12 +486,15 @@ class BoardWindow(QWidget):
         # official glances at first. The browser puts the meet title there instead;
         # this is a deliberate divergence.
         for widget, weight in ((self.event_cell, 9), (self.heat_cell, 9),
-                               (self.title_label, 26), (self.name_label, 30),
+                               (self.name_label, 46),
                                (self.chrono_label, 14), (self.wall_clock, 12)):
             widget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
             widget.setMinimumSize(0, 0)
             bar.addWidget(widget, weight)
         root.addWidget(self.header)
+
+        # Idle until a heat arrives: meet title showing, event/heat/name hidden.
+        self.set_header_mode(False)
 
         self._wall_timer = QTimer(self)
         self._wall_timer.setInterval(_WALL_CLOCK_TICK_MS)
@@ -574,7 +578,7 @@ class BoardWindow(QWidget):
         self.header.setStyleSheet(
             f"background-color: {cfg.color('header_bg')};"
             f"border-bottom: 2px solid {cfg.color('header_border')};")
-        for label in (self.title_label, self.name_label):
+        for label in (self.name_label,):
             label.setStyleSheet(
                 f"color: {cfg.color('header_value')}; background: transparent; border: none;")
             label.setFont(QFont(cfg.family))
@@ -659,6 +663,21 @@ class BoardWindow(QWidget):
             if self._windowed_size is not None:
                 self.resize(self._windowed_size)
 
+    def set_header_mode(self, active: bool):
+        """Show or hide the EVENT / HEAT / event-name group.
+
+        Mirrors `set_header_mode()` in the browser: they appear once a heat is
+        loaded and stay hidden on an idle board, leaving just the two clocks.
+
+        Hiding — not blanking — is deliberate here: these cells *should* give up
+        their width, which is what `display:none` does in the template. That is
+        the opposite of the race clock, which keeps its slot precisely so the
+        cells beside it never move.
+        """
+        self._header_mode = active
+        for widget in (self.event_cell, self.heat_cell, self.name_label):
+            widget.setVisible(active)
+
     def _tick_wall_clock(self):
         self.wall_clock.setText(time.strftime('%H:%M'))
 
@@ -670,7 +689,6 @@ class BoardWindow(QWidget):
         its labels and the labels shrank to fit the bar, settling at 34px.
         """
         bar = max(1, height)
-        self.title_label.set_max_px(max(10, int(bar * _R_VALUE)))
         self.name_label.set_max_px(max(10, int(bar * _R_VALUE)))
         self.chrono_label.set_max_px(max(10, int(bar * _R_DIGITS)))
         self.wall_clock.set_max_px(max(10, int(bar * _R_DIGITS)))
@@ -713,7 +731,6 @@ class BoardWindow(QWidget):
         for row in self.rows:
             row.cfg = cfg
         self.setWindowTitle(cfg.meet_title or 'Splouch')
-        self.title_label.setText(cfg.meet_title)
         self.apply_theme()
         self.refresh()
 
@@ -1004,6 +1021,8 @@ class BoardWindow(QWidget):
             if heat != self._heat_key:
                 first_heat = self._heat_key is None
                 self._heat_key = heat
+                # A heat is loaded: swap the meet title out for EVENT/HEAT/name.
+                self.set_header_mode(True)
                 # Retire the previous heat's numbers now; the rows keep showing
                 # them until step 4 repaints, which is what fades out.
                 self._drop_stale_timing(keep=data)
@@ -1069,6 +1088,7 @@ class BoardWindow(QWidget):
     def reset(self):
         self.stop_clock()
         self.cancel_heat_transition()
+        self.set_header_mode(False)
         self._heat_key = None
         self.set_columns_visible(True, animate=False)
         self.snapshot.clear()
