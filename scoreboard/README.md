@@ -284,6 +284,32 @@ Four rules make it safe:
   the kiosk — worse than being a version behind.
 - **Never touch a dirty checkout.** `git checkout` would discard someone's work.
 
+### The header bar
+
+Sized from the **window**, never from itself. `.timing-header-bar` is a fixed
+85px at 1080p in the browser, and its text is in `vh` units, so the Qt bar takes
+a fixed 7.9% of the window height and every label inside is a fraction of the
+window too.
+
+Deriving those font sizes from the *bar's* height instead is circular and was the
+bug: the bar shrank to fit its content, the content shrank to fit the bar, and the
+whole header settled at 34px with unreadable text.
+
+| cell | content | size |
+| --- | --- | --- |
+| meet title | centred, `header_value` | 4vh |
+| EVENT / HEAT | small word **above** a large number, both `header_label` | 1.2vh / 4.5vh |
+| event name | centred, `header_value` | 4vh |
+| race clock | digits font, `time` | 4.5vh |
+| wall clock | digits font, `header_value` | 4.5vh |
+
+Two details that are easy to get wrong: the event/heat cells are a *vertical*
+stack (`.header_cell` is a column flex), and their digits take the **`header_label`**
+colour, not `header_value` — see `#current_event` in `timing_display.css`.
+
+The wall clock is the far-right cell (`#meet_datetime`), ticking every 10s since
+it only shows HH:MM.
+
 ### The test-session badge
 
 A recorded session (Settings → Test) replays real console traffic, so the board

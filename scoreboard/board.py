@@ -37,6 +37,17 @@ from .widgets import FitLabel
 # Clock repaint cadence. 50ms matches the browser: fast enough that hundredths
 # look continuous, slow enough to stay cheap on a Pi.
 _CLOCK_TICK_MS = 50
+_WALL_CLOCK_TICK_MS = 10_000        # HH:MM only — no need to tick every second
+
+# Header metrics as fractions of the window height, matching the browser's `vh`
+# units: an 85px bar at 1080p, 1.8vh labels, 4vh values, 4.5vh digits.
+_H_BAR    = 0.079
+# 1.8vh in the base CSS, but the >=700px-tall media query — which any TV matches —
+# pins it to 12px so the accents on ÉPREUVE/SÉRIE clear the digits below. Kept
+# proportional here so it still scales at 4K, at roughly that ratio.
+_H_LABEL  = 0.012
+_H_VALUE  = 0.040
+_H_DIGITS = 0.045
 
 # Column stretch weights = the vw widths of `/live`, the page the Chromium kiosk
 # actually rendered: `.lane-column` 5vw and `.club-column` 8vw from
@@ -283,42 +294,44 @@ class HeaderBar(QFrame):
 
 
 class HeaderCell(QWidget):
-    """A header pair like ``EVENT 3`` — word and value in *different* colours.
+    """An EVENT/HEAT cell: the word above, the number below.
 
-    The browser renders these as two spans (``header_label`` / ``header_value``),
-    which is why the theme has a colour for each. Drawing them as one string would
-    silently ignore the Label swatch in Settings → Display → Theme.
+    Matches `.header_cell` in timing_display.css, which is a *column* flex — the
+    small label sits on top of a much larger value (1.8vh over 4.5vh), and the
+    number is drawn in the digits font. They also take different theme colours,
+    which is why they are two widgets rather than one string.
     """
 
     def __init__(self, cfg: Config, parent=None):
         super().__init__(parent)
         self.cfg = cfg
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
         self.label = FitLabel()
+        self.label.setAlignment(Qt.AlignCenter)
         self.value = FitLabel()
-        # Sized by stretch, not sizeHint. A FitLabel derives its font from its own
-        # width, so letting the layout derive the width from the font (via sizeHint)
-        # is circular: one narrow first pass shrinks the text, which shrinks the
-        # hint, which keeps it narrow.
-        for part, weight in ((self.label, 3), (self.value, 2)):
+        self.value.setAlignment(Qt.AlignCenter)
+        for part in (self.label, self.value):
             part.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
             part.setMinimumSize(0, 0)
-            row.addWidget(part, weight)
+        column.addWidget(self.label, 2)
+        column.addWidget(self.value, 5)
         self.apply_theme()
 
     def apply_theme(self):
         self.label.setStyleSheet(
             f"color: {self.cfg.color('header_label')}; background: transparent; border: none;")
+        # The browser draws the event/heat digits in `header_label`, not
+        # `header_value` — see `#current_event` in timing_display.css.
         self.value.setStyleSheet(
-            f"color: {self.cfg.color('header_value')}; background: transparent; border: none;")
-        for part in (self.label, self.value):
-            part.setFont(QFont(self.cfg.family))
+            f"color: {self.cfg.color('header_label')}; background: transparent; border: none;")
+        self.label.setFont(QFont(self.cfg.family))
+        self.value.setFont(QFont(self.cfg.digits_family))
 
-    def set_pixel_size(self, px: int):
-        for part in (self.label, self.value):
-            part.set_max_px(max(10, px))
+    def set_pixel_size(self, label_px: int, value_px: int):
+        self.label.set_max_px(max(9, label_px))
+        self.value.set_max_px(max(10, value_px))
 
     def set_text(self, label: str, value: str):
         self.label.setText(label)
@@ -441,20 +454,31 @@ class BoardWindow(QWidget):
         bar.setSpacing(24)
 
         self.title_label = FitLabel(cfg.meet_title)
-        self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.title_label.setAlignment(Qt.AlignCenter)
         self.event_cell = HeaderCell(cfg)
         self.heat_cell  = HeaderCell(cfg)
         self.name_label = FitLabel()
         self.name_label.setAlignment(Qt.AlignCenter)
         self.chrono_label = FitLabel()
-        self.chrono_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.chrono_label.setAlignment(Qt.AlignCenter)
+        # Wall clock, far right — `#meet_datetime` in the browser. Always on, so
+        # the board says something useful even between sessions.
+        self.wall_clock = FitLabel()
+        self.wall_clock.setAlignment(Qt.AlignCenter)
 
-        bar.addWidget(self.title_label, 30)
-        bar.addWidget(self.event_cell, 10)
-        bar.addWidget(self.heat_cell, 10)
-        bar.addWidget(self.name_label, 34)
-        bar.addWidget(self.chrono_label, 16)
+        for widget, weight in ((self.title_label, 26), (self.event_cell, 9),
+                               (self.heat_cell, 9), (self.name_label, 30),
+                               (self.chrono_label, 14), (self.wall_clock, 12)):
+            widget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+            widget.setMinimumSize(0, 0)
+            bar.addWidget(widget, weight)
         root.addWidget(self.header)
+
+        self._wall_timer = QTimer(self)
+        self._wall_timer.setInterval(_WALL_CLOCK_TICK_MS)
+        self._wall_timer.timeout.connect(self._tick_wall_clock)
+        self._wall_timer.start()
+        self._tick_wall_clock()
 
         # ── Board ──────────────────────────────────────────────────────────────
         # The column titles and lane rows live in one `content` widget so the heat
@@ -545,6 +569,9 @@ class BoardWindow(QWidget):
         self.chrono_label.setStyleSheet(
             f"color: {cfg.color('time')}; background: transparent; border: none;")
         self.chrono_label.setFont(QFont(cfg.digits_family))
+        self.wall_clock.setStyleSheet(
+            f"color: {cfg.color('header_value')}; background: transparent; border: none;")
+        self.wall_clock.setFont(QFont(cfg.digits_family))
         # Inverted pill: board text colour at 75% behind, background colour on top.
         tint = QColor(cfg.color('row_text'))
         self.test_badge.setStyleSheet(
@@ -612,20 +639,36 @@ class BoardWindow(QWidget):
             if self._windowed_size is not None:
                 self.resize(self._windowed_size)
 
+    def _tick_wall_clock(self):
+        self.wall_clock.setText(time.strftime('%H:%M'))
+
     def _scale_header(self, height: int):
-        """Size the top bar's text from the bar's own height."""
-        px = max(10, int(height * 0.55))
-        self.title_label.set_max_px(px)
-        self.name_label.set_max_px(px)
-        self.chrono_label.set_max_px(px)
+        """Size the top bar's text.
+
+        Deliberately ignores *height* and measures the window instead: the browser
+        sizes this text in `vh`, and the bar's own height is itself derived from
+        the window. Taking it from the bar was how every header label ended up
+        tiny — the bar had collapsed to its content, and its content had shrunk to
+        fit the bar.
+        """
+        window = max(1, self.height())
+        self.title_label.set_max_px(max(10, int(window * _H_VALUE)))
+        self.name_label.set_max_px(max(10, int(window * _H_VALUE)))
+        self.chrono_label.set_max_px(max(10, int(window * _H_DIGITS)))
+        self.wall_clock.set_max_px(max(10, int(window * _H_DIGITS)))
         for cell in (self.event_cell, self.heat_cell):
-            cell.set_pixel_size(px)
+            cell.set_pixel_size(int(window * _H_LABEL), int(window * _H_DIGITS))
 
     def resizeEvent(self, event):     # noqa: N802 — Qt naming
         super().resizeEvent(event)
         # Rows and the header bar scale themselves from their own resizeEvents —
         # see LaneRow.set_row_height for why reading their height from here does
         # not work. This handles only what belongs to the window.
+        # A fixed fraction of the window, like `.timing-header-bar`'s 85px at
+        # 1080p. Without this the bar shrinks to whatever its labels need, and the
+        # labels shrink to fit the bar.
+        self.header.setFixedHeight(max(48, int(self.height() * _H_BAR)))
+        self._scale_header(self.header.height())
         if self._col_fraction < 1.0:
             self._apply_col_fraction(self._col_fraction)   # widths are width-relative
         self.splash.setGeometry(self.rect())
