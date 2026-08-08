@@ -587,6 +587,67 @@ def test_restyling_keeps_the_faster_colour(board, qt_app):
         'a restyle lost the faster colour'
 
 
+# ── Restyling must not undo the fit ────────────────────────────────────────────
+# `apply_theme` runs on every /config reload — including the very first one, which
+# lands seconds after the kiosk window opens. It assigns a fresh QFont per label,
+# and a QFont carries a size: whatever the family's default is, not the size the
+# label had fitted. Anything that is not re-set afterwards is then drawn at ~13px
+# until something happens to refit it, which on a kiosk means never.
+#
+# The lane number and the EVENT/HEAT cells are exactly the labels whose text is not
+# re-set by `refresh()`, which is why they were the ones that came up tiny.
+
+def _sizes(board):
+    row = board.rows[0]
+    return {
+        'lane':     row.lane_label.font().pixelSize(),
+        'place':    row.place_label.font().pixelSize(),
+        'name':     row.name_label.font().pixelSize(),
+        'club':     row.club_label.font().pixelSize(),
+        'time':     row.time_label.font().pixelSize(),
+        'ev_word':  board.event_cell.label.font().pixelSize(),
+        'ev_num':   board.event_cell.value.font().pixelSize(),
+        'hdr_lane': board.header_row.cells['lane'].font().pixelSize(),
+    }
+
+
+def test_a_config_reload_does_not_shrink_the_text(board, qt_app):
+    board.apply_update({'current_event': '3', 'current_heat': '1',
+                        'lane_name1': 'Roy, Zoé', 'lane_club1': 'CNR'})
+    qt_app.processEvents()
+    before = _sizes(board)
+    assert all(px > 0 for px in before.values()), 'nothing was fitted to begin with'
+
+    board.set_config(Config({'num_lanes': 6}))
+    qt_app.processEvents()
+
+    assert _sizes(board) == before, 'a restyle shrank the text'
+
+
+def test_restyling_a_lane_row_keeps_its_fitted_size(board, qt_app):
+    """The lane number is the clearest case: its text is set once, in __init__."""
+    board.apply_update({'current_event': '3', 'current_heat': '1'})
+    qt_app.processEvents()
+    before = board.rows[0].lane_label.font().pixelSize()
+
+    board.rows[0].apply_theme()          # no refresh() afterwards, on purpose
+    qt_app.processEvents()
+    assert board.rows[0].lane_label.font().pixelSize() == before
+
+
+def test_a_new_font_still_takes_effect(board, qt_app):
+    """Keeping the size must not mean ignoring the family the operator chose."""
+    board.apply_update({'current_event': '3', 'current_heat': '1'})
+    qt_app.processEvents()
+    board.set_config(Config({'num_lanes': 6,
+                             'theme_fonts': {'family': 'Roboto Mono',
+                                             'digits': 'DSEG7Classic'}}))
+    qt_app.processEvents()
+    assert board.rows[0].lane_label.font().family() == 'DSEG7 Classic'
+    assert board.rows[0].club_label.font().family() == 'Roboto Mono'
+    assert board.rows[0].lane_label.font().pixelSize() > 0
+
+
 def test_a_new_theme_colour_reaches_an_existing_delta(board, qt_app):
     """Changing the colour in Settings → Theme must repaint what is on screen."""
     board.apply_update({'lane_place1': '1', 'lane_time1': '1:12.44',

@@ -34,6 +34,23 @@ class FitLabel(QLabel):
             self._max_px = px
             self._refit()
 
+    def setFont(self, font):          # noqa: N802 — Qt naming
+        """Adopt a new family or style, then fit it again.
+
+        A ``QFont`` carries a size as well as a face, so the plain ``QLabel``
+        behaviour is to throw away whatever size the fit had arrived at and fall
+        back to the family's default — around 13px on a 4K TV. ``apply_theme`` runs
+        on every ``/config`` reload, including the first one seconds after the kiosk
+        window opens, so on a real board this happened at every boot.
+
+        It only *looked* intermittent because most cells are re-fitted moments later
+        by ``refresh()`` writing their text back. The ones with no text to re-set —
+        the lane number, and the EVENT/HEAT cells before a heat is loaded — simply
+        stayed tiny until someone resized the window.
+        """
+        super().setFont(font)
+        self._refit()
+
     def setText(self, text):          # noqa: N802 — Qt naming
         self._full = text if text is not None else ''
         self._refit()
@@ -51,11 +68,13 @@ class FitLabel(QLabel):
         self._refit()
 
     def _refit(self):
+        # Every font assignment below goes through `super().setFont`, never
+        # `self.setFont` — the override calls straight back in here.
         text = self._full
         font = self.font()
         if not text:
             font.setPixelSize(self._max_px)
-            self.setFont(font)
+            super().setFont(font)
             super().setText('')
             return
 
@@ -69,7 +88,7 @@ class FitLabel(QLabel):
         # ceiling before paying for a search.
         font.setPixelSize(self._max_px)
         if QFontMetrics(font).horizontalAdvance(text) <= avail:
-            self.setFont(font)
+            super().setFont(font)
             super().setText(text)
             return
 
@@ -84,7 +103,7 @@ class FitLabel(QLabel):
             else:
                 hi = mid - 1
         font.setPixelSize(best)
-        self.setFont(font)
+        super().setFont(font)
 
         # Even the floor may not fit — a 27-character club in an 8vw column. Qt
         # clips a label to its own rect, so the text would simply be cut through a

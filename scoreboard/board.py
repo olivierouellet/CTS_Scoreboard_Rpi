@@ -974,8 +974,15 @@ class BoardWindow(QWidget):
         # A fixed fraction of the window, like `.timing-header-bar`'s 85px at
         # 1080p. Without this the bar shrinks to whatever its labels need, and the
         # labels shrink to fit the bar.
-        self.header.setFixedHeight(max(48, int(self.height() * _H_BAR)))
-        self._scale_header(self.header.height())
+        #
+        # Scale from the height we just asked for, not from `header.height()`:
+        # `setFixedHeight` only constrains the widget, and the geometry does not
+        # change until the layout next runs — so reading it straight back returns
+        # the *previous* height. At the first show that is the pre-layout default,
+        # which sized the whole header off a bar that never existed.
+        bar_height = max(48, int(self.height() * _H_BAR))
+        self.header.setFixedHeight(bar_height)
+        self._scale_header(bar_height)
         if self._col_fraction < 1.0:
             self._apply_col_fraction(self._col_fraction)   # widths are width-relative
         self.splash.setGeometry(self.rect())

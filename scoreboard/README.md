@@ -246,6 +246,22 @@ at any readable size. `text()` still returns the full string; `displayed_text()`
 returns what is painted. `tests/test_scoreboard_columns.py` measures the painted
 text against every column width.
 
+**`setFont` re-fits, and it has to.** A `QFont` carries a size as well as a face, so
+the plain `QLabel` behaviour is to discard whatever size the fit arrived at and fall
+back to the family's default — about 13px, which on a 4K TV is invisible.
+`apply_theme` assigns a font to every label and runs on **every** `/config` reload,
+including the first one seconds after the kiosk window opens. So this fired at every
+boot.
+
+It looked intermittent because most cells are re-fitted moments later by `refresh()`
+writing their text back, and `setText` re-fits. The ones with no text to re-set —
+the **lane number**, whose text is set once in `__init__`, and the **EVENT/HEAT**
+cells before a heat is loaded — simply stayed tiny until someone resized the window,
+which is what made the bug look like a rendering glitch rather than a restyle.
+
+Anything that sets a font on a `FitLabel` therefore goes through the override; inside
+`_refit` itself every assignment uses `super().setFont`, or it recurses.
+
 ### Sizing is per-row, never from the window
 
 Each `LaneRow` and `HeaderRow` scales its own fonts from its **own** `resizeEvent`.
