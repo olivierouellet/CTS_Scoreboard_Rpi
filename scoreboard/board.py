@@ -147,6 +147,25 @@ def _animate_color(owner, start, end, duration_ms, curve, paint):
     return anim
 
 
+def _restyle(label, font):
+    """Give a plain ``QLabel`` a new face without losing its computed pixel size.
+
+    A ``QFont`` carries a size as well as a family, so assigning one throws away
+    whatever the last resize worked out — about 13px, which on a pool-deck TV is
+    unreadable. :class:`~scoreboard.widgets.FitLabel` re-fits itself for exactly this
+    reason; the status overlay and the test badge are plain labels sized from the
+    window, so they need the size carried across by hand.
+
+    It matters because ``apply_theme`` runs on every ``/config`` reload — including
+    the first, which lands seconds after the kiosk window opens while the waiting
+    message is the only thing on screen.
+    """
+    size = label.font().pixelSize()
+    if size > 0:
+        font.setPixelSize(size)
+    label.setFont(font)
+
+
 def _pad_columns(width, name, club):
     """Apply `.lane-name-cell`'s `0 2vw` and `.club-column`'s `1vw` to a row.
 
@@ -864,15 +883,15 @@ class BoardWindow(QWidget):
         badge_font = QFont(cfg.family)
         badge_font.setBold(True)
         badge_font.setLetterSpacing(QFont.PercentageSpacing, 115)   # `0.15em`
-        self.test_badge.setFont(badge_font)
+        _restyle(self.test_badge, badge_font)
 
         self.status_box.setStyleSheet(f"background-color: {cfg.color('bg')};")
         self.status.setStyleSheet(
             f"color: {cfg.color('header_value')}; background: transparent;")
-        self.status.setFont(QFont(cfg.family))
+        _restyle(self.status, QFont(cfg.family))
         self.status_detail.setStyleSheet(
             f"color: {cfg.color('th_text')}; background: transparent;")
-        self.status_detail.setFont(QFont(cfg.family))
+        _restyle(self.status_detail, QFont(cfg.family))
         self.header_row.apply_theme()
         for row in self.rows:
             row.apply_theme()

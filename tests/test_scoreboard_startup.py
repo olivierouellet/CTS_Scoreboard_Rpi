@@ -204,3 +204,31 @@ def test_the_time_column_title_follows_the_times_it_names(qt_app):
     assert '#123456' in w.header_row.cells['lane'].styleSheet().lower()
     assert w.header_row.cells['lane'].font().family() == 'Roboto Mono'
     w.close()
+
+
+def test_a_config_reload_does_not_shrink_the_waiting_message(qt_app):
+    """The waiting screen is the one thing on a stuck board, so it has to be legible.
+
+    `apply_theme` assigns a fresh QFont and a QFont carries a size, so a restyle
+    dropped these to ~13px. They are plain QLabels sized from the window height in
+    `resizeEvent`, not FitLabels, so they cannot re-fit themselves.
+
+    This is precisely the sequence at every boot: the window opens before `/config`
+    answers and shows the waiting message, then the first config arrives and restyles
+    it.
+    """
+    import web
+    w = _themed_board(qt_app)
+    w.set_status('Waiting for the timing server', 'splouch.local · retrying · 3 s')
+    qt_app.processEvents()
+    headline = w.status.font().pixelSize()
+    detail   = w.status_detail.font().pixelSize()
+    assert headline > 0 and detail > 0
+    assert headline > detail, 'the headline is the one read from the stands'
+
+    w.set_config(Config(web.display_config()))
+    qt_app.processEvents()
+
+    assert w.status.font().pixelSize() == headline, 'the headline shrank'
+    assert w.status_detail.font().pixelSize() == detail, 'the detail line shrank'
+    w.close()

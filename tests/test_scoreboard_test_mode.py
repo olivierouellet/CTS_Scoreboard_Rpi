@@ -123,3 +123,24 @@ def test_it_falls_back_when_the_server_sends_no_string(qt_app):
         assert window.test_badge.text() == DEFAULT_STRINGS['test_session']
     finally:
         window.close()
+
+
+def test_a_config_reload_does_not_shrink_the_badge(board, qt_app):
+    """`apply_theme` assigns a fresh QFont, and a QFont carries a size.
+
+    The badge is a plain QLabel sized from the window in `_place_test_badge`, so
+    unlike a FitLabel it cannot re-fit itself — the size has to survive the restyle.
+    A reload while a test session is running used to drop it to ~13px.
+    """
+    board.set_test_mode(True)
+    qt_app.processEvents()
+    before = board.test_badge.font().pixelSize()
+    assert before > 0
+
+    board.set_config(Config({
+        'num_lanes': 6,
+        'display_strings': {'test_session': '⚠ SESSION DE TEST'}}))
+    qt_app.processEvents()
+
+    assert board.test_badge.font().pixelSize() == before, 'the badge shrank'
+    assert board.test_badge.font().bold(), 'and it must stay bold'

@@ -262,6 +262,16 @@ which is what made the bug look like a rendering glitch rather than a restyle.
 Anything that sets a font on a `FitLabel` therefore goes through the override; inside
 `_refit` itself every assignment uses `super().setFont`, or it recurses.
 
+**Three labels are not `FitLabel`s** and need the same care by hand: the status
+overlay's two lines and the test-session badge. They are sized directly from the
+window (`resizeEvent`, `_place_test_badge`) rather than fitted to a cell, so
+`apply_theme` restyles them through `board._restyle()`, which carries the current
+pixel size onto the new font. Without it the waiting message — the only thing on
+screen on a board that cannot reach the server — came up at ~13px on every boot.
+
+If you add a widget with a computed font size, it belongs in one of those two camps.
+Assigning a bare `QFont` to it in `apply_theme` is the bug.
+
 ### Sizing is per-row, never from the window
 
 Each `LaneRow` and `HeaderRow` scales its own fonts from its **own** `resizeEvent`.
