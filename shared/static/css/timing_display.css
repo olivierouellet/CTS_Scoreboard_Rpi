@@ -124,6 +124,7 @@ html, body {
 /* meet-title and event-name cells expand to fill remaining space */
 .header_cell_grow { flex: 1; align-items: flex-start; }
 .header_cell_name { flex: 1; min-width: 0; background-color: var(--color-header-bg); align-items: center; overflow: hidden; }
+
 #event_name {
     max-width: 100%;
     overflow: hidden;
@@ -166,6 +167,33 @@ html, body {
     .header_cell         { padding: 6px 2vw; }
     .header_label        { font-size: 12px; }
 }
+
+/* ── Fixed header cell widths — `/live` only ──────────────────────────────────
+   Opt-in, via a class on the bar: this stylesheet is shared with scoreboard.html,
+   live-mobile.html and results.html, and only the kiosk page wants this.
+
+   Content-sized cells mean the bar reflows whenever the event number gains a digit
+   or the race clock appears, dragging the event name and both clocks sideways on
+   every heat. Fixed shares hold everything still. `scoreboard/board.py` carries the
+   same five numbers as layout stretch weights — they sum to 100, so they are the
+   percentages directly. See notes/scoreboard_parity.md.
+
+   The meet-title cell is the idle-only exception: event/heat/name are `display: none`
+   while no heat is loaded, so its `flex: 1` hands it exactly their combined share. */
+
+.header_cells_fixed .header_cell {
+    /* The 2vw padding has to sit *inside* the share, and a flex item defaults to
+       `min-width: auto` — which would let a long event name push its cell past its
+       share and shove everything to the right of it along anyway. */
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.header_cells_fixed #header_event_cell  { flex: 0 0 10%; }
+.header_cells_fixed #header_heat_cell   { flex: 0 0 10%; }
+.header_cells_fixed .header_cell_name   { flex: 0 0 51%; }
+.header_cells_fixed #header_chrono_cell { flex: 0 0 16%; }
+.header_cells_fixed #header_clock_cell  { flex: 0 0 13%; }
 
 /* ── Scoreboard table — fills remaining height ────────────────────────────── */
 

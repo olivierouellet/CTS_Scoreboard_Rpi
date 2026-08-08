@@ -195,3 +195,66 @@ def test_the_next_race_brings_it_back(board, qt_app):
     board.apply_update({'running_time': '0.00', 'lane_running2': True})
     qt_app.processEvents()
     assert board.chrono_label.text(), 'the clock did not come back for the next race'
+
+
+# ── Which owner has the cell ───────────────────────────────────────────────────
+# A ticking clock and a frozen split are the same digits in the same place, so the
+# colour is the only thing that says which. The browser greys a running lane
+# (`.time-running`) and flashes the split from white down to the time colour when it
+# locks (`time-lock-flash`); without that the two are indistinguishable.
+
+def test_a_running_lane_is_greyed(board, qt_app):
+    from scoreboard.board import _TIME_RUNNING
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    assert _TIME_RUNNING in board.rows[0].time_label.styleSheet().lower()
+    # A lane that never started keeps the plain time colour.
+    assert board.cfg.color('time') in board.rows[1].time_label.styleSheet()
+
+
+def test_locking_a_split_flashes_it_back_to_the_time_colour(board, qt_app):
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    board.apply_update({'lane_running1': False, 'lane_time1': '28.41'})
+    qt_app.processEvents()
+
+    anim = board.rows[0]._time_anim
+    assert anim is not None, 'the split locked without a flash'
+    assert anim.duration() == 800
+    anim.setCurrentTime(anim.duration())
+    assert board.cfg.color('time').lower() in \
+        board.rows[0].time_label.styleSheet().lower()
+
+
+def test_rejoining_the_clock_cancels_a_flash_in_flight(board, qt_app):
+    """A lane pauses at every wall, so the flash and the next length can overlap."""
+    from scoreboard.board import _TIME_RUNNING
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    board.apply_update({'lane_running1': False, 'lane_time1': '28.41'})
+    qt_app.processEvents()
+    assert board.rows[0]._time_anim is not None
+
+    board.apply_update({'lane_running1': True})
+    qt_app.processEvents()
+    assert board.rows[0]._time_anim is None, 'the flash outlived the pause'
+    assert _TIME_RUNNING in board.rows[0].time_label.styleSheet().lower()
+
+
+def test_a_restyle_keeps_the_running_grey(board, qt_app):
+    """`apply_theme` runs on every /config reload, mid-race included."""
+    from scoreboard.board import _TIME_RUNNING
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    board.rows[0].apply_theme()
+    assert _TIME_RUNNING in board.rows[0].time_label.styleSheet().lower()
+
+
+def test_the_next_heat_clears_the_running_grey(board, qt_app):
+    """The browser's `reset_times()`, called as the new start list is painted."""
+    from scoreboard.board import _TIME_RUNNING
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    board.rows[0].clear()
+    assert _TIME_RUNNING not in board.rows[0].time_label.styleSheet().lower()
+    assert board.cfg.color('time') in board.rows[0].time_label.styleSheet()

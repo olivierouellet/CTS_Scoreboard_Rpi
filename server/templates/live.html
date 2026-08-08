@@ -120,8 +120,10 @@ function formatHundredths(h) {
     return mm > 0 ? mm + ':' + (ss < 10 ? '0' : '') + ss + frac : ss + frac;
 }
 
+/* The cell stays put either way; only its text comes and goes. Hiding it gave up
+   its share of the header bar, so every cell to its left slid across at the end of
+   each heat and back again at the start of the next. */
 function start_chrono() {
-    document.getElementById('header_chrono_cell').style.display = '';
     if (_chrono_timer) return;
     _chrono_timer = setInterval(tick_chrono, 50);
 }
@@ -129,7 +131,7 @@ function start_chrono() {
 function stop_chrono() {
     if (_chrono_timer) { clearInterval(_chrono_timer); _chrono_timer = null; }
     _chrono_base = null;
-    document.getElementById('header_chrono_cell').style.display = 'none';
+    document.getElementById('live_chrono').textContent = '';
 }
 
 function tick_chrono() {
@@ -321,8 +323,11 @@ function mode_to_results() {
 
 <div class="timing-outer">
 
-    <!-- Header bar -->
-    <div class="timing-header-bar">
+    <!-- Header bar. `header_cells_fixed` gives the cells fixed shares of the width
+         instead of sizing them to their content, so nothing shifts when the event
+         number gains a digit or the race clock blanks between heats — see
+         notes/scoreboard_parity.md. -->
+    <div class="timing-header-bar header_cells_fixed">
         <div class="header_cell header_cell_grow" id="header_meet_title_wrap">
             <span class="header_value" id="header_meet_title">{{ meet_title }}</span>
         </div>
@@ -337,10 +342,13 @@ function mode_to_results() {
         <div class="header_cell header_cell_name" id="header_name_cell" style="display:none;">
             <span class="header_value" id="event_name"></span>
         </div>
-        <div class="header_cell" id="header_chrono_cell" style="display:none;">
+        <!-- The chrono cell is always present, even with nothing to show: removing
+             it would give up its share of the bar and slide every cell to its left
+             across on each heat end. -->
+        <div class="header_cell" id="header_chrono_cell">
             <span id="live_chrono" style="color:var(--color-time);font-family:var(--font-digits),monospace;font-size:4.5vh;"></span>
         </div>
-        <div class="header_cell">
+        <div class="header_cell" id="header_clock_cell">
             <span id="meet_datetime" style="font-family:var(--font-digits),monospace;font-size:4.5vh;color:var(--color-header-value);"></span>
         </div>
     </div>

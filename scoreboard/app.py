@@ -277,6 +277,9 @@ class ScoreboardApp:
             # every `lane_running` flag first, but if a frame were missed the
             # ticker would keep counting up over the final times.
             self.window.stop_clock()
+            # And the same backstop for the podium, which the browser also reveals
+            # from this event. It is a no-op once the reveal has already run.
+            self.window.highlight_podium()
         elif event == 'update':
             self._on_update(data)
         elif event == 'columns_state':

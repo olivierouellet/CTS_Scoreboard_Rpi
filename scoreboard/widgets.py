@@ -59,7 +59,11 @@ class FitLabel(QLabel):
             super().setText('')
             return
 
-        avail = max(1, self.width() - 2)   # 1px breathing room each side
+        # The *contents* rect, not the widget: several cells carry the column
+        # padding `timing_display.css` gives them (`.lane-name-cell`'s `0 2vw`, for
+        # one) as contents margins, and fitting to the full width would let the text
+        # run straight through that padding into its neighbour.
+        avail = max(1, self.contentsRect().width() - 2)   # 1px breathing room each side
 
         # Widest-first: the common case is a name that already fits, so check the
         # ceiling before paying for a search.

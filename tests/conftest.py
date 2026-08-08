@@ -45,3 +45,25 @@ def qt_app():
         # resolve_family() memoises its answers.
         load_app_fonts()
     return _QT_APP
+
+
+@pytest.fixture
+def settle_podium(qt_app):
+    """Run the staggered podium reveal to its end state, without sleeping.
+
+    The board reveals gold, silver and bronze 400ms apart and eases each one in over
+    500ms, so a test that only calls `processEvents()` catches the rows mid-fade at
+    some colour between the stripe and the tint. Fire the pending timers and seek
+    every fade to its end instead — 1.3s of animation, deterministically.
+    """
+    def run(board):
+        qt_app.processEvents()
+        for timer in list(board._podium_timers):
+            if timer.isActive():
+                timer.stop()
+                timer.timeout.emit()
+        for row in board.rows:
+            if row._podium_anim is not None:
+                row._podium_anim.setCurrentTime(row._podium_anim.duration())
+        qt_app.processEvents()
+    return run

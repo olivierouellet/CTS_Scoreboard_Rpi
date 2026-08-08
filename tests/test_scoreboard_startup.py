@@ -125,7 +125,7 @@ def _themed_board(qt_app, colors=None, fonts=None):
     return window
 
 
-def test_every_theme_colour_reaches_a_widget(qt_app):
+def test_every_theme_colour_reaches_a_widget(qt_app, settle_podium):
     import state
     # A distinct sentinel per key, so we can tell which widget took which colour.
     sentinels = {k: f'#{i:02x}00{i:02x}'
@@ -134,7 +134,9 @@ def test_every_theme_colour_reaches_a_widget(qt_app):
     w.apply_update({'current_event': '3', 'current_heat': '1',
                     'lane_time1': '2:20.92', 'lane_place1': '1',
                     'lane_delta_seconds1': -0.46, 'lane_delta_better1': True})
-    qt_app.processEvents()
+    # The heat is over, so the podium is released — but it fades in, so wait for it
+    # to land before reading the row's colour back.
+    settle_podium(w)
 
     applied = {
         'bg':            w.styleSheet(),
@@ -165,9 +167,40 @@ def test_the_three_theme_fonts_land_on_the_right_widgets(qt_app):
     w = _themed_board(qt_app, fonts={'family': 'Roboto Mono',
                                      'timing': 'Share Tech Mono',
                                      'digits': 'DSEG7Classic'})
-    assert w.rows[0].lane_label.font().family() == 'Roboto Mono'
+    assert w.rows[0].name_label.font().family() == 'Roboto Mono'
+    assert w.rows[0].club_label.font().family() == 'Roboto Mono'
     assert w.rows[0].time_label.font().family() == 'Share Tech Mono'
+    assert w.rows[0].delta_label.font().family() == 'Share Tech Mono'
     # The running clock follows Digit Font, matching the browser's `--font-digits`.
     # Note the resolved name gains a space: the file calls itself "DSEG7 Classic".
     assert w.chrono_label.font().family() == 'DSEG7 Classic'
+
+
+def test_the_digit_font_reaches_the_lane_numbers_and_places(qt_app):
+    """`tbody td:first-child, [id^="lane_place"]` take `--font-digits` in the CSS.
+
+    Both went to the main family for a while, which on the stock theme is the
+    difference between a seven-segment board and a monospace one — and no test
+    noticed, because the running clock was using the digit font correctly.
+    """
+    w = _themed_board(qt_app, fonts={'family': 'Roboto Mono',
+                                     'timing': 'Share Tech Mono',
+                                     'digits': 'DSEG7Classic'})
+    assert w.rows[0].lane_label.font().family() == 'DSEG7 Classic'
+    assert w.rows[0].place_label.font().family() == 'DSEG7 Classic'
+
+
+def test_the_time_column_title_follows_the_times_it_names(qt_app):
+    """`#time-column` shares a CSS rule with `.td_time` — time colour, timing font.
+
+    It is the one column heading that is not `th_text`.
+    """
+    w = _themed_board(qt_app, colors={'time': '#ff8800', 'th_text': '#123456'},
+                      fonts={'family': 'Roboto Mono', 'timing': 'Share Tech Mono'})
+    time_title = w.header_row.cells['time']
+    assert '#ff8800' in time_title.styleSheet().lower()
+    assert time_title.font().family() == 'Share Tech Mono'
+    # Every other title stays on th_text in the main family.
+    assert '#123456' in w.header_row.cells['lane'].styleSheet().lower()
+    assert w.header_row.cells['lane'].font().family() == 'Roboto Mono'
     w.close()

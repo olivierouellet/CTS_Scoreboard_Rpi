@@ -13,6 +13,10 @@ The native display for the kiosk Pi. Replaces the Chromium kiosk that rendered
 > | delta column | 15vw | 9vw | 15vw |
 > | title on the splash | absent | present | present |
 > | idle splash timeout | yes | yes | not implemented |
+>
+> [`notes/scoreboard_parity.md`](../notes/scoreboard_parity.md) is the full ledger —
+> every layout aspect of the two, marked *match*, *intentional* or *gap*. Read it
+> before changing anything visual on either side.
 
 ## Qt binding
 
@@ -299,6 +303,12 @@ the header at 34px with unreadable text.
 `live.html` has a title cell, but only ever calls `set_header_mode(true)`, which
 hides it; the header the kiosk actually displayed never carried one.
 
+**The cells have fixed widths** — 10 / 10 / 51 / 16 / 13 percent, summing to 100 as
+the column weights do. Nothing in the bar moves when the event number gains a digit
+or the race clock blanks out. This is the one place the browser followed the display
+rather than the other way round: `.header_cells_fixed` in `timing_display.css`
+carries the same five numbers, and `live.html` opts into it.
+
 Left to right:
 
 | cell | content | colour | size (of the bar) |
@@ -311,8 +321,8 @@ Left to right:
 **The race clock clears when the heat ends** — it has nothing to report once
 nobody is swimming, which is what `stop_chrono()` does in the browser. We clear
 its *text* rather than hiding the widget: a hidden widget drops out of the layout
-and every cell to its left slides across, so the meet title would jump on every
-heat.
+and every cell to its left slides across, so the event name would jump on every
+heat. `live.html` used to hide the cell and now blanks it too, for the same reason.
 
 So the title, both numbers and the wall clock are all one colour, and the race
 clock is the only header element that stands out. **This diverges from the
@@ -323,13 +333,36 @@ the small EVENT/HEAT word.
 The event/heat cells are a *vertical* stack, matching `.header_cell`'s column
 flex: small word on top, large number beneath.
 
-**They lead the bar**, hard against the left edge, and are hidden until a heat is
-loaded — an idle board shows only the two clocks. Hiding rather than blanking is
-deliberate: these cells should give up their width, which is what `display:none`
-does in the template. The race clock is the opposite case; it keeps its slot.
+**They lead the bar**, hard against the left edge, and are blank until a heat is
+loaded — an idle board shows only the wall clock. Blanking rather than hiding: a
+hidden widget leaves the layout and Qt hands its stretch to the neighbours, which is
+exactly what the fixed widths above exist to prevent. Hiding them used to leave the
+wall clock about three-quarters of the way across an idle board instead of at the
+right edge. Same rule as the race clock, which keeps its slot for the same reason.
 
 The wall clock is the far-right cell (`#meet_datetime`), ticking every 10s since
 it only shows HH:MM.
+
+### The podium
+
+Gold, silver and bronze tint the top three rows when **Settings → Display → Podium**
+is on. Two things about *when*:
+
+- **Not until the heat is over.** The trigger is the browser's own `all_done`: no
+  lane running, and no lane holding a time without a place. Tinting as each place
+  lands instead — which this display did at first — sends the first finisher's row
+  gold while the rest of the heat is still in the water.
+- **Then staggered**, 400ms apart in placing order, each easing in over 500ms. That
+  is `highlight_podium()`'s `{1: 0, 2: 400, 3: 800}` plus the 0.5s CSS
+  `background-color` transition it rides on.
+
+One reveal per heat: `_podium_shown` is re-armed when the event or heat number
+changes, and `highlight_podium()` is a no-op while there is no podium to show, so an
+empty start list between heats cannot consume it. `race_finished` calls it too, as
+the browser does, in case the placing frames were missed.
+
+Qt stylesheets do not animate, so both the fade in and the fade out interpolate the
+colour and re-apply it; the browser gets both free from CSS.
 
 ### The test-session badge
 
@@ -396,10 +429,16 @@ in. `/config` carries `carousel_images` and `carousel_interval`.
 A lane's time cell has two owners, and which one is in charge is the whole
 mechanism:
 
-| `lane_running<i>` | the time cell shows | why |
-| --- | --- | --- |
-| `true` | the race clock, ticking | the swimmer is mid-length |
-| `false` | `lane_time<i>`, frozen | they touched a wall — this is the split |
+| `lane_running<i>` | the time cell shows | colour | why |
+| --- | --- | --- | --- |
+| `true` | the race clock, ticking | grey `#a0a0a0` | the swimmer is mid-length |
+| `false` | `lane_time<i>`, frozen | 0.8s flash from white down to `time` | they touched a wall — this is the split |
+
+**The colour is what says which owner has the cell.** A ticking clock and a frozen
+split are the same digits in the same place otherwise. `.time-running` and the
+`time-lock-flash` keyframes do this in the browser, and the two values are hardcoded
+there — they are not theme keys, so they are hardcoded here too rather than becoming
+settings that exist on only one of the two displays.
 
 **A lane pauses at every wall.** The console drops the running flag and sends the
 lap in `lane_time<i>`, which has to stay on screen for the few seconds it takes to
@@ -515,8 +554,18 @@ same code fills a 1080p TV and a 4K one without a second layout.
 `LaneRow.set_row_height` sets the row's text to 52% of the row height and hands
 the same number to the name label as its *maximum*. Names therefore never grow
 larger than the lane / club / time / place text beside them — a short name simply
-matches its row rather than ballooning to fill the column. Relay member names use
-`_FONT_ALT = 0.30`; the header bar uses 55% of its own height.
+matches its row rather than ballooning to fill the column.
+
+Relay member names use `_FONT_ALT`, which is `0.7 × _FONT_MAIN` — `.name-sub`'s
+`0.7em` in the browser. A relay row splits its name cell 50 : 35 between the two
+lines, and each is then capped from the slice it actually gets: `FitLabel` only ever
+solves for *width*, so a ceiling taken from the whole row would size the team name
+to roughly twice its own cell and clip it top and bottom.
+
+The header bar sizes its text off its own height: 15% for the small EVENT/HEAT word,
+50% for the event name, 57% for the numbers and both clocks. The column titles use
+`_FONT_HEADER = 0.62` of the header row, which is half a lane row — landing at the
+browser's 3vh against the rows' 5vh.
 
 | ceiling | 6 lanes | 8 lanes | 10 lanes |
 | --- | --- | --- | --- |
@@ -590,8 +639,10 @@ This is a working scaffold, not the finished display. Still to do:
 - **Automatic idle splash.** The overlay is operator-driven only. `/live` also
   drops to a splash on its own after `INTRO_TIMEOUT` / `RESULTS_TIMEOUT`; here the
   board holds the last start list until someone presses the button.
-- **Background image behind the board.** `scoreboard_bg.png` backs the splash, but
-  `/live` also renders it behind the lane table itself.
+- **Background image behind the board.** `scoreboard_bg.png` backs the splash on
+  this display. Neither board puts it behind the lane table — `.background` in
+  `timing_display.css` is a flat `--color-bg` fill and `#splash_img` exists only in
+  `scoreboard.html` — but both would be better for it.
 - **Results hold.** The browser pauses on results for `RESULTS_TIMEOUT` and
   distinguishes a brief result from a full one; here results simply stay until
   the next heat arrives.
