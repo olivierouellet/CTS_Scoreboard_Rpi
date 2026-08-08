@@ -371,6 +371,9 @@ _active_meet_uid       = ''   # meet_uid() of the currently loaded meet
 _os_update_in_progress = False
 _update_log_lines      = []
 _update_log_done       = None
+# True when an update stopped because the checkout has local edits. Drives the
+# "Repair checkout" button on the Update panel — see routes/system._run_update.
+_update_repair_needed  = False
 _os_update_log_lines   = []
 _os_update_log_done    = None
 

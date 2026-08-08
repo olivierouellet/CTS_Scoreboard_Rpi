@@ -77,6 +77,10 @@ class LogLine(BaseModel):
 class LogTail(BaseModel):
     lines: list[LogLine]
     done: bool | None = None
+    # Only the app-update log sets this: the run stopped on a dirty checkout, so the
+    # panel should offer "Repair checkout". Defaulted, so the OS-update and RTC logs
+    # that share this model are unaffected.
+    repair: bool = False
 
 
 class RtcStatus(BaseModel):
@@ -190,9 +194,46 @@ def _run_cmd_blocking(cmd, cwd=None):
     return proc.stdout, proc.returncode
 
 
+def _dirty_files():
+    """Paths git reports as locally modified, staged or untracked.
+
+    ``git status --porcelain`` lines are `XY <path>`; the two status columns are
+    fixed-width, so the path starts at offset 3.
+    """
+    out, rc = _run_cmd_blocking(['git', 'status', '--porcelain'], cwd=state.REPO_DIR)
+    if rc != 0:
+        return []
+    return [line[3:].strip() for line in out.splitlines() if line.strip()]
+
+
+def _explain_dirty_failure(emit):
+    """Turn git's "local changes would be overwritten" into something actionable.
+
+    Raw git output tells a meet operator nothing, and the fix — reset the checkout
+    — is not something to guess at from a phone on a pool deck. Naming the files and
+    pointing at the button is the whole difference between a five-second fix and a
+    call to whoever set the system up.
+
+    Sets the flag that reveals *Repair checkout* on the Update panel.
+    """
+    dirty = _dirty_files()
+    if not dirty:
+        return
+    state._update_repair_needed = True
+    emit('\nThis checkout has local changes, so the update cannot be applied:\n',
+         error=True)
+    for path in dirty[:20]:
+        emit(f'    {path}\n', error=True)
+    if len(dirty) > 20:
+        emit(f'    … and {len(dirty) - 20} more\n', error=True)
+    emit('\nPress "Repair checkout" below to discard them and try again.\n',
+         error=True)
+
+
 def _run_update(target=None):
     state._update_log_lines = []
     state._update_log_done  = None
+    state._update_repair_needed = False
 
     def emit(text, error=False):
         state._update_log_lines.append({'text': text, 'error': error})
@@ -248,6 +289,10 @@ def _run_update(target=None):
                 emit(out)
             if rc != 0:
                 emit(f'\nCommand failed (exit code {rc})\n', error=True)
+                # A git step that fails on a dirty tree is the common case and the
+                # one git explains worst; say which files and offer the way out.
+                if cmd[0] == 'git':
+                    _explain_dirty_failure(emit)
                 state._update_log_done = False
                 return
 
@@ -271,6 +316,77 @@ def _run_update(target=None):
         subprocess.run(['sudo', 'systemctl', 'restart', state.SERVICE_NAME])
     except Exception as e:
         emit(f'\nError: {e}\n', error=True)
+        state._update_log_done = False
+    finally:
+        state._update_in_progress = False
+
+
+def _run_repair():
+    """Discard local changes so the next update can apply.
+
+    Streams into the *same* log the update writes, so the operator watches it in the
+    Update panel rather than being sent to a shell — the commands and their output
+    are shown exactly as the update's are.
+
+    ``git reset --hard HEAD`` and nothing more:
+
+    * It clears staged *and* unstaged edits to tracked files, which is what blocks a
+      pull. A bare ``git checkout -- .`` would restore from the index and leave a
+      staged file still differing from HEAD.
+    * It leaves **untracked** files alone. Deleting those would need ``git clean``,
+      and someone's notes or a hand-copied recording are not this button's business.
+      They only block a pull in the rare case a release adds a file of the same name,
+      and the log says so if any remain.
+    * HEAD does not move, so this cannot change which version is installed. The
+      operator still presses Install afterwards, and sees what they are getting.
+    """
+    state._update_log_lines = []
+    state._update_log_done  = None
+    state._update_repair_needed = False
+
+    def emit(text, error=False):
+        state._update_log_lines.append({'text': text, 'error': error})
+
+    try:
+        before = _dirty_files()
+        if not before:
+            emit('Nothing to repair — the checkout has no local changes.\n')
+            state._update_log_done = True
+            return
+
+        emit('Discarding local changes to:\n')
+        for path in before:
+            emit(f'    {path}\n')
+
+        emit('\n$ git reset --hard HEAD\n')
+        out, rc = _run_cmd_blocking(['git', 'reset', '--hard', 'HEAD'],
+                                    cwd=state.REPO_DIR)
+        if out:
+            emit(out)
+        if rc != 0:
+            emit(f'\nCommand failed (exit code {rc})\n', error=True)
+            # Still dirty, so repair is still the answer — keep the button on screen
+            # rather than clearing the flag and leaving no way to retry.
+            state._update_repair_needed = True
+            state._update_log_done = False
+            return
+
+        left = _dirty_files()
+        if left:
+            # Untracked leftovers. Harmless unless the incoming release adds the
+            # same path, so name them rather than deleting them behind the operator.
+            emit('\nStill present (untracked — not removed):\n')
+            for path in left:
+                emit(f'    {path}\n')
+            emit('\nThese do not usually block an update. If one does, remove it by '
+                 'hand from Settings → Terminal.\n')
+        else:
+            emit('\nCheckout is clean.\n')
+        emit('\nRepaired. Press Install to update.\n')
+        state._update_log_done = True
+    except Exception as e:
+        emit(f'\nError: {e}\n', error=True)
+        state._update_repair_needed = True   # as above — leave the retry available
         state._update_log_done = False
     finally:
         state._update_in_progress = False
@@ -342,6 +458,21 @@ async def route_update_start(body: UpdateStart | None = None):
     return {'ok': True}
 
 
+@router.post('/repair_checkout', response_model=ActionResult,
+             dependencies=[Depends(require_login)])
+async def route_repair_checkout():
+    """Discard local edits that are blocking an update.
+
+    Shares `_update_in_progress` and the update log with `/update_start`, so the two
+    cannot run at once and the panel needs only one output pane.
+    """
+    if state._update_in_progress:
+        return JSONResponse({'error': 'Update already in progress'}, status_code=409)
+    state._update_in_progress = True
+    bus.run_bg(_run_repair)
+    return {'ok': True}
+
+
 @router.post('/displays_update', response_model=ActionResult,
              dependencies=[Depends(require_login)])
 async def route_displays_update():
@@ -388,7 +519,8 @@ def route_os_update_start():
 @router.get('/update_log', response_model=LogTail,
             dependencies=[Depends(require_login)])
 def route_update_log():
-    return {'lines': state._update_log_lines, 'done': state._update_log_done}
+    return {'lines': state._update_log_lines, 'done': state._update_log_done,
+            'repair': state._update_repair_needed}
 
 
 @router.get('/os_update_log', response_model=LogTail,

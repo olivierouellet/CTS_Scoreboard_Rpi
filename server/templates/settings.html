@@ -363,6 +363,16 @@ function onPasswordInput(form) {
                     </div>
                     <pre id="update-output" class="border rounded p-2" style="display:none; background:#111; color:#e0e0e0; min-height:80px; max-height:360px; overflow-y:auto; font-size:0.8em; margin:0;"></pre>
 
+                    {# Only appears once an update has actually stopped on a dirty
+                       checkout — it discards work, so it stays out of sight until it
+                       is the answer. The output goes to the pane above, like the
+                       update's own. #}
+                    <div id="repair-row" class="d-none align-items-center gap-2 mt-2">
+                        <button id="btn-repair-checkout" class="btn btn-warning btn-sm"
+                                onclick="repairCheckout()">{{ t.update_repair }}</button>
+                        <span class="text-body-secondary small">{{ t.update_repair_hint }}</span>
+                    </div>
+
                     <hr>
 
                     {# Registered displays. No version picker here on purpose: the
@@ -1788,17 +1798,16 @@ function onPasswordInput(form) {
         }).catch(function(){ sel.disabled = false; cur.textContent = T.js_error; });
     }
 
-    function startUpdate() {
-        var btn    = document.getElementById('btn-run-update');
-        var out    = document.getElementById('update-output');
-        var status = document.getElementById('update-status');
-        var target = document.getElementById('version-select').value || null;
-        btn.disabled = true;
-        document.getElementById('btn-os-update').disabled = true;
-        out.innerHTML = '';
-        out.style.display = 'block';
-        _statusColor(status, 'muted');
-        status.textContent = T.js_running;
+    /* Install and Repair write to the same log and share one output pane, so they
+       share the reader too. `onDone(ok)` runs once, when the server reports the run
+       finished; the returned function cancels the poll if the request never started.
+
+       `repair` is decided by the server, which looks at the tree rather than
+       guessing from git's error text — so the button appears only when discarding
+       local changes is genuinely the answer. */
+    function _followUpdateLog(onDone) {
+        var out  = document.getElementById('update-output');
+        var row  = document.getElementById('repair-row');
         var seen = 0;
         var poll = setInterval(function() {
             fetch('/update_log').then(function(r){ return r.json(); }).then(function(d) {
@@ -1810,36 +1819,89 @@ function onPasswordInput(form) {
                 }
                 seen = d.lines.length;
                 out.scrollTop = out.scrollHeight;
-                if (d.done !== null) {
-                    clearInterval(poll);
-                    document.getElementById('btn-os-update').disabled = false;
-                    if (d.done) {
-                        _statusColor(status, 'ok');
-                        status.textContent = T.js_done_restarting;
-                        setTimeout(function() { location.reload(); }, 6000);
-                    } else {
-                        _statusColor(status, 'err');
-                        status.textContent = T.js_failed_see_output;
-                        btn.disabled = false;
-                    }
-                }
+                row.classList.toggle('d-none', !d.repair);
+                row.classList.toggle('d-flex', !!d.repair);
+                if (d.done !== null) { clearInterval(poll); onDone(d.done); }
             }).catch(function(){});
         }, 500);
+        return function() { clearInterval(poll); };
+    }
+
+    function startUpdate() {
+        var btn    = document.getElementById('btn-run-update');
+        var out    = document.getElementById('update-output');
+        var status = document.getElementById('update-status');
+        var target = document.getElementById('version-select').value || null;
+        btn.disabled = true;
+        document.getElementById('btn-os-update').disabled = true;
+        out.innerHTML = '';
+        out.style.display = 'block';
+        _statusColor(status, 'muted');
+        status.textContent = T.js_running;
+        var stop = _followUpdateLog(function(ok) {
+            document.getElementById('btn-os-update').disabled = false;
+            if (ok) {
+                _statusColor(status, 'ok');
+                status.textContent = T.js_done_restarting;
+                setTimeout(function() { location.reload(); }, 6000);
+            } else {
+                _statusColor(status, 'err');
+                status.textContent = T.js_failed_see_output;
+                btn.disabled = false;
+            }
+        });
         fetch('/update_start', {method: 'POST', headers: {'Content-Type': 'application/json'},
                                 body: JSON.stringify({target: target})}).then(function(r) {
             if (!r.ok) {
-                clearInterval(poll);
+                stop();
                 _statusColor(status, 'err');
                 status.textContent = T.js_could_not_start_update;
                 btn.disabled = false;
                 document.getElementById('btn-os-update').disabled = false;
             }
         }).catch(function(e) {
-            clearInterval(poll);
+            stop();
             _statusColor(status, 'err');
             status.textContent = T.js_request_failed_c + e;
             btn.disabled = false;
             document.getElementById('btn-os-update').disabled = false;
+        });
+    }
+
+    /* Discards local edits, so it asks first — and names what it will throw away,
+       which the log above has already listed. */
+    function repairCheckout() {
+        if (!confirm(T.js_repair_confirm)) return;
+        var btn    = document.getElementById('btn-repair-checkout');
+        var run    = document.getElementById('btn-run-update');
+        var out    = document.getElementById('update-output');
+        var status = document.getElementById('update-status');
+        btn.disabled = true;
+        run.disabled = true;
+        out.innerHTML = '';
+        out.style.display = 'block';
+        _statusColor(status, 'muted');
+        status.textContent = T.js_running;
+        var stop = _followUpdateLog(function(ok) {
+            btn.disabled = false;
+            run.disabled = false;
+            _statusColor(status, ok ? 'ok' : 'err');
+            status.textContent = ok ? T.js_repair_done : T.js_failed_see_output;
+        });
+        fetch('/repair_checkout', {method: 'POST'}).then(function(r) {
+            if (!r.ok) {
+                stop();
+                _statusColor(status, 'err');
+                status.textContent = T.js_failed_see_output;
+                btn.disabled = false;
+                run.disabled = false;
+            }
+        }).catch(function(e) {
+            stop();
+            _statusColor(status, 'err');
+            status.textContent = T.js_request_failed_c + e;
+            btn.disabled = false;
+            run.disabled = false;
         });
     }
 
