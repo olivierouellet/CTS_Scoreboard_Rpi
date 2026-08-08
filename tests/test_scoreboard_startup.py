@@ -232,3 +232,84 @@ def test_a_config_reload_does_not_shrink_the_waiting_message(qt_app):
     assert w.status.font().pixelSize() == headline, 'the headline shrank'
     assert w.status_detail.font().pixelSize() == detail, 'the detail line shrank'
     w.close()
+
+
+# ── Losing the link mid-meet ───────────────────────────────────────────────────
+# A cold boot and a dropped connection are different problems and get different
+# treatment. Cold boot: the board is empty, so the full-screen message is right —
+# there is nothing to cover and someone is setting up. Mid-meet: the board holds a
+# real start list, so covering it for a two-second blip is worse than the blip.
+
+def test_a_cold_boot_still_says_why_the_tv_is_blank(qt_app, hanging_server):
+    app = ScoreboardApp(hanging_server, fullscreen=False)
+    try:
+        app._on_connected(False)
+        assert app.window.status.isVisible(), 'an empty board must explain itself'
+        assert not app.window.link_badge.isVisible()
+    finally:
+        app.link.stop()
+
+
+def test_a_short_drop_shows_nothing_at_all(qt_app, hanging_server):
+    """Most reconnects beat the grace period: a switch renegotiating, the server
+    restarting after an update. Flashing a warning for those is the whole complaint."""
+    app = ScoreboardApp(hanging_server, fullscreen=False)
+    try:
+        app._on_connected(True)          # we have been connected before
+        app._on_connected(False)         # ... and just dropped
+        qt_app.processEvents()
+
+        assert not app.window.status_box.isVisible(), 'covered the board on a blip'
+        assert not app.window.link_badge.isVisible(), 'announced a blip'
+        # But the clock stops inventing a time immediately, badge or no badge.
+        assert app.window.link_lost
+
+        app._on_connected(True)
+        qt_app.processEvents()
+        assert not app.window.link_lost
+        assert not app._drop_timer.isActive(), 'the pending announcement survived'
+    finally:
+        app.link.stop()
+
+
+def test_a_drop_that_persists_gets_the_badge_not_the_overlay(qt_app, hanging_server):
+    app = ScoreboardApp(hanging_server, fullscreen=False)
+    try:
+        app._on_connected(True)
+        app._on_connected(False)
+        app._announce_drop()             # the grace period elapsing
+        qt_app.processEvents()
+
+        assert app.window.link_badge.isVisible()
+        assert not app.window.status_box.isVisible(), 'the board was covered'
+        assert 'CONNECTION LOST' in app.window.link_badge.text().upper()
+    finally:
+        app.link.stop()
+
+
+def test_the_badge_counts_the_seconds(qt_app, hanging_server):
+    """The elapsed count is the only thing that distinguishes "still trying" from
+    "hung" — a static message looks identical to a crash."""
+    app = ScoreboardApp(hanging_server, fullscreen=False)
+    try:
+        app._on_connected(True)
+        app._on_connected(False)
+        app._waiting_since -= 75         # pretend it has been down a while
+        app._announce_drop()
+        assert '1 min 15 s' in app.window.link_badge.text()
+    finally:
+        app.link.stop()
+
+
+def test_reconnecting_before_the_grace_ends_cancels_the_announcement(qt_app,
+                                                                    hanging_server):
+    app = ScoreboardApp(hanging_server, fullscreen=False)
+    try:
+        app._on_connected(True)
+        app._on_connected(False)
+        app._on_connected(True)
+        app._announce_drop()             # fires late, must be a no-op
+        qt_app.processEvents()
+        assert not app.window.link_badge.isVisible()
+    finally:
+        app.link.stop()

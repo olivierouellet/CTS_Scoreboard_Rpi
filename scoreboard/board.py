@@ -111,6 +111,12 @@ _TIME_RUNNING   = '#a0a0a0'
 _TIME_LOCK_FROM = '#ffffff'
 _TIME_LOCK_MS   = 800
 
+# Shown on the link-lost badge and on the frozen clock, so the two obviously belong
+# to each other. Not a theme key: the stock `time` colour is already gold, so a
+# themeable "warning" would be one more setting an operator could turn into
+# something indistinguishable from a healthy board.
+_STALE_COLOR = '#ef5350'
+
 _LANE_SUFFIX = re.compile(r'(\d+)$')
 
 # Fractions of a row's height used as the font ceiling for each kind of cell.
@@ -502,6 +508,65 @@ class LaneRow(QFrame):
         self.place_label.setText(place)
 
 
+class Badge(QLabel):
+    """A small pill floating over the board, sized as a fraction of the window.
+
+    Deliberately *not* the status overlay: that one is opaque and full screen, so
+    using it for anything the operator needs to see through hides the very board it
+    is reporting on. The browser draws its test-session notice this way
+    (`.test-overlay` in timing_display.css) and so do we.
+
+    Two live at once — the test session along the bottom, the link state along the
+    top — so they can never collide.
+    """
+
+    def __init__(self, parent=None, *, at_top=False):
+        super().__init__('', parent)
+        self.setAlignment(Qt.AlignCenter)
+        self.at_top = at_top
+        self._tint  = '#ffffff'
+        self.hide()
+
+    def apply_theme(self, cfg: Config, tint: str):
+        """Inverted pill: *tint* at 75% behind, the board's background on top."""
+        self._tint = tint
+        colour = QColor(tint)
+        self.setStyleSheet(
+            f"color: {cfg.color('bg')};"
+            f"background-color: rgba({colour.red()},{colour.green()},{colour.blue()},0.75);"
+            f"border-radius: 6px;")
+        font = QFont(cfg.family)
+        font.setBold(True)
+        font.setLetterSpacing(QFont.PercentageSpacing, 115)   # `.test-overlay`'s 0.15em
+        _restyle(self, font)
+
+    def place(self, width: int, height: int, top_offset: int = 0):
+        """Centre horizontally, 2.5% in from whichever edge this badge hugs.
+
+        *top_offset* is where the board's content starts — the header bar's height —
+        so a top badge sits under the header rather than over the event name, which
+        is exactly what an official still wants to read while the link is down.
+        """
+        font = self.font()
+        font.setPixelSize(max(10, int(height * 0.022)))
+        self.setFont(font)
+        self.adjustSize()
+        pad_x, pad_y = int(width * 0.025), int(height * 0.006)
+        w = self.sizeHint().width() + 2 * pad_x
+        h = self.sizeHint().height() + 2 * pad_y
+        margin = int(height * 0.025)
+        y = top_offset + margin if self.at_top else height - h - margin
+        self.setGeometry((width - w) // 2, y, w, h)
+
+    def show_text(self, text: str, width: int, height: int, top_offset: int = 0):
+        """Set the text and place it, or hide the badge when *text* is empty."""
+        self.setText(text)
+        self.setVisible(bool(text))
+        if text:
+            self.place(width, height, top_offset)
+            self.raise_()
+
+
 class HeaderBar(QFrame):
     """The top bar. Scales its own children for the same reason the rows do."""
 
@@ -828,13 +893,16 @@ class BoardWindow(QWidget):
         status_layout.addStretch(1)
         self.status_box.hide()
 
-        # Test-session badge. Deliberately NOT the status overlay: that one is
-        # opaque and full-screen, which would hide the very board the operator is
-        # testing. The browser draws a small pill at the bottom centre
-        # (`.test-overlay` in timing_display.css) and so do we.
-        self.test_badge = QLabel('', self)
-        self.test_badge.setAlignment(Qt.AlignCenter)
-        self.test_badge.hide()
+        # Test-session badge, bottom centre, matching `.test-overlay`.
+        self.test_badge = Badge(self)
+        # Link-lost badge, top centre. A dropped connection mid-meet must NOT raise
+        # the status overlay: the board is holding a real start list or a real set of
+        # results, and covering those for a two-second blip is worse than the blip.
+        # The full-screen message is for a cold boot, where there is nothing to hide.
+        self.link_badge = Badge(self, at_top=True)
+        # True from the moment the link drops until it comes back. While set, the
+        # clock is frozen rather than interpolating — see set_link_lost.
+        self.link_lost = False
 
         # The carousel overlay, above the board and above the status message.
         self.splash = SplashOverlay(cfg, self)
@@ -874,16 +942,8 @@ class BoardWindow(QWidget):
             f"color: {cfg.color('header_value')}; background: transparent;"
             f" border: none; {divider}")
         self.wall_clock.setFont(QFont(cfg.digits_family))
-        # Inverted pill: board text colour at 75% behind, background colour on top.
-        tint = QColor(cfg.color('row_text'))
-        self.test_badge.setStyleSheet(
-            f"color: {cfg.color('bg')};"
-            f"background-color: rgba({tint.red()},{tint.green()},{tint.blue()},0.75);"
-            f"border-radius: 6px;")
-        badge_font = QFont(cfg.family)
-        badge_font.setBold(True)
-        badge_font.setLetterSpacing(QFont.PercentageSpacing, 115)   # `0.15em`
-        _restyle(self.test_badge, badge_font)
+        self.test_badge.apply_theme(cfg, cfg.color('row_text'))
+        self.link_badge.apply_theme(cfg, _STALE_COLOR)
 
         self.status_box.setStyleSheet(f"background-color: {cfg.color('bg')};")
         self.status.setStyleSheet(
@@ -895,6 +955,9 @@ class BoardWindow(QWidget):
         self.header_row.apply_theme()
         for row in self.rows:
             row.apply_theme()
+        # Last, so it wins: both of the loops above repaint the clock and the lane
+        # times for a healthy link.
+        self._apply_link_tint()
         if hasattr(self, 'splash'):
             self.splash.apply_config(cfg)
 
@@ -1005,8 +1068,9 @@ class BoardWindow(QWidget):
         if self._col_fraction < 1.0:
             self._apply_col_fraction(self._col_fraction)   # widths are width-relative
         self.splash.setGeometry(self.rect())
-        if self.test_badge.isVisible():
-            self._place_test_badge()
+        for badge in (self.test_badge, self.link_badge):
+            if badge.isVisible():
+                badge.place(self.width(), self.height(), self.header.height())
         self.status_box.setGeometry(self.rect())
         font = self.status.font()
         font.setPixelSize(max(16, int(self.height() * 0.055)))
@@ -1037,25 +1101,65 @@ class BoardWindow(QWidget):
         A recorded session looks exactly like a real race on screen, so the board
         has to stay fully visible — the badge only has to be impossible to miss.
         """
-        self.test_badge.setText(self.cfg.strings.get('test_session', '⚠ TEST SESSION')
-                                if active else '')
-        self.test_badge.setVisible(active)
-        if active:
-            self._place_test_badge()
-            self.test_badge.raise_()
+        self.test_badge.show_text(
+            self.cfg.strings.get('test_session', '⚠ TEST SESSION') if active else '',
+            self.width(), self.height())
 
-    def _place_test_badge(self):
-        """Bottom centre, matching `.test-overlay`'s 2.5vh offset in the browser."""
-        font = self.test_badge.font()
-        font.setPixelSize(max(10, int(self.height() * 0.022)))
-        self.test_badge.setFont(font)
-        self.test_badge.adjustSize()
-        pad_x, pad_y = int(self.width() * 0.025), int(self.height() * 0.006)
-        width  = self.test_badge.sizeHint().width() + 2 * pad_x
-        height = self.test_badge.sizeHint().height() + 2 * pad_y
-        self.test_badge.setGeometry((self.width() - width) // 2,
-                                    self.height() - height - int(self.height() * 0.025),
-                                    width, height)
+    def set_link_lost(self, active: bool, detail: str | None = None):
+        """Report a dropped connection without covering the board.
+
+        Everything on screen is still the last thing the console actually said, so it
+        stays exactly where it is; the badge says not to trust it as *live*. That is
+        the whole reason this is not `set_status`, which is opaque and full screen.
+
+        The clock is frozen at the same moment, and this is the part that matters
+        beyond looks. The ticker interpolates between `running_time` frames, so left
+        alone it keeps counting up smoothly off a base that stopped arriving — the
+        board would show a confident, fabricated race time. Stopping it and tinting
+        it the badge's colour says "this is the last figure the console gave me".
+
+        The lanes' `running` flags are deliberately left alone: they are what the
+        console said, the race is presumably still going, and clearing them here
+        would fire the split-lock flash on every lane and lose the state we need to
+        pick up again on reconnect.
+
+        *detail* of ``None`` leaves the badge's text as it is — the reconnect loop
+        reports each failed attempt, and re-blanking the badge on every one of them
+        would make it strobe once it is up.
+        """
+        active = bool(active)
+        changed, self.link_lost = active != self.link_lost, active
+
+        if changed:
+            if active:
+                self._clock_timer.stop()
+            # Coming back it is left stopped on purpose: `_clock_base` is stale, so
+            # resuming now would jump. The next `running_time` frame re-bases it and
+            # `_sync_clock` starts it again — see apply_update.
+            self._apply_link_tint()
+
+        if not active:
+            self.link_badge.show_text('', self.width(), self.height())
+        elif detail is not None:
+            self.link_badge.show_text(detail, self.width(), self.height(),
+                                      self.header.height())
+
+    def _apply_link_tint(self):
+        """Colour the clock, and any lane still holding it, for the current link state.
+
+        Re-applied from `apply_theme` as well as from `set_link_lost`: `/config` is
+        fetched over plain HTTP and can succeed while the WebSocket is still down, so
+        a reload during an outage would otherwise repaint the clock as though the
+        console were talking again.
+        """
+        cfg = self.cfg
+        colour = _STALE_COLOR if self.link_lost else cfg.color('time')
+        self.chrono_label.setStyleSheet(
+            f"color: {colour}; background: transparent; border: none;"
+            f"border-left: 1px solid {cfg.color('header_border')};")
+        for row in self.rows:
+            if row.running:
+                row._style_time(_STALE_COLOR if self.link_lost else _TIME_RUNNING)
 
     def set_status(self, text: str, detail: str = ''):
         """Show (or clear, with ``''``) the full-screen status message.
@@ -1311,7 +1415,14 @@ class BoardWindow(QWidget):
                 row.time_label.setText(text)
 
     def _sync_clock(self):
-        """Run the ticker only while at least one lane is actually swimming."""
+        """Run the ticker only while at least one lane is actually swimming.
+
+        And only while the console is still talking to us: with the link down the
+        ticker has nothing to interpolate *towards*, so it would invent a time.
+        """
+        if self.link_lost:
+            self._clock_timer.stop()
+            return
         if any(row.running for row in self.rows):
             if not self._clock_timer.isActive():
                 self._clock_timer.start()

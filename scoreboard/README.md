@@ -264,7 +264,7 @@ Anything that sets a font on a `FitLabel` therefore goes through the override; i
 
 **Three labels are not `FitLabel`s** and need the same care by hand: the status
 overlay's two lines and the test-session badge. They are sized directly from the
-window (`resizeEvent`, `_place_test_badge`) rather than fitted to a cell, so
+window (`resizeEvent`, `Badge.place`) rather than fitted to a cell, so
 `apply_theme` restyles them through `board._restyle()`, which carries the current
 pixel size onto the new font. Without it the waiting message — the only thing on
 screen on a board that cannot reach the server — came up at ~13px on every boot.
@@ -402,6 +402,10 @@ It must **not** use `set_status()`. That overlay is opaque and full-screen, so
 routing `test_mode` through it hid the entire scoreboard behind the words TEST
 SESSION — which is exactly what happened first time round.
 
+Badges are a shared `Badge` widget, and there are two: this one along the bottom and
+the link-lost one along the top, so they can never overlap. A recorded session can
+drop its link like any other, and both notices have to survive it.
+
 ### The splash / carousel overlay
 
 Raised over the whole board by the carousel button on `/operator`, which arrives
@@ -514,17 +518,50 @@ from `ScoreboardApp.__init__` that runs *before the first paint*, so the TV show
 nothing at all — measured at 10.05s to first paint before the fix, 0.05s after.
 `tests/test_scoreboard_startup.py` guards this.
 
-### The waiting screen
+### Losing the server
 
-| headline | when |
-| --- | --- |
-| *Waiting for the timing server* | never connected yet |
-| *Lost connection to the timing server* | the link dropped mid-meet, so the board on screen is stale |
+Two different problems, so they look different. Confusing them is what made a
+one-second network blip blank a live scoreboard.
 
-Under it, a dimmer line: `splouch.local · retrying · 47 s`. The elapsed
-count ticks every second, and it is there for one reason — it is the only thing on
-screen that tells an operator the display is still trying rather than hung. A
-static message looks identical to a crash.
+| | board holds | treatment |
+| --- | --- | --- |
+| **never connected** | nothing | full-screen *Waiting for the timing server* |
+| **dropped mid-meet** | a real start list or real results | a badge, top centre |
+
+**A cold boot gets the whole screen** because there is nothing to cover and whoever
+is setting up needs to know why the TV is blank. Under the headline sits a dimmer
+line, `splouch.local · retrying · 47 s`. The elapsed count ticks every second for
+one reason: it is the only thing on screen that says the display is still trying
+rather than hung. A static message looks identical to a crash.
+
+**A mid-meet drop never covers the board.** Everything on screen is still the last
+thing the console actually said, and an official reading lane 4's split does not
+want it replaced by an apology. The badge sits below the header bar — top centre,
+but clear of the event, heat and clocks, which are exactly what stays useful during
+an outage — and carries the same elapsed count: `⚠ CONNEXION PERDUE · 12 s`.
+
+**Nothing appears for the first few seconds** (`_DROP_GRACE_MS`, 4s). Most reconnects
+beat it: a switch renegotiating, the server restarting after an update. Flashing a
+warning across the board for two seconds is worse than the two seconds. `live.html`
+hedges the same way with `LEAVE_RESULTS_DEBOUNCE`.
+
+**The clock freezes the instant the link goes**, grace period or not, and this is the
+part that is not cosmetic. The ticker interpolates between `running_time` frames, so
+left alone it keeps counting up smoothly off a base that stopped arriving — the board
+would show a confident, fabricated race time, and until now the full-screen overlay
+was the only thing stopping anyone from reading it. Frozen and tinted `_STALE_COLOR`,
+it says "this is the last figure the console gave me". Every running lane's time is
+tinted with it, so the badge and the stale numbers obviously belong together.
+
+The lanes' `running` flags are left alone: they are what the console said, the race
+is presumably still going, and clearing them would fire the split-lock flash on every
+lane and lose the state needed to resume. On reconnect the ticker stays stopped until
+the next `running_time` re-bases it — restarting from the stale base would make the
+clock jump.
+
+`_STALE_COLOR` is deliberately not a theme key. The stock `time` colour is already
+gold, so a themeable warning colour would be one more setting an operator could turn
+into something indistinguishable from a healthy board.
 
 **Translated** from the `[display]` section of the locale files, selected by
 **Settings → Display → Scoreboard language** — the same setting that translates the

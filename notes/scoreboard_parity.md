@@ -253,7 +253,12 @@ and an empty board skips it, since two seconds of dissolving nothing just looks 
 | — meet title | absent | across the top 12% | **intentional** — follows `scoreboard.html`; a splash with no idea whose meet it is helps nobody |
 | — background | `#000` | `shared/static/img/scoreboard_bg.png`, cropped to cover | **intentional** — sponsor logos are usually transparent PNGs, and what sits behind them is most of what the audience sees |
 | test badge | `.test-overlay` — bottom 2.5vh, `0.6vh 2.5vw`, 2.2vh bold, `0.15em`, radius 6, `row_text` at 75%, `bg` text | same proportions, same 75% | match |
-| status / waiting | — | full-screen, opaque, `set_status()` | **Qt only** — the browser has no equivalent; a kiosk needs to say why it is frozen |
+| cold-boot waiting screen | — | full-screen, opaque, `set_status()` | **Qt only** — the browser has no equivalent; a kiosk with a blank TV needs to say why |
+| link-lost badge | — | a pill, top centre, plus a frozen tinted clock | **Qt only** — `/live` shows stale data silently, which is worse |
+
+`/live` never signals a dropped connection at all: it keeps whatever the last frame
+said on screen indefinitely, with no indication that it is no longer live. The Qt
+board deliberately goes further, because it is the one on the pool deck.
 
 The status overlay must never be used for `test_mode`: it is opaque and full-screen, so it
 would hide the very board the operator is testing.

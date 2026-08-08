@@ -37,10 +37,29 @@ _CONFIG_RETRY_MS = 5000
 # How often to refresh the "waiting" line's elapsed count.
 _WAIT_TICK_MS = 1000
 
+# How long a dropped link has to stay dropped before the board says anything.
+# Reconnects are usually quicker than this — a switch renegotiating, the server
+# restarting after an update — and flashing a warning across the board for two
+# seconds is worse than the two seconds. The browser hedges the same way with
+# `LEAVE_RESULTS_DEBOUNCE` in live.html.
+#
+# Nothing is being hidden by waiting: the clock freezes the moment the link goes,
+# so the board stops inventing a race time whether or not the badge is up yet.
+_DROP_GRACE_MS = 4000
+
 
 def _host_of(url: str) -> str:
     """`http://splouch.local` -> `splouch.local` — the scheme is noise on a TV."""
     return url.split('://', 1)[-1].rstrip('/')
+
+
+def _elapsed(seconds: float) -> str:
+    """`47 s`, then `3 min 05 s`. The only thing on screen that tells an operator
+    the display is still trying rather than hung."""
+    seconds = int(seconds)
+    if seconds < 60:
+        return f'{seconds} s'
+    return f'{seconds // 60} min {seconds % 60:02d} s'
 
 
 class ScoreboardApp:
@@ -61,7 +80,17 @@ class ScoreboardApp:
 
         self._waiting_since = time.monotonic()
         self._waiting_key   = 'waiting_server'
+        # Never reached the server at all, as opposed to having lost it. The two
+        # want completely different treatment — see _on_connected.
+        self._ever_connected = False
         self._show(self.window, fullscreen)
+
+        # Holds the link-lost badge back until a drop looks real rather than
+        # momentary. Single-shot: `_on_connected` cancels it on reconnect.
+        self._drop_timer = QTimer()
+        self._drop_timer.setSingleShot(True)
+        self._drop_timer.setInterval(_DROP_GRACE_MS)
+        self._drop_timer.timeout.connect(self._announce_drop)
 
         # Ticks the elapsed count on the waiting screen. Without it the TV looks
         # identical whether the app is retrying or has hung, which is exactly the
@@ -102,21 +131,23 @@ class ScoreboardApp:
     # ── Waiting screen ─────────────────────────────────────────────────────────
 
     def _tick_waiting(self):
-        """Redraw the waiting screen with a fresh elapsed count.
+        """Refresh whichever indicator is up with a fresh elapsed count.
 
-        Reads the headline from the *current* config every tick rather than
-        caching the rendered string, so a config arriving mid-wait switches the
-        language on screen immediately.
+        Reads the strings from the *current* config every tick rather than caching
+        the rendered text, so a config arriving mid-wait switches the language on
+        screen immediately.
+
+        One timer drives both indicators: the full-screen message on a cold boot, and
+        the badge once a mid-meet drop has outlasted its grace period.
         """
+        if self.window.link_lost:
+            self.window.set_link_lost(True, self._drop_text())
+            return
         strings = self.config.strings
-        seconds = int(time.monotonic() - self._waiting_since)
-        if seconds < 60:
-            elapsed = f'{seconds} s'
-        else:
-            elapsed = f'{seconds // 60} min {seconds % 60:02d} s'
         self.window.set_status(
             strings.get(self._waiting_key, self._waiting_key),
-            f"{_host_of(self.server)} · {strings.get('retrying', 'retrying')} · {elapsed}")
+            f"{_host_of(self.server)} · {strings.get('retrying', 'retrying')} · "
+            f"{_elapsed(time.monotonic() - self._waiting_since)}")
 
     def _start_waiting(self, key: str):
         self._waiting_key   = key
@@ -246,16 +277,49 @@ class ScoreboardApp:
     # ── Server events (docs/api.md §2 `/ws/scoreboard`) ────────────────────────
 
     def _on_connected(self, ok: bool):
+        """Cold boot and a mid-meet drop are different problems, so they look different.
+
+        * **Never connected.** The board is empty. The full-screen message is right:
+          there is nothing to cover, and whoever is setting up needs to know why the
+          TV is blank.
+        * **Dropped mid-meet.** The board is holding a real start list or a real set
+          of results. Covering those is worse than the outage, so it gets a badge —
+          and only once the drop has outlasted `_DROP_GRACE_MS`, since most are over
+          in a second or two.
+
+        The clock freezes immediately either way. That is not cosmetic: the ticker
+        interpolates between console frames, so left running it fabricates a race
+        time for as long as the link is down.
+        """
         if ok:
+            self._ever_connected = True
+            self._drop_timer.stop()
             self._stop_waiting()
+            self.window.set_link_lost(False)
             # The server's per-connection state (theme, lane count) may have moved
             # while we were away; a reconnect is the cheapest place to resync.
             self.config_loader.request()
-        else:
-            # Distinguish "never connected" from "the link dropped mid-meet" —
-            # the second means the board on screen is stale, which matters more.
-            self._start_waiting(
-                'connection_lost' if self._have_config else 'waiting_server')
+            return
+
+        self._waiting_since = time.monotonic()
+        if not self._ever_connected:
+            self._start_waiting('waiting_server')
+            return
+        # Freeze now, announce later.
+        self.window.set_link_lost(True)
+        if not self._drop_timer.isActive():
+            self._drop_timer.start()
+
+    def _announce_drop(self):
+        """The drop outlasted the grace period — put the badge up."""
+        if not self.window.link_lost:
+            return                        # reconnected while the timer was pending
+        self.window.set_link_lost(True, self._drop_text())
+        self._wait_timer.start()          # ticks the elapsed count on the badge
+
+    def _drop_text(self) -> str:
+        headline = self.config.strings.get('link_lost', '⚠ CONNECTION LOST')
+        return f'{headline} · {_elapsed(time.monotonic() - self._waiting_since)}'
 
     def _on_frame(self, event: str, data):
         if event == 'update_scoreboard':

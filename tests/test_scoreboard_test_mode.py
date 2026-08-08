@@ -144,3 +144,99 @@ def test_a_config_reload_does_not_shrink_the_badge(board, qt_app):
 
     assert board.test_badge.font().pixelSize() == before, 'the badge shrank'
     assert board.test_badge.font().bold(), 'and it must stay bold'
+
+
+# ── Link-lost badge ────────────────────────────────────────────────────────────
+# A drop mid-meet must not raise the full-screen status overlay: the board is
+# holding a real start list or real results, and covering those for a two-second
+# blip is worse than the blip. The badge says "do not trust this as live" while
+# leaving the information on screen.
+
+def test_a_drop_does_not_cover_the_board(board, qt_app):
+    board.set_link_lost(True, '⚠ CONNEXION PERDUE · 5 s')
+    qt_app.processEvents()
+    assert board.link_badge.isVisible()
+    assert not board.status_box.isVisible(), 'the board was covered'
+
+
+def test_the_two_badges_never_collide(board, qt_app):
+    """A recorded session can drop its link like any other."""
+    board.set_test_mode(True)
+    board.set_link_lost(True, '⚠ CONNEXION PERDUE · 5 s')
+    qt_app.processEvents()
+    assert board.test_badge.isVisible() and board.link_badge.isVisible()
+    assert not board.link_badge.geometry().intersects(board.test_badge.geometry())
+
+
+def test_the_link_badge_clears_the_header(board, qt_app):
+    """Top centre, but under the bar — event, heat and the clocks are exactly what
+    an official still wants to read while the link is down."""
+    board.set_link_lost(True, '⚠ CONNEXION PERDUE · 5 s')
+    qt_app.processEvents()
+    assert board.link_badge.geometry().top() >= board.header.height()
+
+
+def test_the_clock_freezes_instead_of_inventing_a_time(board, qt_app):
+    """The ticker interpolates between console frames, so left running it counts up
+    off a base that stopped arriving — a confident, fabricated race time."""
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    assert board._clock_timer.isActive()
+    frozen = board.chrono_label.text()
+
+    board.set_link_lost(True)
+    qt_app.processEvents()
+    assert not board._clock_timer.isActive(), 'the clock kept running on a dead link'
+    assert board.chrono_label.text() == frozen, 'the last figure must stay on screen'
+    assert board.rows[0].running, 'the console said this lane is swimming; keep it'
+
+
+def test_the_frozen_clock_is_tinted(board, qt_app):
+    from scoreboard.board import _STALE_COLOR
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    qt_app.processEvents()
+    board.set_link_lost(True)
+    assert _STALE_COLOR in board.chrono_label.styleSheet()
+    assert _STALE_COLOR in board.rows[0].time_label.styleSheet()
+
+    board.set_link_lost(False)
+    assert _STALE_COLOR not in board.chrono_label.styleSheet()
+
+
+def test_a_restyle_during_an_outage_keeps_the_tint(board, qt_app):
+    """`/config` is plain HTTP and can answer while the WebSocket is still down."""
+    from scoreboard.board import _STALE_COLOR
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    board.set_link_lost(True)
+    qt_app.processEvents()
+
+    board.set_config(Config({'num_lanes': 6}))
+    qt_app.processEvents()
+    assert _STALE_COLOR in board.chrono_label.styleSheet(), 'reload repainted it as live'
+
+
+def test_repeated_drop_reports_do_not_strobe_the_badge(board, qt_app):
+    """The reconnect loop emits `connected(False)` on every failed attempt."""
+    board.set_link_lost(True, '⚠ CONNEXION PERDUE · 5 s')
+    qt_app.processEvents()
+    board.set_link_lost(True)            # no detail — must leave the badge alone
+    qt_app.processEvents()
+    assert board.link_badge.isVisible()
+    assert board.link_badge.text() == '⚠ CONNEXION PERDUE · 5 s'
+
+
+def test_reconnecting_clears_the_badge_and_lets_the_clock_resume(board, qt_app):
+    board.apply_update({'running_time': '12.30', 'lane_running1': True})
+    board.set_link_lost(True, '⚠ CONNEXION PERDUE · 5 s')
+    qt_app.processEvents()
+
+    board.set_link_lost(False)
+    qt_app.processEvents()
+    assert not board.link_badge.isVisible()
+    # Still stopped: `_clock_base` is stale, so resuming before the next frame
+    # would make the clock jump. The frame below re-bases it.
+    assert not board._clock_timer.isActive()
+
+    board.apply_update({'running_time': '19.80'})
+    qt_app.processEvents()
+    assert board._clock_timer.isActive(), 'the clock never picked up again'

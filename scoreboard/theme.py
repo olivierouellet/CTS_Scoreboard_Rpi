@@ -37,9 +37,14 @@ DEFAULT_LABELS = {
 # the floor for a first-ever boot with no cached config yet.
 DEFAULT_STRINGS = {
     'waiting_server':  'Waiting for the timing server',
+    # Kept for the documented `display_strings` contract (docs/api.md), but this
+    # display no longer shows it: a mid-meet drop gets the `link_lost` badge rather
+    # than a full-screen message, so the board stays readable. Only a cold boot,
+    # where there is nothing to cover, still takes the whole screen.
     'connection_lost': 'Lost connection to the timing server',
     'retrying':        'retrying',
     'test_session':    '⚠ TEST SESSION',
+    'link_lost':       '⚠ CONNECTION LOST',
 }
 
 # Column visibility flags, and the header-label flags that are independent of them
