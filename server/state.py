@@ -24,9 +24,16 @@ except ImportError:
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
 app_dir           = os.path.dirname(os.path.abspath(__file__))
+# The git checkout itself, one level up from server/. Every git command must run
+# from here, not from app_dir: a git *pathspec* resolves relative to the working
+# directory, so `git checkout -- uv.lock` from server/ silently fails with
+# "pathspec did not match any file(s)" while non-pathspec commands like `git pull`
+# quietly succeed by walking up to the repo root. That mismatch let the update's
+# uv.lock guard fail unnoticed until a release actually changed uv.lock.
+REPO_DIR          = os.path.dirname(app_dir)
 # Cross-component assets (static/, locales/) live in the sibling `shared/` dir,
 # one level up from server/ — they are also consumed by the cloud relay's build.
-SHARED_DIR        = os.path.join(os.path.dirname(app_dir), 'shared')
+SHARED_DIR        = os.path.join(REPO_DIR, 'shared')
 STATIC_DIR        = os.path.join(SHARED_DIR, 'static')
 LOCALES_DIR       = os.path.join(SHARED_DIR, 'locales')
 SCOREBOARD_DIR    = os.path.expanduser('~/SplouchData')

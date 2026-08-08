@@ -21,7 +21,7 @@ router = APIRouter(tags=['System'])
 # Single source of truth for the systemd unit (install/scripts/refresh-service.sh).
 # Run before each in-app restart so a changed entrypoint/layout self-heals rather
 # than crash-looping on a stale unit. Sibling of the repo's server/ dir.
-_REFRESH_SCRIPT = os.path.join(os.path.dirname(state.app_dir),
+_REFRESH_SCRIPT = os.path.join(state.REPO_DIR,
                                'install', 'scripts', 'refresh-service.sh')
 
 
@@ -88,7 +88,9 @@ _VERSION_RE = re.compile(r'^v\d{4}\.\d{2}\.\d+$')
 
 
 def _update_config():
-    """Load the update-dropdown settings from update_config.toml at the repo root.
+    """Load the update-dropdown settings from `server/update_config.toml`.
+
+    Beside the server package, not at the repo root — `state.REPO_DIR` is the root.
 
     Read fresh on each call so edits take effect without restarting the server.
     Returns (extra_branches, max_versions); max_versions == 0 means no limit.
@@ -197,7 +199,7 @@ def _run_update(target=None):
 
     try:
         emit('$ git fetch --tags\n')
-        out, rc = _run_cmd_blocking(['git', 'fetch', '--tags'], cwd=state.app_dir)
+        out, rc = _run_cmd_blocking(['git', 'fetch', '--tags'], cwd=state.REPO_DIR)
         if out:
             emit(out)
         if rc != 0:
@@ -205,9 +207,24 @@ def _run_update(target=None):
             state._update_log_done = False
             return
 
-        # uv sync rewrites uv.lock locally; discard that drift so it
-        # doesn't block the checkout/pull below.
-        _run_cmd_blocking(['git', 'checkout', '--', 'uv.lock'], cwd=state.app_dir)
+        # `uv sync` rewrites uv.lock on every deploy, so the file is essentially
+        # always dirty on a Pi; discard that expected drift or the pull below aborts
+        # with "local changes would be overwritten" the first time a release changes
+        # uv.lock. `HEAD --` rather than a bare `--`, so a *staged* change is reset
+        # too — `git checkout -- <path>` restores from the index, which would leave a
+        # staged uv.lock still differing from HEAD and still blocking the merge.
+        #
+        # Report a failure instead of swallowing it. This ran from `server/` for a
+        # long time, where the pathspec cannot resolve, and the silent non-zero exit
+        # is exactly why the guard was never noticed to be doing nothing.
+        out, rc = _run_cmd_blocking(['git', 'checkout', 'HEAD', '--', 'uv.lock'],
+                                    cwd=state.REPO_DIR)
+        if rc != 0:
+            emit('$ git checkout HEAD -- uv.lock\n')
+            if out:
+                emit(out)
+            emit('\nCould not reset uv.lock; the pull may fail on local changes.\n',
+                 error=True)
 
         extra_refs, _ = _update_config()
         if not target or target == 'master':
@@ -226,7 +243,7 @@ def _run_update(target=None):
 
         for cmd in cmds:
             emit('$ ' + ' '.join(cmd) + '\n')
-            out, rc = _run_cmd_blocking(cmd, cwd=state.app_dir)
+            out, rc = _run_cmd_blocking(cmd, cwd=state.REPO_DIR)
             if out:
                 emit(out)
             if rc != 0:
@@ -291,12 +308,12 @@ def _run_os_update():
 def route_version_list():
     try:
         r = subprocess.run(['git', 'describe', '--tags', '--exact-match', 'HEAD'],
-                           capture_output=True, text=True, cwd=state.app_dir, timeout=8)
+                           capture_output=True, text=True, cwd=state.REPO_DIR, timeout=8)
         current = r.stdout.strip() if r.returncode == 0 else ''
         subprocess.run(['git', 'fetch', '--tags'], capture_output=True,
-                       cwd=state.app_dir, timeout=20)
+                       cwd=state.REPO_DIR, timeout=20)
         r = subprocess.run(['git', 'tag', '-l', '--sort=-version:refname'],
-                           capture_output=True, text=True, cwd=state.app_dir, timeout=8)
+                           capture_output=True, text=True, cwd=state.REPO_DIR, timeout=8)
         extra_refs, max_versions = _update_config()
         tags = [t.strip() for t in r.stdout.splitlines()
                 if t.strip() and _VERSION_RE.match(t.strip())]
@@ -306,7 +323,7 @@ def route_version_list():
         for ref in extra_refs:
             chk = subprocess.run(['git', 'rev-parse', '--verify', '--quiet',
                                   f'refs/remotes/origin/{ref}'],
-                                 capture_output=True, cwd=state.app_dir, timeout=8)
+                                 capture_output=True, cwd=state.REPO_DIR, timeout=8)
             if chk.returncode == 0:
                 branches.append(ref)
         return {'ok': True, 'current': current, 'versions': tags, 'branches': branches}
