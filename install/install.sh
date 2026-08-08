@@ -228,8 +228,10 @@ if [[ "$ROLE" == "server" ]]; then
         # version-selection step below then checks out the requested ref.
         if [[ -d "$INSTALL_DIR/.git" ]]; then
             # `uv sync` rewrites uv.lock; discard that expected drift so it doesn't
-            # look like a local edit and block the self-update.
-            git -C "$INSTALL_DIR" checkout -- uv.lock 2>/dev/null || true
+            # look like a local edit and block the self-update. `HEAD --`, not a bare
+            # `--`: the latter restores from the index, so a *staged* uv.lock stays
+            # different from HEAD, keeps the tree dirty, and skips the pull below.
+            git -C "$INSTALL_DIR" checkout HEAD -- uv.lock 2>/dev/null || true
             if [[ -z "$(git -C "$INSTALL_DIR" status --porcelain 2>/dev/null)" ]]; then
                 info "Fetching latest code before reinstalling…"
                 git -C "$INSTALL_DIR" fetch --tags --quiet || true
@@ -604,7 +606,8 @@ if [[ "$ROLE" == "kiosk" ]]; then
         # re-run installs the latest display code rather than re-running whatever
         # stale copy is on disk. Skipped when the tree has local edits.
         if [[ -d "$INSTALL_DIR/.git" ]]; then
-            git -C "$INSTALL_DIR" checkout -- uv.lock 2>/dev/null || true
+            # `HEAD --`, not a bare `--` — see the server role above.
+            git -C "$INSTALL_DIR" checkout HEAD -- uv.lock 2>/dev/null || true
             if [[ -z "$(git -C "$INSTALL_DIR" status --porcelain 2>/dev/null)" ]]; then
                 info "Fetching latest code before reinstalling…"
                 git -C "$INSTALL_DIR" fetch --tags --quiet || true

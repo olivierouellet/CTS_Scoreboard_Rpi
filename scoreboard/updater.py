@@ -103,8 +103,11 @@ class Updater(QObject):
             return False
 
         # `uv sync` rewrites uv.lock; that expected drift must not read as a local
-        # edit, so discard it before deciding whether the tree is dirty.
-        subprocess.run(['git', 'checkout', '--', 'uv.lock'], cwd=_REPO,
+        # edit, so discard it before deciding whether the tree is dirty. `HEAD --`,
+        # not a bare `--`: the latter restores from the index, so a *staged* uv.lock
+        # would stay different from HEAD and the dirty-tree check below would refuse
+        # the update over a file we are deliberately discarding.
+        subprocess.run(['git', 'checkout', 'HEAD', '--', 'uv.lock'], cwd=_REPO,
                        capture_output=True, timeout=30)
         status = subprocess.run(['git', 'status', '--porcelain'], cwd=_REPO,
                                 capture_output=True, text=True, timeout=30)
