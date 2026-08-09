@@ -97,3 +97,42 @@ def test_config_endpoint_exposes_the_carousel(monkeypatch, tmp_path):
     cfg = web.display_config()
     assert cfg['carousel_images'] == ['sponsor.png']
     assert cfg['carousel_interval'] == 7
+
+
+# ── Adding a theme colour must not break existing installs ─────────────────────
+
+def test_an_old_settings_file_still_gets_new_theme_colours(monkeypatch):
+    """`settings.update()` is shallow, so a stored theme replaces the whole dict.
+
+    A colour added after that file was written would then be missing rather than
+    defaulted — and the Settings picker renders a missing colour as an empty value,
+    which the browser shows as black and saves as black. `link_lost` was the first
+    key to arrive after installs existed in the wild.
+
+    Tests `merge_theme_defaults` rather than `load_settings`, which also globs the
+    meet folder and reconfigures the console decoder.
+    """
+    import state
+
+    stored = dict(state.DEFAULT_THEME_COLORS)
+    stored.pop('link_lost')                    # a settings.json written before it
+    stored['bg'] = '#123456'                   # and an operator's own choice
+    monkeypatch.setitem(state.settings, 'theme_colors', stored)
+    monkeypatch.setitem(state.settings, 'theme_fonts', {})
+
+    state.merge_theme_defaults()
+
+    assert state.settings['theme_colors']['link_lost'] == \
+        state.DEFAULT_THEME_COLORS['link_lost'], 'the picker would have shown black'
+    assert state.settings['theme_colors']['bg'] == '#123456', 'lost a stored colour'
+    assert state.settings['theme_fonts']['family'] == \
+        state.DEFAULT_THEME_FONTS['family']
+
+
+def test_every_theme_key_survives_a_round_trip(monkeypatch):
+    """The Settings form saves `{**DEFAULT, **posted}`, so the two must agree on
+    the key set — a colour the form does not render would be silently reset."""
+    import state
+    monkeypatch.setitem(state.settings, 'theme_colors', {})
+    state.merge_theme_defaults()
+    assert set(state.settings['theme_colors']) == set(state.DEFAULT_THEME_COLORS)

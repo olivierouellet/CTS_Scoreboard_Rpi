@@ -790,6 +790,15 @@ function onPasswordInput(form) {
                                         <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_podium_bronze" value="{{ theme_colors.podium_bronze }}" data-default="{{ theme_color_defaults.podium_bronze }}"><span class="cs-name small">{{ t.th_bronze }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
                                     </div>
                                 </div>
+                                {# Its own group: this one is not part of the board's
+                                   normal look. It only ever appears on the TV
+                                   display, when the console has stopped talking. #}
+                                <div class="mb-3">
+                                    <div class="panel-eyebrow">{{ t.th_grp_status }}</div>
+                                    <div class="color-grid">
+                                        <div class="cs"><input type="color" class="form-control form-control-color form-control-sm" name="color_link_lost" value="{{ theme_colors.link_lost }}" data-default="{{ theme_color_defaults.link_lost }}"><span class="cs-name small">{{ t.th_link_lost }}</span><button type="button" class="cs-reset" title="{{ t.theme_reset_default }}" aria-label="{{ t.theme_reset_default }}">↺</button></div>
+                                    </div>
+                                </div>
                                 <div class="panel-eyebrow mb-2">{{ t.th_grp_schedule }}</div>
                                 <div class="mb-3">
                                     <div class="panel-eyebrow">{{ t.th_grp_event }}</div>

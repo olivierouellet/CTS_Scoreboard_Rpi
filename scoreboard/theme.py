@@ -18,6 +18,7 @@ DEFAULT_COLORS = {
     'row_odd': '#141414', 'row_even': '#202020', 'row_text': '#e0e0e0',
     'time': '#FFD700', 'delta_better': '#4CAF50', 'delta_worse': '#808080',
     'podium_gold': '#545454', 'podium_silver': '#424242', 'podium_bronze': '#343434',
+    'link_lost': '#ef5350',
     'schedule_event': '#3b9eff', 'schedule_time': '#FFD700',
     'schedule_name': '#e0e0e0', 'schedule_club': '#666666',
 }

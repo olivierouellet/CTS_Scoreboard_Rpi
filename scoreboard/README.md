@@ -132,10 +132,13 @@ Everything comes from **Settings → Display → Theme** on the server — the s
 settings that theme the web scoreboard. Nothing is hard-coded but the fallbacks in
 `theme.py`, which only apply before the first `/config` on a fresh install.
 
-All 16 board colours are honoured, including the two that are easy to conflate:
+All 17 board colours are honoured, including the two that are easy to conflate:
 `header_label` (the word *EVENT*) and `header_value` (the number after it) are
 separate swatches, so the header is built from `HeaderCell` widgets holding two
 labels rather than one string.
+
+One of them, `link_lost`, is the only colour no browser page uses: nothing but this
+display can tell that the console has stopped talking to it.
 
 The three fonts are three distinct settings and land in three places:
 
@@ -571,7 +574,7 @@ declared dead at 11.4s, badge up at 11.6s reading `⚠ CONNECTION LOST · 11 s`.
 part that is not cosmetic. The ticker interpolates between `running_time` frames, so
 left alone it keeps counting up smoothly off a base that stopped arriving — the board
 would show a confident, fabricated race time, and until now the full-screen overlay
-was the only thing stopping anyone from reading it. Frozen and tinted `_STALE_COLOR`,
+was the only thing stopping anyone from reading it. Frozen and tinted `link_lost`,
 it says "this is the last figure the console gave me". Every running lane's time is
 tinted with it, so the badge and the stale numbers obviously belong together.
 
@@ -581,9 +584,17 @@ lane and lose the state needed to resume. On reconnect the ticker stays stopped 
 the next `running_time` re-bases it — restarting from the stale base would make the
 clock jump.
 
-`_STALE_COLOR` is deliberately not a theme key. The stock `time` colour is already
-gold, so a themeable warning colour would be one more setting an operator could turn
-into something indistinguishable from a healthy board.
+**`link_lost` is a theme colour** like every other one on the board — Settings →
+Display → Theme → *Status*. It is in its own group there because it is not part of
+the board's normal look: it appears only on the TV, and only when the console has
+stopped talking. The three shipped presets each pick a red that stands clear of
+their own `time` colour (`#ef5350` dark, `#ff5c7a` blue, `#c62828` white).
+
+It is also the first colour added since installs existed in the wild, which exposed
+a gap worth knowing about: `load_settings()` merges the stored theme *over* the
+defaults, because `settings.update()` is shallow and would otherwise drop any key
+added after that `settings.json` was written. Without that merge the Settings picker
+renders a missing colour as empty — black — and saves it.
 
 **Translated** from the `[display]` section of the locale files, selected by
 **Settings → Display → Scoreboard language** — the same setting that translates the

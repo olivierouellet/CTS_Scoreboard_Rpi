@@ -111,11 +111,10 @@ _TIME_RUNNING   = '#a0a0a0'
 _TIME_LOCK_FROM = '#ffffff'
 _TIME_LOCK_MS   = 800
 
-# Shown on the link-lost badge and on the frozen clock, so the two obviously belong
-# to each other. Not a theme key: the stock `time` colour is already gold, so a
-# themeable "warning" would be one more setting an operator could turn into
-# something indistinguishable from a healthy board.
-_STALE_COLOR = '#ef5350'
+# The link-lost badge and the frozen clock share one colour, so the two obviously
+# belong to each other. It comes from the theme (`link_lost`, Settings → Display →
+# Theme → Status), like every other colour on the board — the stock value is a red
+# that stands clear of the gold `time` it replaces.
 
 _LANE_SUFFIX = re.compile(r'(\d+)$')
 
@@ -943,7 +942,7 @@ class BoardWindow(QWidget):
             f" border: none; {divider}")
         self.wall_clock.setFont(QFont(cfg.digits_family))
         self.test_badge.apply_theme(cfg, cfg.color('row_text'))
-        self.link_badge.apply_theme(cfg, _STALE_COLOR)
+        self.link_badge.apply_theme(cfg, cfg.color('link_lost'))
 
         self.status_box.setStyleSheet(f"background-color: {cfg.color('bg')};")
         self.status.setStyleSheet(
@@ -1153,13 +1152,14 @@ class BoardWindow(QWidget):
         console were talking again.
         """
         cfg = self.cfg
-        colour = _STALE_COLOR if self.link_lost else cfg.color('time')
+        colour = cfg.color('link_lost') if self.link_lost else cfg.color('time')
         self.chrono_label.setStyleSheet(
             f"color: {colour}; background: transparent; border: none;"
             f"border-left: 1px solid {cfg.color('header_border')};")
         for row in self.rows:
             if row.running:
-                row._style_time(_STALE_COLOR if self.link_lost else _TIME_RUNNING)
+                row._style_time(cfg.color('link_lost') if self.link_lost
+                                else _TIME_RUNNING)
 
     def set_status(self, text: str, detail: str = ''):
         """Show (or clear, with ``''``) the full-screen status message.

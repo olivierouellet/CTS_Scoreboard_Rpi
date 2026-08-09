@@ -137,6 +137,10 @@ def test_every_theme_colour_reaches_a_widget(qt_app, settle_podium):
     # The heat is over, so the podium is released — but it fades in, so wait for it
     # to land before reading the row's colour back.
     settle_podium(w)
+    # `link_lost` only paints while the console has stopped talking, so put the
+    # board in that state before checking it reached anything.
+    w.set_link_lost(True, 'lost')
+    qt_app.processEvents()
 
     applied = {
         'bg':            w.styleSheet(),
@@ -156,6 +160,8 @@ def test_every_theme_colour_reaches_a_widget(qt_app, settle_podium):
         'time':          w.rows[0].time_label.styleSheet(),
         'delta_better':  w.rows[0].delta_label.styleSheet(),
         'podium_gold':   w.rows[0].styleSheet(),
+        # The badge's pill and the frozen race clock behind it.
+        'link_lost':     w.link_badge.styleSheet() + w.chrono_label.styleSheet(),
     }
     missing = [k for k, css in applied.items() if sentinels[k] not in css.lower()]
     assert not missing, f'theme colours set in Settings but ignored by the TV: {missing}'

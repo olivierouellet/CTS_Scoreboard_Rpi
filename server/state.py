@@ -79,6 +79,10 @@ DEFAULT_THEME_COLORS = {
     'row_odd': '#141414', 'row_even': '#202020', 'row_text': '#e0e0e0',
     'time': '#FFD700', 'delta_better': '#4CAF50', 'delta_worse': '#808080',
     'podium_gold': '#545454', 'podium_silver': '#424242', 'podium_bronze': '#343434',
+    # The board's one warning colour: the link-lost badge and the frozen race
+    # clock behind it. Not used by any browser page — only the Qt display can
+    # tell that the console has stopped talking to it.
+    'link_lost': '#ef5350',
     'schedule_event': '#3b9eff', 'schedule_time': '#FFD700',
     'schedule_name': '#e0e0e0', 'schedule_club': '#666666',
 }
@@ -143,6 +147,7 @@ settings = {
         'row_odd': '#141414', 'row_even': '#202020', 'row_text': '#e0e0e0',
         'time': '#FFD700', 'delta_better': '#4CAF50', 'delta_worse': '#808080',
         'podium_gold': '#545454', 'podium_silver': '#424242', 'podium_bronze': '#343434',
+        'link_lost': '#ef5350',
     },
     'theme_fonts': {'family': 'Overpass Mono', 'digits': 'DSEG7Classic', 'timing': 'Overpass Mono'},
     'intro_timeout': 300,
@@ -669,12 +674,29 @@ def translate_event_name(raw, ev):
 
 # ── Settings loader ────────────────────────────────────────────────────────────
 
+def merge_theme_defaults():
+    """Put the built-in theme back underneath whatever was stored.
+
+    ``settings.update()`` is shallow, so a saved ``settings.json`` replaces these
+    dicts outright — and a colour added to the theme *after* that file was written
+    would then be missing rather than defaulted. The Settings picker renders a
+    missing colour as an empty value, which the browser shows as black and saves as
+    black. `link_lost` was the first key to arrive after installs existed in the
+    wild; this makes every future one safe too.
+    """
+    settings['theme_colors'] = {**DEFAULT_THEME_COLORS,
+                                **(settings.get('theme_colors') or {})}
+    settings['theme_fonts']  = {**DEFAULT_THEME_FONTS,
+                                **(settings.get('theme_fonts') or {})}
+
+
 def load_settings():
     try:
         with open(settings_file, 'rt') as f:
             settings.update(json.load(f))
     except Exception:
         pass
+    merge_theme_defaults()
     csv_files = glob.glob(os.path.join(MEET_FOLDER, '*.csv'))
     if csv_files:
         try:
