@@ -313,3 +313,89 @@ def test_reconnecting_before_the_grace_ends_cancels_the_announcement(qt_app,
         assert not app.window.link_badge.isVisible()
     finally:
         app.link.stop()
+
+
+def test_repeated_drop_reports_do_not_restart_the_counter(qt_app, hanging_server):
+    """The receive loop reports a failure on every reconnect attempt, a few seconds
+    apart. Re-stamping the outage's start on each one made the badge count 0-5s over
+    and over, so it never showed how long the link had really been down."""
+    app = ScoreboardApp(hanging_server, fullscreen=False)
+    try:
+        app._on_connected(True)
+        app._on_connected(False)
+        started = app._waiting_since
+
+        app._waiting_since -= 30          # pretend 30s have passed
+        for _ in range(5):                # five more failed reconnect attempts
+            app._on_connected(False)
+        assert app._waiting_since == started - 30, 'the counter was reset'
+
+        app._announce_drop()
+        assert '30 s' in app.window.link_badge.text()
+    finally:
+        app.link.stop()
+
+
+def test_a_reconnect_re_arms_the_next_outage(qt_app, hanging_server):
+    """Ignoring repeat reports must not make the *next* real drop invisible."""
+    app = ScoreboardApp(hanging_server, fullscreen=False)
+    try:
+        app._on_connected(True)
+        app._on_connected(False)
+        app._on_connected(True)
+        assert not app.window.link_lost
+
+        app._on_connected(False)
+        assert app.window.link_lost, 'the second outage went unnoticed'
+        assert app._drop_timer.isActive()
+    finally:
+        app.link.stop()
+
+
+def test_a_dead_link_is_reported_in_seconds_not_a_minute(qt_app):
+    """`recv()` only unblocks every `_PING_EVERY`, and a `ping` on a dead socket
+    still succeeds into the kernel buffer — so silence, not an error, is what
+    declares the link dead. That makes these two constants the detection time.
+    """
+    from scoreboard.client import _PING_EVERY, _STALE
+    worst_case = _STALE + _PING_EVERY
+    assert worst_case <= 12, f'a pulled cable takes {worst_case}s to notice'
+    # And a healthy idle link must survive: the server pongs every `_PING_EVERY`,
+    # so `_STALE` has to allow several consecutive misses before giving up.
+    assert _STALE >= 3 * _PING_EVERY, 'one slow moment would drop a good link'
+
+
+def test_a_pulled_cable_is_badged_at_once_not_after_another_wait(qt_app,
+                                                                hanging_server):
+    """Detection already costs `_STALE` seconds of silence, so the grace period has
+    been served by the time we hear about it. Spending it again just delays the
+    badge for a drop that is provably not a blip."""
+    app = ScoreboardApp(hanging_server, fullscreen=False)
+    try:
+        app._on_connected(True)
+        app.link._last_rx = time.monotonic() - 10     # silent for 10s
+        app._on_connected(False)
+        qt_app.processEvents()
+
+        assert app.window.link_badge.isVisible(), 'still waiting out a spent grace'
+        assert not app._drop_timer.isActive()
+        # And the count reflects the real outage, not the moment we noticed.
+        assert '10 s' in app.window.link_badge.text()
+    finally:
+        app.link.stop()
+
+
+def test_a_clean_close_still_gets_its_grace(qt_app, hanging_server):
+    """A server restarting closes the socket, which is noticed instantly — that is
+    the case the grace period is actually for."""
+    app = ScoreboardApp(hanging_server, fullscreen=False)
+    try:
+        app._on_connected(True)
+        app.link._last_rx = time.monotonic()          # heard from it just now
+        app._on_connected(False)
+        qt_app.processEvents()
+
+        assert not app.window.link_badge.isVisible(), 'announced a server restart'
+        assert app._drop_timer.isActive()
+    finally:
+        app.link.stop()

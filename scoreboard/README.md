@@ -540,10 +540,32 @@ want it replaced by an apology. The badge sits below the header bar — top cent
 but clear of the event, heat and clocks, which are exactly what stays useful during
 an outage — and carries the same elapsed count: `⚠ CONNEXION PERDUE · 12 s`.
 
-**Nothing appears for the first few seconds** (`_DROP_GRACE_MS`, 4s). Most reconnects
-beat it: a switch renegotiating, the server restarting after an update. Flashing a
-warning across the board for two seconds is worse than the two seconds. `live.html`
-hedges the same way with `LEAVE_RESULTS_DEBOUNCE`.
+**How long until it shows.** Two delays add up, and only one of them is a choice:
+
+| | |
+| --- | --- |
+| noticing | `_STALE` + `_PING_EVERY` in `client.py`, ~10s for a silent drop; instant for a clean close |
+| then waiting | whatever is left of `_DROP_GRACE_MS` (4s) |
+
+A pulled cable is not an error the socket raises. `recv()` just blocks until its
+timeout, and the `ping` sent afterwards succeeds too — it only has to reach the
+kernel's send buffer. So the link is declared dead by *silence*, and the heartbeat
+constants are the detection time. They were 20s and 50s, which took three ping cycles
+to trip: up to a minute of confidently ticking, entirely fictional race clock.
+
+The grace period then spends only what is **left** of itself. Detection has already
+cost ~10s of silence, so a pulled cable is announced at once — it is provably not a
+blip. What the grace still buys is the case noticed instantly: a server closing the
+socket cleanly on a restart, usually back in seconds. `live.html` hedges the same way
+with `LEAVE_RESULTS_DEBOUNCE`.
+
+**The count is backdated** to when the server actually went quiet, via
+`ServerLink.silent_seconds()`. Otherwise the badge starts from zero on a link that
+has already been down for ten seconds, and the one number an operator uses to judge
+the outage is wrong by the whole detection window.
+
+Measured end to end against a socket that accepts and then goes silent: link
+declared dead at 11.4s, badge up at 11.6s reading `⚠ CONNECTION LOST · 11 s`.
 
 **The clock freezes the instant the link goes**, grace period or not, and this is the
 part that is not cosmetic. The ticker interpolates between `running_time` frames, so

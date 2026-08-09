@@ -301,14 +301,32 @@ class ScoreboardApp:
             self.config_loader.request()
             return
 
-        self._waiting_since = time.monotonic()
         if not self._ever_connected:
             self._start_waiting('waiting_server')
             return
-        # Freeze now, announce later.
-        self.window.set_link_lost(True)
-        if not self._drop_timer.isActive():
-            self._drop_timer.start()
+        if self.window.link_lost:
+            # Already handling this outage. The receive loop reports a failure on
+            # every reconnect attempt — every few seconds — and re-stamping the
+            # start time here made the badge's counter restart on each one, so it
+            # never showed how long the link had actually been down.
+            return
+        # Detecting a dead link costs `_STALE` seconds of silence, so by the time we
+        # hear about it the outage is already that old. Backdate to when the server
+        # actually went quiet: the badge then counts from the truth rather than from
+        # whenever the receive loop happened to give up.
+        silent = self.link.silent_seconds()
+        self._waiting_since = time.monotonic() - silent
+        self.window.set_link_lost(True)     # freeze now, announce later
+
+        # And spend only the grace period that is left. A pulled cable has already
+        # outlasted it by the time it is noticed, so the badge goes up at once;
+        # what the grace still buys is the case detected instantly — the server
+        # closing the socket cleanly on a restart, which is usually back in seconds.
+        remaining = _DROP_GRACE_MS - int(silent * 1000)
+        if remaining > 0:
+            self._drop_timer.start(remaining)
+        else:
+            self._announce_drop()
 
     def _announce_drop(self):
         """The drop outlasted the grace period — put the badge up."""

@@ -16,9 +16,24 @@ import urllib.request
 from PySide6.QtCore import QObject, Signal
 
 # recv() timeout: how often we heartbeat an otherwise idle link.
-_PING_EVERY = 20
+#
+# This is also how often the loop gets to *notice* anything, which makes it the
+# floor on how fast a dead link can be reported. A pulled cable is not an error the
+# socket raises: `recv()` simply blocks until this expires, and the `ping` sent
+# afterwards usually succeeds too, because it only has to reach the kernel's send
+# buffer. So the link is declared dead by silence, never by an exception.
+_PING_EVERY = 2
 # No inbound traffic (pong included) for this long => treat the link as dead.
-_STALE = 50
+#
+# Detection therefore takes at most `_STALE` rounded up to the next `_PING_EVERY`,
+# about 8-10s. The server answers every `ping` with a `pong` (server/app.py), so a
+# healthy but idle link refreshes the clock every 2s and four consecutive misses is
+# a genuine outage rather than a congested moment on the pool's wifi.
+#
+# These were 20 and 50, which meant a pulled cable took up to a minute to report —
+# three ping cycles before the arithmetic tripped — with the board showing a
+# confidently ticking race clock the whole time.
+_STALE = 8
 # Delay between reconnect attempts. The kiosk usually boots before the server, so
 # this loop is the normal startup path, not just an error path.
 _RETRY_EVERY = 3
@@ -110,6 +125,22 @@ class ServerLink(QObject):
         # than a dict because it shells out to git — evaluated here, on this
         # thread, never on the GUI one.
         self._register = register
+        # When the last frame (or pong) arrived, on the monotonic clock. Written by
+        # the receive thread, read by the GUI thread — a bare float assignment, so no
+        # lock is needed and none would help.
+        #
+        # It exists so the GUI can tell how long the link had *already* been silent
+        # by the time the drop was reported: detection costs `_STALE` seconds, and
+        # without this the badge starts counting from zero when the connection has
+        # in fact been down for ten.
+        self._last_rx = 0.0
+
+    def silent_seconds(self) -> float:
+        """How long since anything was heard from the server. 0 before the first
+        connection, when there is nothing to have been silent about."""
+        if not self._last_rx:
+            return 0.0
+        return max(0.0, time.monotonic() - self._last_rx)
 
     def start(self):
         if self._thread is None:
@@ -166,12 +197,15 @@ class ServerLink(QObject):
                 self.connected.emit(True)
                 print(f'[scoreboard] connected to {url}', flush=True)
 
-                last_rx = time.time()
+                # Monotonic, not wall clock: this Pi may have no RTC and can take a
+                # large step when NTP first answers, which on `time.time()` would
+                # either tear down a healthy link or make a dead one look alive.
+                self._last_rx = last_rx = time.monotonic()
                 while not self._stop.is_set():
                     try:
                         raw = ws.recv()
                     except WebSocketTimeoutException:
-                        if time.time() - last_rx > _STALE:
+                        if time.monotonic() - last_rx > _STALE:
                             print('[scoreboard] link stale — reconnecting', flush=True)
                             break
                         try:
@@ -181,7 +215,7 @@ class ServerLink(QObject):
                         continue
                     if not raw:
                         break
-                    last_rx = time.time()
+                    self._last_rx = last_rx = time.monotonic()
                     try:
                         msg = json.loads(raw)
                     except Exception:
