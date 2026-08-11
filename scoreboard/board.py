@@ -526,12 +526,16 @@ class Badge(QLabel):
         self._tint  = '#ffffff'
         self.hide()
 
-    def apply_theme(self, cfg: Config, tint: str):
-        """Inverted pill: *tint* at 75% behind, the board's background on top."""
+    def apply_theme(self, cfg: Config, tint: str, text: str | None = None):
+        """Inverted pill: *tint* at 75% behind, *text* on top.
+
+        *text* defaults to the board's own background, which is what makes a pill
+        read as punched out of the board rather than laid on it.
+        """
         self._tint = tint
         colour = QColor(tint)
         self.setStyleSheet(
-            f"color: {cfg.color('bg')};"
+            f"color: {text or cfg.color('bg')};"
             f"background-color: rgba({colour.red()},{colour.green()},{colour.blue()},0.75);"
             f"border-radius: 6px;")
         font = QFont(cfg.family)
@@ -942,7 +946,11 @@ class BoardWindow(QWidget):
             f" border: none; {divider}")
         self.wall_clock.setFont(QFont(cfg.digits_family))
         self.test_badge.apply_theme(cfg, cfg.color('row_text'))
-        self.link_badge.apply_theme(cfg, cfg.color('connection_lost'))
+        # The link badge is the one an operator may want to tune: its pill is a
+        # warning colour rather than a board colour, so the text on it does not
+        # necessarily read against the background the other pill borrows.
+        self.link_badge.apply_theme(cfg, cfg.color('connection_lost'),
+                                    cfg.color('connection_lost_text'))
 
         self.status_box.setStyleSheet(f"background-color: {cfg.color('bg')};")
         self.status.setStyleSheet(

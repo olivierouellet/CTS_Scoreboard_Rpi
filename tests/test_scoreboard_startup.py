@@ -160,8 +160,11 @@ def test_every_theme_colour_reaches_a_widget(qt_app, settle_podium):
         'time':          w.rows[0].time_label.styleSheet(),
         'delta_better':  w.rows[0].delta_label.styleSheet(),
         'podium_gold':   w.rows[0].styleSheet(),
-        # The badge's pill and the frozen race clock behind it.
-        'connection_lost': w.link_badge.styleSheet() + w.chrono_label.styleSheet(),
+        # The badge's pill and the frozen race clock behind it. The pill is drawn
+        # as `rgba(...)`, so the hex sentinel is found on the clock; the badge's
+        # own text keeps its hex.
+        'connection_lost':      w.chrono_label.styleSheet(),
+        'connection_lost_text': w.link_badge.styleSheet(),
     }
     missing = [k for k, css in applied.items() if sentinels[k] not in css.lower()]
     assert not missing, f'theme colours set in Settings but ignored by the TV: {missing}'

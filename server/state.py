@@ -83,6 +83,10 @@ DEFAULT_THEME_COLORS = {
     # clock behind it. Not used by any browser page — only the Qt display can
     # tell that the console has stopped talking to it.
     'connection_lost': '#ef5350',
+    # Text on that badge. Defaults to the board background, which is what makes
+    # a pill read as punched out of the board — but the pill behind it is a
+    # warning colour, not a board colour, so it gets its own swatch.
+    'connection_lost_text': '#0d0d0d',
     'schedule_event': '#3b9eff', 'schedule_time': '#FFD700',
     'schedule_name': '#e0e0e0', 'schedule_club': '#666666',
 }
@@ -147,7 +151,7 @@ settings = {
         'row_odd': '#141414', 'row_even': '#202020', 'row_text': '#e0e0e0',
         'time': '#FFD700', 'delta_better': '#4CAF50', 'delta_worse': '#808080',
         'podium_gold': '#545454', 'podium_silver': '#424242', 'podium_bronze': '#343434',
-        'connection_lost': '#ef5350',
+        'connection_lost': '#ef5350', 'connection_lost_text': '#0d0d0d',
     },
     'theme_fonts': {'family': 'Overpass Mono', 'digits': 'DSEG7Classic', 'timing': 'Overpass Mono'},
     'intro_timeout': 300,

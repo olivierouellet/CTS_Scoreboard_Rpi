@@ -132,13 +132,18 @@ Everything comes from **Settings → Display → Theme** on the server — the s
 settings that theme the web scoreboard. Nothing is hard-coded but the fallbacks in
 `theme.py`, which only apply before the first `/config` on a fresh install.
 
-All 17 board colours are honoured, including the two that are easy to conflate:
+All 18 board colours are honoured, including the two that are easy to conflate:
 `header_label` (the word *EVENT*) and `header_value` (the number after it) are
 separate swatches, so the header is built from `HeaderCell` widgets holding two
 labels rather than one string.
 
-One of them, `connection_lost`, is the only colour no browser page uses: nothing but this
-display can tell that the console has stopped talking to it.
+Two of them, `connection_lost` and `connection_lost_text`, are the only colours no
+browser page uses: nothing but this display can tell that the console has stopped
+talking to it. The first is the warning colour — the badge's pill and the frozen
+clock — and the second is the text on that pill. It defaults to the board
+background, so a fresh install looks unchanged; it is a separate swatch because the
+pill behind it is a warning colour rather than a board colour, and what reads well
+on it is not necessarily what reads well on the board.
 
 The three fonts are three distinct settings and land in three places:
 

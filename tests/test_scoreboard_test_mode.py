@@ -238,3 +238,38 @@ def test_reconnecting_clears_the_badge_and_lets_the_clock_resume(board, qt_app):
     board.apply_update({'running_time': '19.80'})
     qt_app.processEvents()
     assert board._clock_timer.isActive(), 'the clock never picked up again'
+
+
+def test_the_badge_text_has_its_own_swatch(qt_app):
+    """The pill is a warning colour, not a board colour, so whatever reads well on
+    it is not necessarily the background the test-session pill borrows."""
+    window = BoardWindow(Config({
+        'num_lanes': 6,
+        'theme_colors': {'bg': '#0d0d0d',
+                         'connection_lost': '#ef5350',
+                         'connection_lost_text': '#00ffcc'},
+        'display_strings': {'test_session': '⚠ SESSION DE TEST'}}))
+    window.resize(1920, 1080)
+    window.show()
+    qt_app.processEvents()
+    try:
+        window.set_link_lost(True, '⚠ CONNEXION PERDUE · 5 s')
+        qt_app.processEvents()
+        css = window.link_badge.styleSheet()
+        assert 'color: #00ffcc' in css, 'the text swatch never reached the badge'
+        assert 'rgba(239,83,80,0.75)' in css, 'the pill must still be the warning colour'
+
+        # The test-session pill is unaffected: it keeps punching out of the board.
+        window.set_test_mode(True)
+        qt_app.processEvents()
+        assert 'color: #0d0d0d' in window.test_badge.styleSheet()
+    finally:
+        window.close()
+
+
+def test_the_badge_text_defaults_to_the_board_background(qt_app):
+    """Out of the box nothing changes — the swatch is there to be tuned, not to
+    make a fresh install look different."""
+    import state
+    assert (state.DEFAULT_THEME_COLORS['connection_lost_text']
+            == state.DEFAULT_THEME_COLORS['bg'])
