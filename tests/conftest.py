@@ -4,6 +4,7 @@ Nothing here imports PySide6 at module level — most of the suite is deliberate
 Qt-free so it runs in CI without the `scoreboard` extra, and importing Qt here
 would break that. The `qt_app` fixture skips instead.
 """
+import gc
 import os
 import sys
 import tempfile
@@ -45,6 +46,31 @@ def qt_app():
         # resolve_family() memoises its answers.
         load_app_fonts()
     return _QT_APP
+
+
+@pytest.fixture(autouse=True)
+def _reclaim_qt_garbage():
+    """Collect leaked Qt objects here, on the main thread, after every test.
+
+    Several tests build a `BoardWindow` or a whole `ScoreboardApp` and never destroy
+    it — `close()` hides a window, it does not delete it — so the C++ widget survives
+    as Python garbage until the collector happens to run.
+
+    That is a deadlock waiting to happen, and it duly did. If the collector fires on
+    a **non-GUI** thread, `~QWidget` calls `QWindow::close()`, which blocks in
+    `QWindowSystemInterface::flushWindowSystemEvents()` until the GUI thread
+    processes the event. In this suite the GUI thread is pytest's main thread, and
+    the tests that exercise an async route park it in `asyncio.run()` →
+    `selectors.select()` with no Qt event loop running. It never flushes, the worker
+    never returns, and the run hangs with the process at 0% CPU.
+
+    Reclaiming here means the collector never has that garbage to find later, and
+    what it does find, it frees on the thread Qt expects. Only worth doing once Qt is
+    actually in play, so the Qt-free CI run pays nothing.
+    """
+    yield
+    if _QT_APP is not None:
+        gc.collect()
 
 
 @pytest.fixture
