@@ -195,11 +195,11 @@ def test_the_frozen_clock_is_tinted(board, qt_app):
     board.apply_update({'running_time': '12.30', 'lane_running1': True})
     qt_app.processEvents()
     board.set_link_lost(True)
-    assert board.cfg.color('link_lost') in board.chrono_label.styleSheet()
-    assert board.cfg.color('link_lost') in board.rows[0].time_label.styleSheet()
+    assert board.cfg.color('connection_lost') in board.chrono_label.styleSheet()
+    assert board.cfg.color('connection_lost') in board.rows[0].time_label.styleSheet()
 
     board.set_link_lost(False)
-    assert board.cfg.color('link_lost') not in board.chrono_label.styleSheet()
+    assert board.cfg.color('connection_lost') not in board.chrono_label.styleSheet()
 
 
 def test_a_restyle_during_an_outage_keeps_the_tint(board, qt_app):
@@ -210,7 +210,7 @@ def test_a_restyle_during_an_outage_keeps_the_tint(board, qt_app):
 
     board.set_config(Config({'num_lanes': 6}))
     qt_app.processEvents()
-    assert board.cfg.color('link_lost') in board.chrono_label.styleSheet(), 'reload repainted it as live'
+    assert board.cfg.color('connection_lost') in board.chrono_label.styleSheet(), 'reload repainted it as live'
 
 
 def test_repeated_drop_reports_do_not_strobe_the_badge(board, qt_app):

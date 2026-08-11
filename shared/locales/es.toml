@@ -64,10 +64,9 @@ a2hs_install     = "Instalar"
 # Pantalla de TV nativa (scoreboard/) — mensajes mostrados en lugar del tablero.
 [display]
 waiting_server  = "Esperando al servidor de cronometraje"
-connection_lost = "Conexión perdida con el servidor de cronometraje"
+connection_lost = "⚠ CONEXIÓN PERDIDA"
 retrying        = "reintentando"
 test_session    = "⚠ SESIÓN DE PRUEBA"
-link_lost       = "⚠ CONEXIÓN PERDIDA"
 
 [preview]
 meet      = "Competición"
@@ -359,7 +358,7 @@ th_grp_rows = "Filas"
 th_grp_timing = "Cronometraje"
 th_grp_podium = "Podio"
 th_grp_status   = "Estado"
-th_link_lost    = "Conexión perdida"
+th_connection_lost    = "Conexión perdida"
 th_grp_schedule = "Horario"
 th_grp_event = "Prueba / Serie"
 th_grp_time = "Tiempo"

@@ -336,7 +336,7 @@ class ScoreboardApp:
         self._wait_timer.start()          # ticks the elapsed count on the badge
 
     def _drop_text(self) -> str:
-        headline = self.config.strings.get('link_lost', '⚠ CONNECTION LOST')
+        headline = self.config.strings.get('connection_lost', '⚠ CONNECTION LOST')
         return f'{headline} · {_elapsed(time.monotonic() - self._waiting_since)}'
 
     def _on_frame(self, event: str, data):

@@ -18,7 +18,7 @@ DEFAULT_COLORS = {
     'row_odd': '#141414', 'row_even': '#202020', 'row_text': '#e0e0e0',
     'time': '#FFD700', 'delta_better': '#4CAF50', 'delta_worse': '#808080',
     'podium_gold': '#545454', 'podium_silver': '#424242', 'podium_bronze': '#343434',
-    'link_lost': '#ef5350',
+    'connection_lost': '#ef5350',
     'schedule_event': '#3b9eff', 'schedule_time': '#FFD700',
     'schedule_name': '#e0e0e0', 'schedule_club': '#666666',
 }
@@ -38,14 +38,12 @@ DEFAULT_LABELS = {
 # the floor for a first-ever boot with no cached config yet.
 DEFAULT_STRINGS = {
     'waiting_server':  'Waiting for the timing server',
-    # Kept for the documented `display_strings` contract (docs/api.md), but this
-    # display no longer shows it: a mid-meet drop gets the `link_lost` badge rather
-    # than a full-screen message, so the board stays readable. Only a cold boot,
-    # where there is nothing to cover, still takes the whole screen.
-    'connection_lost': 'Lost connection to the timing server',
+    # A dropped link is badged, never a full-screen message, so this is pill-sized
+    # rather than a sentence. Only a cold boot — where there is nothing to cover —
+    # takes the whole screen, and that uses `waiting_server`.
+    'connection_lost': '⚠ CONNECTION LOST',
     'retrying':        'retrying',
     'test_session':    '⚠ TEST SESSION',
-    'link_lost':       '⚠ CONNECTION LOST',
 }
 
 # Column visibility flags, and the header-label flags that are independent of them

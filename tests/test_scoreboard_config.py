@@ -106,8 +106,8 @@ def test_an_old_settings_file_still_gets_new_theme_colours(monkeypatch):
 
     A colour added after that file was written would then be missing rather than
     defaulted — and the Settings picker renders a missing colour as an empty value,
-    which the browser shows as black and saves as black. `link_lost` was the first
-    key to arrive after installs existed in the wild.
+    which the browser shows as black and saves as black. `connection_lost` was the
+    first key to arrive after installs existed in the wild.
 
     Tests `merge_theme_defaults` rather than `load_settings`, which also globs the
     meet folder and reconfigures the console decoder.
@@ -115,15 +115,15 @@ def test_an_old_settings_file_still_gets_new_theme_colours(monkeypatch):
     import state
 
     stored = dict(state.DEFAULT_THEME_COLORS)
-    stored.pop('link_lost')                    # a settings.json written before it
+    stored.pop('connection_lost')                    # a settings.json written before it
     stored['bg'] = '#123456'                   # and an operator's own choice
     monkeypatch.setitem(state.settings, 'theme_colors', stored)
     monkeypatch.setitem(state.settings, 'theme_fonts', {})
 
     state.merge_theme_defaults()
 
-    assert state.settings['theme_colors']['link_lost'] == \
-        state.DEFAULT_THEME_COLORS['link_lost'], 'the picker would have shown black'
+    assert state.settings['theme_colors']['connection_lost'] == \
+        state.DEFAULT_THEME_COLORS['connection_lost'], 'the picker would have shown black'
     assert state.settings['theme_colors']['bg'] == '#123456', 'lost a stored colour'
     assert state.settings['theme_fonts']['family'] == \
         state.DEFAULT_THEME_FONTS['family']
