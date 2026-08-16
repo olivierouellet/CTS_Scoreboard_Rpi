@@ -7,6 +7,10 @@ Qt/PySide TV display (`Splouch-tv`), the iOS app (`Splouch-ios`), and the
 Android app (`Splouch-android`). There is intentionally **no shared client
 library**: the platforms are too different. They agree only on this document.
 
+The phone clients also follow [`mobile-features.md`](mobile-features.md), which
+covers the *behaviour* side — what a spectator sees and can do — where this
+document covers the wire format.
+
 When you change an event's shape or add a field, bump the version and note it in
 the changelog at the bottom. Additive fields are backward-compatible; renames and
 removals are breaking.
