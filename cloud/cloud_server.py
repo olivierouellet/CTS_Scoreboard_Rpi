@@ -711,25 +711,93 @@ def _analytics_prune():
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
-@app.get('/', tags=['Public'])
-def route_index(request: Request):
+def _public_meet_list():
+    """Meets for the picker — live and retained alike, newest state first.
+
+    Shared by the HTML picker and ``GET /meets`` so a native client's list can
+    never drift from the web one. Deliberately excludes anything an attendee has
+    no business seeing (relay keys, expiry, connection times); the admin table
+    has its own builder, ``_admin_meet_list``.
+    """
     _sweep_expired()
     with _lock:
-        meets = [{'id': mid, 'name': m['name'], 'location': m['location'],
-                  'sport': m['sport'], 'organizer': m['organizer'],
-                  'meet_date': m.get('meet_date', ''),
-                  'offline': mid not in _meets,
-                  'has_picker_image': bool(m.get('settings', {}).get('picker_image_b64', ''))}
-                 for mid, m in _merged_meets().items()]
-    creds     = _load_creds()
-    raw_title = creds.get('picker_title')
-    raw_wt    = creds.get('picker_window_title')
+        return [{'id': mid, 'name': m['name'], 'location': m['location'],
+                 'sport': m['sport'], 'organizer': m['organizer'],
+                 'meet_date': m.get('meet_date', ''),
+                 'offline': mid not in _meets,
+                 'has_picker_image': bool(m.get('settings', {}).get('picker_image_b64', ''))}
+                for mid, m in _merged_meets().items()]
+
+
+def _picker_branding():
+    """Operator-set look of the meet list, in the shape public clients consume.
+
+    ``None`` and ``''`` mean different things for the titles: unset falls back to
+    'Splouch', while an explicitly blank title hides it. Preserve that — see
+    route_picker_appearance.
+    """
+    creds  = _load_creds()
+    raw    = creds.get('picker_title')
+    raw_wt = creds.get('picker_window_title')
+    return {
+        'title':        'Splouch' if raw is None else raw,
+        'window_title': 'Splouch' if raw_wt is None else raw_wt,
+        'has_logo':     bool(creds.get('picker_logo_b64', '')),
+        'logo_above':   creds.get('picker_logo_above', False),
+    }
+
+
+# The picker chrome a native client renders itself. Kept server-side rather than
+# shipped in the app because results_disclaimer and privacy_note are compliance
+# text: they must be correctable without waiting on an App Store review.
+_PICKER_STRING_KEYS = ('page_title', 'no_meets', 'unnamed_meet', 'back_to_meets',
+                       'results_disclaimer', 'privacy_note')
+
+
+@app.get('/', tags=['Public'])
+def route_index(request: Request):
+    meets = _public_meet_list()
+    brand = _picker_branding()
     return render(request, 'picker.html', meets=meets, t=_strings(_picker_lang(request), 'cloud'),
-        picker_title=('Splouch' if raw_title is None else raw_title),
-        picker_window_title=('Splouch' if raw_wt is None else raw_wt),
-        picker_logo=bool(creds.get('picker_logo_b64', '')),
-        picker_logo_above=creds.get('picker_logo_above', False),
+        picker_title=brand['title'],
+        picker_window_title=brand['window_title'],
+        picker_logo=brand['has_logo'],
+        picker_logo_above=brand['logo_above'],
         analytics_enabled=_analytics_enabled())
+
+
+@app.get('/meets', tags=['Public'])
+def route_meets():
+    """The meet list as JSON — the native picker's equivalent of ``GET /``.
+
+    ``offline`` meets are retained ones with no relay currently connected; they
+    stay listed on purpose so a spectator can still read the last state.
+    ``has_picker_image`` says whether ``GET /picker_image/{id}`` will return an
+    image for that meet."""
+    return {'meets': _public_meet_list()}
+
+
+@app.get('/picker/config', tags=['Public'])
+def route_picker_config(request: Request):
+    """Branding, localised chrome, and the analytics flag for a native picker.
+
+    Language resolves from ``?lang=`` when it names an available locale, else the
+    client's Accept-Language, else the server default — the same order the HTML
+    picker uses. The meet list has no locale of its own; per-meet language only
+    starts at ``GET /meet/{id}/config``.
+
+    ``privacy_note`` is present regardless, but is only to be shown when
+    ``analytics_enabled`` is true, matching the web picker."""
+    lang = request.query_params.get('lang', '')
+    if lang not in {code for code, _ in _available_locales()}:
+        lang = _picker_lang(request)
+    strings = _strings(lang, 'cloud')
+    return {
+        **_picker_branding(),
+        'lang':              lang,
+        'analytics_enabled': _analytics_enabled(),
+        'strings':           {k: strings[k] for k in _PICKER_STRING_KEYS if k in strings},
+    }
 
 
 @app.get('/mobile', tags=['Public'])
@@ -875,6 +943,21 @@ def route_meet_config(meet_id: str):
         'live':             live,
         'settings':         meet.get('settings', {}),
     }
+
+
+@app.get('/meet/{meet_id}/schedule', tags=['Public'])
+def route_meet_schedule(meet_id: str):
+    """A meet's full start list as JSON — what ``/mobile/schedule`` embeds.
+
+    Same structure as the page's ``heats_json``: every heat in running order,
+    each with its lanes. An empty ``heats`` means the meet is loaded but carries
+    no schedule yet, which is not an error — the client shows its no-schedule
+    state and waits for ``schedule_update`` on ``/ws/schedule``."""
+    with _lock:
+        meet = _get_meet(meet_id)
+    if not meet:
+        raise HTTPException(404)
+    return {'heats': _build_heats_json(meet.get('schedule_data', {}))}
 
 
 @app.get('/search_suggestions', tags=['Public'])

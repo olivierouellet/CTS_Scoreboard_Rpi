@@ -76,14 +76,14 @@ and the place the user returns to via `A-02`.
 
 | ID | Feature | Driven by | Level |
 | --- | --- | --- | --- |
-| `P-01` | List of meets as cards: name, date, location, sport | `GET /` (web) — native: needs a JSON meet list, see **Gap G-1** | must |
+| `P-01` | List of meets as cards: name, date, location, sport | `GET /meets` ([`api.md`](api.md) §5.6) | must |
 | `P-02` | Per-meet picker image on the card, when the meet supplies one | `settings.picker_image_b64` → `GET /picker_image/{meet_id}` | should |
 | `P-03` | Offline meets stay listed, marked with a dimmed status dot | `offline` = meet is retained but no relay connected | must |
-| `P-04` | Empty state when no meets are active | `cloud.no_meets` | must |
-| `P-05` | Picker branding: title, logo, logo above or below the title | server-side `picker_title` / `picker_logo` / `picker_logo_above` | should |
-| `P-06` | Unofficial-results disclaimer under the list | `cloud.results_disclaimer` | **must** — see note |
-| `P-07` | Privacy note, shown only when attendance counting is on | `cloud.privacy_note`, gated on `analytics_enabled` | must, when `C-07` is implemented |
-| `P-08` | Selecting a meet opens the app shell for it | `/mobile?meet=<id>` | must |
+| `P-04` | Empty state when no meets are active | `strings.no_meets` | must |
+| `P-05` | Picker branding: title, logo, logo above or below the title | `GET /picker/config` → `title`, `has_logo`, `logo_above`; image at `GET /picker_logo` | should |
+| `P-06` | Unofficial-results disclaimer under the list | `GET /picker/config` → `strings.results_disclaimer` | **must** — see note |
+| `P-07` | Privacy note, shown only when attendance counting is on | `strings.privacy_note`, gated on `analytics_enabled` | must, when `C-10` is implemented |
+| `P-08` | Selecting a meet opens the app shell for it | `GET /meet/{id}/config` | must |
 | `P-09` | Pull-to-refresh re-fetches the meet list | — | should |
 | `P-10` | Add-to-Home-Screen prompt (iOS hint / Android `beforeinstallprompt`) | — | web-only |
 
@@ -91,6 +91,14 @@ and the place the user returns to via `A-02`.
 > results subject to validation, and points at SplashMe for validated ones. It is
 > the only thing standing between a live feed and a spectator treating it as a
 > result. It must be visible on the meet list, not buried in an About screen.
+>
+> Render the server's text rather than a copy compiled into the app: it is served
+> from `/picker/config` precisely so wording can be corrected without waiting on a
+> store review.
+
+> **Picker language is the device's, not a meet's.** The list spans meets that may
+> each run in a different language, so `/picker/config` resolves from `?lang=` or
+> `Accept-Language`. Per-meet language starts at `T-06`, once a meet is chosen.
 
 ---
 
@@ -224,7 +232,7 @@ it to find *their* swimmer among several hundred.
 
 | ID | Feature | Driven by | Level |
 | --- | --- | --- | --- |
-| `S-01` | Every heat as a card: scheduled time, "Event N — Heat M", event name | `heats_json` (`schedule_snapshot`, §5.5) | must |
+| `S-01` | Every heat as a card: scheduled time, "Event N — Heat M", event name | `GET /meet/{id}/schedule` ([`api.md`](api.md) §5.8) | must |
 | `S-02` | Each card lists its lanes: lane number, name, club, seed time | `lanes[]` | must |
 | `S-03` | Relay entries show member first names joined by `·` | `lane.swimmers[].first`, falling back to `.name` | should |
 | `S-04` | Alternating card backgrounds, computed over *visible* cards so filtering keeps the stripe | — | should |
@@ -263,11 +271,13 @@ it to find *their* swimmer among several hundred.
 
 | ID | Feature | Driven by | Level |
 | --- | --- | --- | --- |
-| `S-21` | A new schedule from the Pi refreshes the list | `schedule_update` on `/ws/schedule` (web reloads the page) | must |
+| `S-21` | A new schedule from the Pi refreshes the list | `schedule_update` on `/ws/schedule` → re-fetch `GET /meet/{id}/schedule` | must |
 
-> `schedule_update` carries no payload — it is a signal to re-fetch. Preserve the
-> user's active filters across it where the filtered names still exist; silently
-> dropping them mid-meet is worse than a stale list.
+> `schedule_update` carries no payload — it is a signal to re-fetch
+> `GET /meet/{id}/schedule`. Preserve the user's active filters across it where the
+> filtered names still exist; silently dropping them mid-meet is worse than a stale
+> list. An empty `heats` means "loaded, no schedule yet" — show `S-07`, do not treat
+> it as an error.
 
 ---
 
@@ -348,17 +358,22 @@ Not on any phone client, now or planned:
 
 ## 9. Gaps
 
-Work this repo owes the app repos. Neither blocks starting; both block finishing.
+*(none open — see below)*
 
-| ID | Gap | Needed for |
-| --- | --- | --- |
-| `G-1` | **The meet list is HTML-only.** `GET /` renders `picker.html`; there is no JSON equivalent, so a native picker has nothing to call. `GET /meet/{meet_id}/config` covers a *known* meet but cannot enumerate. Needs a `GET /meets` returning the same fields the cards use — `id`, `name`, `location`, `sport`, `meet_date`, `offline`, `has_picker_image`. | `P-01`, `P-03` |
-| `G-2` | **The schedule is embedded, not served.** `heats_json` is interpolated into `schedule.html`; the only way to obtain it is to scrape the page. Needs a JSON `GET /meet/{meet_id}/schedule` carrying the same structure. | all of §5 |
-| `G-3` | **Picker branding and the disclaimer are template-side.** `picker_title`, `picker_logo`, `results_disclaimer`, and `privacy_note` are not exposed as data. | `P-05`, `P-06`, `P-07` |
+The three gaps this file opened with are closed. Each was a screen that existed only
+as rendered HTML, leaving a native client with nothing to call:
 
-Both `G-1` and `G-2` are additive endpoints — the browser UI is untouched — and follow
-the pattern [`api.md`](api.md) §6 already set for `/config`. Fold them into that
-document, with version bump, when they land.
+| ID | Gap | Closed by | Serves |
+| --- | --- | --- | --- |
+| `G-1` | The meet list was HTML-only — `GET /meet/{id}/config` could describe a *known* meet but not enumerate | `GET /meets` ([`api.md`](api.md) §5.6) | `P-01`, `P-03` |
+| `G-2` | The start list was interpolated into `schedule.html` as `heats_json`; scraping the page was the only way to read it | `GET /meet/{id}/schedule` (§5.8) | all of §5 |
+| `G-3` | Picker branding and the compliance text were template-side, not data | `GET /picker/config` (§5.7) | `P-05`, `P-06`, `P-07` |
+
+All three are additive: no existing endpoint or payload changed, so `api.md` stays at
+**v1**. Each browser page now renders from the same helper its JSON endpoint returns
+(`_public_meet_list`, `_build_heats_json`, `_picker_branding`), so web and native
+cannot drift — a field added for one appears in the other by construction. Keep it
+that way: extend the helper, never the route.
 
 ---
 
@@ -366,3 +381,5 @@ document, with version bump, when they land.
 
 - **v1** — First statement of the mobile feature contract, taken from the cloud
   templates as of the FastAPI/plain-WebSocket server. Tracks `api.md` v1.
+  Gaps `G-1`–`G-3` closed against the same version — additive endpoints, and the
+  product is pre-production.

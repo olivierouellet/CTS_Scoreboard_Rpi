@@ -156,11 +156,14 @@ JSON/asset endpoints (everything else the servers expose is HTML for the browser
 | method · path | returns |
 | --- | --- |
 | `GET /` | picker page (HTML) — meet cards |
+| `GET /meets` | **meet list JSON** — `{ "meets": [ … ] }`, the same records the picker cards render (§5.6) |
+| `GET /picker/config` | **picker chrome JSON** — branding, localised strings, analytics flag (§5.7) |
 | `GET /meet/{meet_id}/config` | **meet config JSON** — `name`, `location`, `sport`, `meet_date`, `live`, and the `settings` block (§5.4). Lets a phone render the board without scraping the HTML page |
+| `GET /meet/{meet_id}/schedule` | **start list JSON** — `{ "heats": [ … ] }` (§5.8); 404 for an unknown meet, empty `heats` when the meet has no schedule yet |
 | `GET /manifest/{meet_id}` | per-meet PWA manifest |
 | `GET /icon/{meet_id}` | meet icon PNG · `GET /picker_image/{meet_id}` picker image PNG |
 | `GET /search_suggestions?meet_id=&q=` | `[{type:"swimmer"|"club", name, club?}]` swimmer/club typeahead |
-| `GET /mobile/schedule?meet=<id>` | schedule page (HTML embedding `heats_json`) |
+| `GET /mobile/schedule?meet=<id>` | schedule page (HTML embedding the same `heats` list) |
 
 ---
 
@@ -226,6 +229,44 @@ attendee needs to render the board (lane count, visible columns, theme, labels).
   "start_list": { "3": { "1": { "1": { "name":"…","club":"…","seed_time":"…","swimmers":[…] } } } } }
 ```
 
+### 5.6 `GET /meets`
+```json
+{ "meets": [ { "id": "aBc123", "name": "…", "location": "…", "sport": "…",
+               "organizer": "…", "meet_date": "YYYY-MM-DD",
+               "offline": false, "has_picker_image": true } ] }
+```
+`offline` marks a retained meet with no relay currently connected — still listed
+on purpose, so an attendee can read the last known state. `has_picker_image` says
+whether `GET /picker_image/{id}` will return an image. Both live and retained
+meets appear; expired ones are swept before the list is built.
+
+### 5.7 `GET /picker/config`
+```json
+{ "title": "Splouch", "window_title": "Splouch", "has_logo": false,
+  "logo_above": false, "lang": "fr", "analytics_enabled": true,
+  "strings": { "page_title": "…", "no_meets": "…", "unnamed_meet": "…",
+               "back_to_meets": "…", "results_disclaimer": "…", "privacy_note": "…" } }
+```
+Language resolves from `?lang=` when it names an available locale, else
+`Accept-Language`, else the server default; the resolved code comes back as
+`lang`. The meet list has no locale of its own — per-meet language starts at
+`GET /meet/{id}/config`.
+
+`strings` is served rather than shipped in the app because `results_disclaimer`
+and `privacy_note` are compliance text and must be correctable without an app
+release. Show `privacy_note` only when `analytics_enabled` is true.
+
+### 5.8 `GET /meet/{meet_id}/schedule`
+```json
+{ "heats": [ { "event": 3, "heat": 1, "event_name": "…", "time": "10:42",
+               "lanes": [ { "lane": 4, "name": "…", "club": "…",
+                            "seed_time": "…", "swimmers": [ … ] } ] } ] }
+```
+Every heat in running order — the whole start list, not just the next few
+(compare `next_heats`, §5.3). Heats with no entries still appear with an empty
+`lanes`. An empty `heats` is not an error: the meet is loaded but carries no
+schedule yet, and the client waits for `schedule_update` on `/ws/schedule`.
+
 ---
 
 ## 6. Config for native clients
@@ -254,9 +295,14 @@ have no template, so config is exposed as JSON — all three additions below are
    `update_scoreboard` and `delta_seconds`/`delta_better` in `results_snapshot`,
    alongside the browser's HTML `lane_delta<i>` (§5.1, §5.2).
 
-A native client's flow: fetch config once → open the WebSocket → merge event frames.
-The cloud relay `register` metadata (§5.4) carries the same `settings` shape, so the
-two config sources agree.
+4. **Cloud `GET /meets`, `GET /picker/config`, `GET /meet/{id}/schedule`** (§5.6–5.8) —
+   the picker and schedule screens as data. Previously both existed only as rendered
+   HTML, so a native client had nothing to call; the browser pages now build on the
+   same helpers and cannot drift from them.
+
+A native client's flow: list meets → fetch that meet's config and schedule → open the
+WebSockets → merge event frames. The cloud relay `register` metadata (§5.4) carries the
+same `settings` shape, so the two config sources agree.
 
 ---
 
@@ -264,3 +310,5 @@ two config sources agree.
 - **v1** — Initial contract after the Flask/Socket.IO → FastAPI/plain-WebSocket
   migration. Envelope `{event, data}`; local paths `/ws/scoreboard|results|settings|terminal`;
   cloud paths `/ws/relay|scoreboard|results|schedule` with `join_meet` rooms.
+  Later additions, all additive and pre-production so the version stands: cloud
+  `GET /meets`, `GET /picker/config`, `GET /meet/{id}/schedule` (§5.6–5.8).
