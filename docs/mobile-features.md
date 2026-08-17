@@ -181,7 +181,12 @@ Live lane state during a heat. The busiest screen and the one most worth getting
 > row heights and one font size across lanes more than it wants the full name;
 > Results is static long enough to be read carefully.
 >
-> **This is also the single problem the native rewrite exists to solve.** Per
+> **Note that the cloud web clips on *both* tabs today** — only the Pi's results
+> page shrinks ([`notes/cloud_parity.md`](../notes/cloud_parity.md)). So `R-08` is
+> the one row in this file that asks an app to beat its reference implementation
+> rather than match it, and it is deliberate.
+>
+> **This is the single problem the native rewrite exists to solve.** Per
 > [`notes/native_app_strategy.md`](../notes/native_app_strategy.md), CSS can only
 > truncate, while `UILabel.adjustsFontSizeToFitWidth` and Android's
 > `autoSizeTextType` shrink to fit. **Shrink-to-fit within the row's own height is
@@ -212,7 +217,7 @@ Live lane state during a heat. The busiest screen and the one most worth getting
 | `R-05` | **Lane sort**: row index = `channel`; a lane with no final time leaves its row blank | `sort == "lane"`, and when `sort` is absent | must |
 | `R-06` | **Place sort**: rows fill top-down as a ranking | `sort == "place"` | must |
 | `R-07` | Missing time or place renders as `—`, not blank | — | should |
-| `R-08` | Long names shrink to fit rather than clipping | — | should — see `L-17` |
+| `R-08` | Long names shrink to fit rather than clipping | — | should — **exceeds the web**, see `L-17` |
 | `R-09` | Final times carry the "locked" styling | `r.time` non-empty | should |
 | `R-10` | Returning to the tab re-joins the meet, reconnecting first if needed | web: `on_tab_shown` | must |
 
