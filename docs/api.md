@@ -245,7 +245,7 @@ meets appear; expired ones are swept before the list is built.
 { "title": "Splouch", "window_title": "Splouch", "has_logo": false,
   "logo_above": false, "lang": "fr", "analytics_enabled": true,
   "strings": { "page_title": "…", "no_meets": "…", "unnamed_meet": "…",
-               "back_to_meets": "…", "results_disclaimer": "…", "privacy_note": "…" } }
+               "results_disclaimer": "…", "privacy_note": "…" } }
 ```
 Language resolves from `?lang=` when it names an available locale, else
 `Accept-Language`, else the server default; the resolved code comes back as

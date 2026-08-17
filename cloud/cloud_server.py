@@ -750,7 +750,7 @@ def _picker_branding():
 # The picker chrome a native client renders itself. Kept server-side rather than
 # shipped in the app because results_disclaimer and privacy_note are compliance
 # text: they must be correctable without waiting on an App Store review.
-_PICKER_STRING_KEYS = ('page_title', 'no_meets', 'unnamed_meet', 'back_to_meets',
+_PICKER_STRING_KEYS = ('page_title', 'no_meets', 'unnamed_meet',
                        'results_disclaimer', 'privacy_note')
 
 
