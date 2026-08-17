@@ -88,7 +88,7 @@ and the place the user returns to via `A-02`.
 | `P-04` | Empty state when no meets are active | `strings.no_meets` | must |
 | `P-05` | Picker branding: title, logo, logo above or below the title | `GET /picker/config` → `title`, `has_logo`, `logo_above`; image at `GET /picker_logo` | should |
 | `P-06` | Unofficial-results disclaimer under the list | `GET /picker/config` → `strings.results_disclaimer` | **must** — see note |
-| `P-07` | Privacy note, shown only when attendance counting is on | `strings.privacy_note`, gated on `analytics_enabled` | must, when `C-10` is implemented |
+| `P-07` | Privacy note, shown whenever attendance counting is on for this server | `strings.privacy_note`, gated on `analytics_enabled` | must |
 | `P-08` | Selecting a meet opens the app shell for it | `GET /meet/{id}/config` | must |
 | `P-09` | Pull-to-refresh re-fetches the meet list | — | should |
 | `P-10` | Add-to-Home-Screen prompt (iOS hint / Android `beforeinstallprompt`) | — | web-only |
