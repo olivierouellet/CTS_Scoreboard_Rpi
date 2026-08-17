@@ -51,6 +51,12 @@ someone on the pool LAN. Do not spec against it.
 [`notes/cloud_parity.md`](../notes/cloud_parity.md) records why the cloud
 deliberately shows less than the Pi.
 
+Everything a phone needs is reachable as JSON — no screen is HTML-only, and nothing
+here requires scraping a page ([`api.md`](api.md) §4). Each browser page renders from
+the same helper its JSON endpoint returns (`_public_meet_list`, `_build_heats_json`,
+`_picker_branding`), so web and native cannot drift: a field added for one appears in
+the other by construction. Keep it that way — extend the helper, never the route.
+
 ### 0.3 Requirement levels
 
 | Level | Meaning |
@@ -361,30 +367,7 @@ Not on any phone client, now or planned:
 
 ---
 
-## 9. Gaps
-
-*(none open — see below)*
-
-The three gaps this file opened with are closed. Each was a screen that existed only
-as rendered HTML, leaving a native client with nothing to call:
-
-| ID | Gap | Closed by | Serves |
-| --- | --- | --- | --- |
-| `G-1` | The meet list was HTML-only — `GET /meet/{id}/config` could describe a *known* meet but not enumerate | `GET /meets` ([`api.md`](api.md) §5.6) | `P-01`, `P-03` |
-| `G-2` | The start list was interpolated into `schedule.html` as `heats_json`; scraping the page was the only way to read it | `GET /meet/{id}/schedule` (§5.8) | all of §5 |
-| `G-3` | Picker branding and the compliance text were template-side, not data | `GET /picker/config` (§5.7) | `P-05`, `P-06`, `P-07` |
-
-All three are additive: no existing endpoint or payload changed, so `api.md` stays at
-**v1**. Each browser page now renders from the same helper its JSON endpoint returns
-(`_public_meet_list`, `_build_heats_json`, `_picker_branding`), so web and native
-cannot drift — a field added for one appears in the other by construction. Keep it
-that way: extend the helper, never the route.
-
----
-
 ## Changelog
 
 - **v1** — First statement of the mobile feature contract, taken from the cloud
   templates as of the FastAPI/plain-WebSocket server. Tracks `api.md` v1.
-  Gaps `G-1`–`G-3` closed against the same version — additive endpoints, and the
-  product is pre-production.
