@@ -40,7 +40,13 @@ class NotAuthenticated(Exception):
     smuggled through an HTTPException).
     """
 
-templates = Jinja2Templates(directory=os.path.join(state.app_dir, 'templates'))
+# Two roots: this server's own templates, then shared/templates for the ones the
+# cloud renders too — scoreboard_base.html, which live-mobile.html extends on both
+# sides. Own-first, so a name here always wins over a shared one.
+templates = Jinja2Templates(directory=[
+    os.path.join(state.app_dir, 'templates'),
+    os.path.join(state.REPO_DIR, 'shared', 'templates'),
+])
 
 
 def _url_for(name, **kw):

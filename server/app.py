@@ -3,6 +3,7 @@ import asyncio
 import datetime
 import glob
 import os
+import time
 import traceback
 from contextlib import asynccontextmanager
 
@@ -30,6 +31,23 @@ from routes.appearance import router as appearance_router
 SECRET_KEY = 'rimnqiuqnewiornhf7nfwenjmqvliwynhtmlfnlsklrmqwe'
 
 
+async def _meet_live_watchdog():
+    """Publish `meet_live` whenever the console link starts or stops feeding.
+
+    Runs on the event loop rather than in the serial worker: the worker only ticks
+    while its port is open, so a dead port would never report itself dead. Only
+    transitions are broadcast — a client learns the current value from the burst
+    ws_scoreboard sends on connect.
+    """
+    while True:
+        live = (time.monotonic() - state._last_packet_at) < state.MEET_LIVE_STALE
+        if live != state._meet_live:
+            state._meet_live = live
+            for channel in ('/scoreboard', '/results'):
+                bus.emit(channel, 'meet_live', {'live': live})
+        await asyncio.sleep(1)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Capture the event loop so the serial worker thread can broadcast onto it.
@@ -47,7 +65,11 @@ async def lifespan(app: FastAPI):
         _path = os.path.join(state.MEET_FOLDER, _last)
         if os.path.isfile(_path):
             _load_meet_file(_path)
-    yield
+    _watchdog = asyncio.create_task(_meet_live_watchdog())
+    try:
+        yield
+    finally:
+        _watchdog.cancel()
 
 
 # Built-in docs are disabled here and re-served below behind `require_login`, so
@@ -158,6 +180,7 @@ async def ws_scoreboard(ws: WebSocket):
     await bus.manager.send(ws, 'test_mode',       {'active': state._test_session is not None})
     await bus.manager.send(ws, 'display_overlay', {'active': state._overlay_active})
     await bus.manager.send(ws, 'columns_state',   {'hidden': state._cols_hidden})
+    await bus.manager.send(ws, 'meet_live',       {'live': state._meet_live})
     send_event_info()
     try:
         while True:
@@ -213,6 +236,7 @@ async def ws_scoreboard(ws: WebSocket):
 @app.websocket('/ws/results')
 async def ws_results(ws: WebSocket):
     await bus.manager.connect(ws, '/results')
+    await bus.manager.send(ws, 'meet_live', {'live': state._meet_live})
     if state._last_results_snapshot:
         await bus.manager.send(ws, 'results_snapshot', state._last_results_snapshot)
     ev, ht = state._decoder.last_event_sent if state._decoder.last_event_sent != (0, 0) else (0, 0)

@@ -355,6 +355,16 @@ UPDATE_LOG_MAX = 40
 _test_meet_active   = False
 _overlay_active     = False
 _cols_hidden        = False
+# Is the timing console actually feeding this display? Published to clients as the
+# `meet_live` event (docs/api.md §2), the local twin of the cloud's relay-connected
+# flag. Keyed off packet arrival rather than the serial port's state: a cable can sit
+# open against a powered-off console for hours, and `_serial_status` would still say
+# 'open'. Test-session playback counts as live — it goes through _handle_packet too.
+# The window matches the Qt display's own `_STALE` (scoreboard/client.py) so the two
+# give up on the link at the same moment rather than contradicting each other.
+MEET_LIVE_STALE     = 8      # seconds of silence before the link reads as dead
+_last_packet_at     = 0.0    # time.monotonic() of the last decoded packet
+_meet_live          = False  # last value broadcast — only transitions are emitted
 _pty_fd             = None
 _pty_pid            = None
 main_thread         = None

@@ -48,7 +48,12 @@
     .timing-table tbody td:nth-child(6) { grid-column: 4; grid-row: 2; text-align: right !important; padding-top: 0; font-size: 0.78em; }
     [id^="lane_place"]:not(:empty)::before { content: '#'; opacity: 0.5; }
 }
-/* ── Columns always visible ── */
+/* ── Columns ──
+   Parked at `transition: none` by default: the cloud never moves these, and an
+   orientation flip should not slide them. This sits after timing_display.css, so
+   it also neutralises `.timing-anim` on the headers below. A page whose operator
+   *can* collapse them (the Pi) re-declares `.timing-anim` in `extra_style`, which
+   renders later still and wins on source order. */
 .place-column,
 .time-column,
 .delta-column { transition: none; }
@@ -101,11 +106,17 @@
 </style>
 <script>
 var NUM_LANES = {{ num_lanes }};
-var MEET_ID   = {{ meet_id | tojson }};
+// Only the cloud joins a room; the Pi serves one meet and pushes on connect
+// (docs/api.md §2), so it renders this as "".
+var MEET_ID   = {{ meet_id | default('', true) | tojson }};
+// Column headers, already localised server-side. Needed as data — not just markup —
+// because the Pi's collapse/expand animation rewrites the time header's text.
+var labels    = {{ labels | tojson }};
 
 // Random per-device id for anonymous attendance counting (opt-in, admin side).
 // Stored once in localStorage and shared across the meet's pages on this origin;
-// only ever used server-side for COUNT(DISTINCT). Sent with every join_meet.
+// only ever used server-side for COUNT(DISTINCT). Cloud-only — the Pi renders this
+// too but never calls it, having one meet, no rooms and nobody to count.
 function splouchVid() {
     try {
         var k = 'splouch_vid', v = localStorage.getItem(k);
@@ -129,18 +140,53 @@ function reset_times() {
         el.classList.remove('time-running','time-locked');
     });
 }
+
+/* ── Lane pulse ───────────────────────────────────────────────────────────────
+   Neither mobile view carries a running clock — the cloud strips `running_time`
+   for relay load, the Pi's phone view never showed one — so the lane number
+   pulsing is the *only* sign a race is under way. Gated on `meet_live` as well as
+   `lane_running`, so a dead console can't leave stale lane state looking live
+   (docs/api.md §2.1 locally, §3 on the cloud). Both servers send the same event
+   with the same shape, so this is one implementation for both. */
+var meet_live    = false;
+var lane_running = {};
+
+function isLaneActive(i) {
+    if (!meet_live) return false;   // nothing feeding us — never animate
+    return !!lane_running[i];       // glow only while the lane is actually running
+}
+function updateLanePulse(i) {
+    var el = document.getElementById('lane_num' + i);
+    if (el) el.classList.toggle('lane-pulsing', isLaneActive(i));
+}
+function updateAllLanePulses() {
+    for (var i = 1; i <= NUM_LANES; i++) updateLanePulse(i);
+}
+/* Wire a socket's liveness events to the pulse. Call once per page, after the
+   socket exists; a drop must read as "not live" or the board freezes mid-glow. */
+function bindLanePulse(sock) {
+    sock.on('meet_live',  function(d) { meet_live = !!(d && d.live); updateAllLanePulses(); });
+    sock.on('disconnect', function()  { meet_live = false;           updateAllLanePulses(); });
+}
 function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function init() {
     on_timer();
     window.setInterval(on_timer, 1000);
+{% block init_extra %}{% endblock %}
 }
 </script>
 </head>
 <body style="margin:0" onload="init();">
 <div class="timing-outer">
     <div class="timing-header-bar">
+        {# Idle title, hidden by default. The Pi swaps it against the three cells
+           below via set_header_mode(); the cloud never shows it, since a phone
+           already knows which meet it opened. #}
+        <div class="header_cell header_cell_grow" id="header_meet_title_wrap" style="display:none;">
+            <span class="header_value" id="header_meet_title">{{ meet_title | default('', true) }}</span>
+        </div>
         <div class="header_cell" id="header_event_cell">
             <span class="header_label">{{ labels.event or 'Event' }}</span>
             <span class="header_value" id="current_event"></span>
@@ -165,9 +211,9 @@ function init() {
                     <th class="lane-column" style="text-align:center;">{{ labels.lane or 'Lane' }}</th>
                     <th id="name-column" style="text-align:left;">{{ labels.name or 'Name' }}</th>
                     <th class="club-column" style="text-align:center;">{{ labels.club or 'Club' }}</th>
-                    <th id="time-column" class="time-column" style="text-align:center;">{{ labels.time or 'Time' }}</th>
-                    <th id="delta-column" class="delta-column" style="text-align:center;">{{ labels.delta or 'Δ' }}</th>
-                    <th id="place-column" class="place-column" style="text-align:center;">{{ labels.place or '#' }}</th>
+                    <th id="time-column" class="time-column timing-anim" style="text-align:center;">{{ labels.time or 'Time' }}</th>
+                    <th id="delta-column" class="delta-column timing-anim" style="text-align:center;">{{ labels.delta or 'Δ' }}</th>
+                    <th id="place-column" class="place-column timing-anim" style="text-align:center;">{{ labels.place or '#' }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -186,6 +232,9 @@ function init() {
     </div>
     {% block body_extra %}{% endblock %}
 </div>
+{# Outside .timing-outer, which is position:relative + z-index:100 and so opens a
+   stacking context. Fullscreen overlays belong here, as siblings of it, not inside. #}
+{% block body_end %}{% endblock %}
 <div class="background"></div>
 
 <script src="/static/js/ws.js"></script>

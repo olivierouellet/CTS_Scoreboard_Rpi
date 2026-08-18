@@ -49,7 +49,7 @@ no join step — the server starts pushing on connect.
 
 ### `/ws/scoreboard`
 On connect the server sends, in order: `test_mode`, `display_overlay`,
-`columns_state`, then an `update_scoreboard` snapshot.
+`columns_state`, `meet_live`, then an `update_scoreboard` snapshot.
 
 **Server → client**
 | event | data | meaning |
@@ -59,8 +59,27 @@ On connect the server sends, in order: `test_mode`, `display_overlay`,
 | `test_mode` | `{ "active": bool }` | a recorded session is playing |
 | `display_overlay` | `{ "active": bool }` | fullscreen overlay on/off |
 | `columns_state` | `{ "hidden": bool }` | optional columns collapsed/expanded |
+| `meet_live` | `{ "live": bool }` | is the timing console feeding this display (§2.1) |
 | `reload` | `{}` | settings/theme changed — client should re-fetch config and redraw |
 | `update` | `{ "target": "<ref>" }` | move to *ref* and restart (native clients only) |
+
+#### 2.1 `meet_live`
+
+The local twin of the cloud's flag of the same name (§3): there it means *a relay is
+connected*, here *the console is feeding us*. Same event, same shape, so a client
+gates live-only UI on it identically against either server.
+
+It is keyed off **packet arrival**, not the serial port's state — a cable left open
+against a powered-off console reports the port as open indefinitely. After
+`MEET_LIVE_STALE` seconds of silence the link reads as dead; the window matches the
+Qt display's own `_STALE` (`scoreboard/client.py`) so the TV and the phones give up
+at the same moment instead of contradicting each other. Test-session playback counts
+as live.
+
+Only **transitions** are broadcast. A client learns the current value from the
+connect burst above, so a late joiner is never left guessing.
+
+Sent on `/ws/results` too, on connect and on every transition.
 
 **Client → server**
 | event | data | effect |

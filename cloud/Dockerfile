@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Cloud server code, templates, and shared locales
 COPY cloud/cloud_server.py .
 COPY cloud/templates/ templates/
+COPY shared/templates/ templates_shared/
 COPY shared/locales/ locales/
 
 # Shared static assets (single canonical copy in shared/, also used by the Pi server)

@@ -221,6 +221,10 @@ def _do_board_reset(gen):
 
 
 def _handle_packet(l):
+    # Liveness stamp for the `meet_live` watchdog in app.py. Set before decoding, so
+    # a packet the decoder rejects still counts — the link is alive either way.
+    state._last_packet_at = time.monotonic()
+
     hex_str = ''
     if state._record_handle or state._debug_serial:
         hex_str = ' '.join(['%02X' % int(c) for c in l])

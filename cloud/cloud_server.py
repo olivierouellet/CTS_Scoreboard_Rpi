@@ -78,6 +78,15 @@ STATIC_DIR = next(
      if os.path.isdir(p)),
     os.path.join(_HERE, 'static'),
 )
+# scoreboard_base.html lives in shared/ because the Pi's live-mobile.html extends
+# the same file — see notes/cloud_parity.md. Same in-container/from-source dance as
+# above (COPY shared/templates/ templates_shared/).
+SHARED_TEMPLATES_DIR = next(
+    (p for p in (os.path.join(_HERE, 'templates_shared'),
+                 os.path.join(_HERE, os.pardir, 'shared', 'templates'))
+     if os.path.isdir(p)),
+    os.path.join(_HERE, 'templates_shared'),
+)
 
 _locale_cache = {}
 
@@ -177,7 +186,8 @@ async def lifespan(app):
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.mount('/static', StaticFiles(directory=STATIC_DIR, check_dir=False),
           name='static')
-templates = Jinja2Templates(directory=os.path.join(_HERE, 'templates'))
+templates = Jinja2Templates(directory=[os.path.join(_HERE, 'templates'),
+                                       SHARED_TEMPLATES_DIR])
 
 
 def render(request, name, **ctx):
@@ -838,8 +848,11 @@ def route_live(request: Request):
         show_club=s.get('show_club', True),
         show_delta=s.get('show_delta', True),
         show_position=s.get('show_position', True),
-        theme_colors=s.get('theme_colors', _DEFAULT_COLORS),
-        theme_fonts=s.get('theme_fonts', _DEFAULT_FONTS),
+        # Merge over the defaults rather than falling back wholesale: a relay that
+        # sends a partial theme_colors would otherwise leave every unlisted CSS
+        # variable empty. Matches route_results and route_schedule.
+        theme_colors={**_DEFAULT_COLORS, **s.get('theme_colors', {})},
+        theme_fonts={**_DEFAULT_FONTS,  **s.get('theme_fonts',  {})},
         labels=s.get('labels', {}),
     )
 

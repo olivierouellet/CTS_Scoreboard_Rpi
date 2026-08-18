@@ -2,12 +2,11 @@
 
 {% block socket %}
 var s = {};
-var lane_running    = {};
 var lane_place_blank = {};
 var lane_time_blank  = {};
 var lane_name_blank  = {};
 var last_event = 0, last_heat = 0, last_state = 0, current_state = 0;
-var meet_live = false;   // a relay/console is currently feeding this meet
+/* `meet_live`, `lane_running` and the pulse helpers come from the base. */
 
 var VALID_FIELDS = new Set([
     "current_event","current_heat","event_name",
@@ -30,17 +29,6 @@ function mode_to_intro() {
 function mode_to_running() { }
 function mode_to_results() { }
 
-function isLaneActive(i) {
-    if (!meet_live) return false;   // no console connected — never animate
-    return !!lane_running[i];       // glow only while the lane is actually running
-}
-function updateLanePulse(i) {
-    var el = document.getElementById('lane_num' + i);
-    if (el) el.classList.toggle('lane-pulsing', isLaneActive(i));
-}
-function updateAllLanePulses() {
-    for (var i = 1; i <= NUM_LANES; i++) updateLanePulse(i);
-}
 function reset_state() {
     current_state=0; last_state=0; last_event=0; last_heat=0;
     meet_live=false;
@@ -61,8 +49,7 @@ socket.on('connect', function() {
     socket.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() });
 });
 socket.on('reload', function() { location.reload(); });
-socket.on('disconnect', function() { meet_live = false; updateAllLanePulses(); });
-socket.on('meet_live', function(d) { meet_live = !!(d && d.live); updateAllLanePulses(); });
+bindLanePulse(socket);
 socket.on('update_scoreboard', function(new_s) {
     for (var k in new_s) { s[k] = new_s[k]; }
     for (var k in s) {

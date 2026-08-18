@@ -1,172 +1,59 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/timing_display.css') }}">
-<style>
-:root {
-    --color-bg:            {{ theme_colors.bg }};
-    --color-header-bg:     {{ theme_colors.header_bg }};
-    --color-header-border: {{ theme_colors.header_border }};
-    --color-header-label:  {{ theme_colors.header_label }};
-    --color-header-value:  {{ theme_colors.header_value }};
-    --color-th-text:       {{ theme_colors.th_text }};
-    --color-th-bg:         {{ theme_colors.th_bg }};
-    --color-row-odd:       {{ theme_colors.row_odd }};
-    --color-row-even:      {{ theme_colors.row_even }};
-    --color-row-text:      {{ theme_colors.row_text }};
-    --color-time:          {{ theme_colors.time }};
-    --color-delta-better:  {{ theme_colors.delta_better }};
-    --color-delta-worse:   {{ theme_colors.delta_worse }};
-    --color-podium-gold:   {{ theme_colors.podium_gold }};
-    --color-podium-silver: {{ theme_colors.podium_silver }};
-    --color-podium-bronze: {{ theme_colors.podium_bronze }};
-    --font-family:         '{{ theme_fonts.family }}';
-    --font-digits:         '{{ theme_fonts.digits }}';
-    --font-timing:         '{{ theme_fonts.timing }}';
-}
+{# Phone view of the live board, on the pool LAN.
 
-/* Monospace font for time/delta keeps column widths predictable */
-.td_time, .td_delta { font-family: var(--font-timing), monospace; }
+   Extends the shared scoreboard_base.html — the same base the cloud's
+   live-mobile.html uses, so layout fixes land on both at once (see
+   notes/cloud_parity.md). Everything below is what the *local* server has and the
+   cloud deliberately does not: the operator's carousel overlay, the test-session
+   banner, the idle meet title, and the animated column collapse. #}
+{% extends "scoreboard_base.html" %}
 
-/* ── Portrait: two-row stacked grid layout ──────────────────────────────
-   Row 1:  [Lane] [Name ................] [Club ]
-   Row 2:         [Time] [Delta       ] [#Pos  ]
-   ────────────────────────────────────────────────────────────────────── */
-@media (orientation: portrait) {
-    .timing-header { display: none; }
-    .timing-content { overflow-y: auto; }
+{% block extra_style %}
+/* Restore the width transition the base parks at `none`. Unlike the cloud, this
+   board's optional columns are operator-driven: `columns_state` collapses them
+   instantly and expands them over 0.5s. Rendered after the base's rule, so it wins
+   on source order at equal specificity. */
+.timing-anim { transition: width 0.5s ease, max-width 0.5s ease, transform 0.5s ease; }
+{% endblock %}
 
-    /* Break the table model so each tr can become a CSS grid */
-    .timing-table,
-    .timing-table tbody { display: block; width: 100%; }
+{% block init_extra %}
+    _pc = document.getElementById("place-column");
+    _tc = document.getElementById("time-column");
+    _dc = document.getElementById("delta-column");
+    _sb = document.getElementById("scoreboard");
+    // Idle until the first frame: show the meet title, not empty Event/Heat cells.
+    set_header_mode(false);
+    expand_cols();
+    // One frame late, so the rows have been laid out and can be measured.
+    setTimeout(build_scoreboard_bg, 100);
+    window.addEventListener('resize', function() { expand_cols(); build_scoreboard_bg(); });
+{% endblock %}
 
-    /* grid cols: [lane 9vw] [name/time 1fr] [delta 12vw] [club/place 14vw]
-       Fixed vw widths on cols 3–4 keep delta and place aligned across all rows
-       regardless of club name length. */
-    .timing-table tbody tr {
-        display: grid;
-        grid-template-columns: 9vw 1fr 22vw 12vw;
-        grid-template-rows: auto auto;
-        border-bottom: 1px solid var(--color-header-border);
-        padding: 0.4vw 0;
-        font-size: min(4.2vh, 4.2vw);
-    }
+{% block body_end %}
+<div id="carousel-overlay" style="display:none; position:fixed; inset:0; z-index:1000; background:#000; opacity:0; transition:opacity 0.8s ease;">
+    <img id="carousel-img-a" src="" style="position:absolute; inset:4%; width:92%; height:92%; object-fit:contain; transition:opacity 1s ease; opacity:1;">
+    <img id="carousel-img-b" src="" style="position:absolute; inset:4%; width:92%; height:92%; object-fit:contain; transition:opacity 1s ease; opacity:0;">
+</div>
+<div id="test-overlay" class="test-overlay" style="display:none;">⚠ TEST SESSION</div>
+{% endblock %}
 
-    /* Reset table-model width constraints on every td */
-    .timing-table tbody td {
-        width: auto !important;
-        max-width: none !important;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        padding: 0 1.5vw;
-    }
-
-    /* td 1 — Lane: anchor spanning both rows */
-    .timing-table tbody td:nth-child(1) {
-        grid-column: 1;
-        grid-row: 1 / 3;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    /* td 2 — Name: row 1, spans cols 2–3 */
-    .timing-table tbody td:nth-child(2) {
-        grid-column: 2 / 4;
-        grid-row: 1;
-        padding-bottom: 0;
-    }
-
-    /* td 3 — Club: row 1, col 4 — small, muted */
-    .timing-table tbody td:nth-child(3) {
-        grid-column: 4;
-        grid-row: 1;
-        font-size: 0.75em;
-        color: var(--color-th-text);
-        text-align: right !important;
-        padding-bottom: 0;
-    }
-
-    /* td 4 — Time: row 2, col 2 */
-    .timing-table tbody td:nth-child(4) {
-        grid-column: 2;
-        grid-row: 2;
-        padding-top: 0;
-        font-size: 0.92em;
-        text-align: left !important;
-    }
-
-    /* td 5 — Delta: row 2, col 3 */
-    .timing-table tbody td:nth-child(5) {
-        grid-column: 3;
-        grid-row: 2;
-        padding-top: 0;
-        font-size: 0.78em;
-        text-align: right !important;
-    }
-
-    /* td 6 — Place: row 2, col 4 */
-    .timing-table tbody td:nth-child(6) {
-        grid-column: 4;
-        grid-row: 2;
-        text-align: right !important;
-        padding-top: 0;
-        font-size: 0.78em;
-    }
-
-    /* # prefix on place number in portrait */
-    [id^="lane_place"]::before { content: '#'; opacity: 0.5; }
-}
-
-/* ── Portrait tablet (≥600px): secondary cells smaller so name stays dominant ── */
-@media (orientation: portrait) and (min-width: 600px) {
-    .timing-table tbody td:nth-child(3) { font-size: 0.58em; }  /* club  */
-    .timing-table tbody td:nth-child(4) { font-size: 0.70em; }  /* time  */
-    .timing-table tbody td:nth-child(5) { font-size: 0.60em; }  /* delta */
-}
-
-/* ── Landscape tablet (height ≥ 500px): rein in secondary cells ── */
-@media (orientation: landscape) and (min-height: 500px) {
-    .td_time          { font-size: 3.5vh; padding: 0.6vh 1vw; }
-    .td_delta         { font-size: 3vh;   padding: 0.6vh 0.5vw 0.6vh 1vw; }
-    [id^="lane_club"] { font-size: 2.8vh; }
-}
-
-/* ── Landscape phone: reduce row and secondary-cell fonts ── */
-@media (orientation: landscape) and (max-height: 500px) {
-    .timing-row-odd,
-    .timing-row-even  { font-size: 4.2vh; }
-    .td_time          { font-size: 3.8vh; padding: 0.5vh 1vw; }
-    .td_delta         { font-size: 3.5vh; padding: 0.5vh 0.5vw 0.5vh 1vw; }
-    [id^="lane_club"] { font-size: 3.5vh; }
-}
-</style>
-<script>
-var labels = {{ labels | tojson }};
-var NUM_LANES   = {{ num_lanes }};
-var lane_running = {};
-var lane_place_blank = {};
-var lane_time_blank = {};
-var lane_name_blank = {};
-var last_event = 0;
-var last_heat = 0;
-var last_state = 0;
-var current_state = 0;
-var brief_results = false;
-
+{% block socket %}
 /* Cached stable DOM references — set once in init() */
 var _pc = null;  /* place-column */
 var _tc = null;  /* time-column  */
 var _dc = null;  /* delta-column */
 var _sb = null;  /* #scoreboard div      */
 
+var s = {};
+var lane_place_blank = {};
+var lane_time_blank  = {};
+var lane_name_blank  = {};
+var last_event = 0, last_heat = 0, last_state = 0, current_state = 0;
+var brief_results = false;
+/* `meet_live`, `lane_running` and the pulse helpers come from the base. */
+
 /* ── Carousel overlay ─────────────────────────────────────────────────────── */
 var CAROUSEL_IMAGES   = {{ carousel_images | tojson }};
 var CAROUSEL_INTERVAL = {{ carousel_interval }} * 1000;
-var CAROUSEL_FADE     = 1000;
 var _carousel_idx     = 0;
 var _carousel_timer   = null;
 var _carousel_front   = 'a';
@@ -221,13 +108,8 @@ var VALID_FIELDS = new Set([
     {% for i in range(1, num_lanes + 1) %}"lane_name_alt{{ i }}", {% endfor %}
 ]);
 
-function on_timer() {
-    var d = new Date();
-    var h = ("0" + d.getHours()).slice(-2);
-    var m = ("0" + d.getMinutes()).slice(-2);
-    document.getElementById("meet_datetime").innerHTML = h + ":" + m;
-}
-
+/* The table is transparent; row stripes are painted as one gradient behind it so
+   the striping continues past the last row instead of stopping mid-screen. */
 function build_scoreboard_bg() {
     var rows = Array.from(_sb.querySelectorAll('.timing-table tr'));
     var sbRect = _sb.getBoundingClientRect();
@@ -242,47 +124,6 @@ function build_scoreboard_bg() {
         stops.push(color + ' ' + top, color + ' ' + bot);
     });
     if (stops.length) bg.style.background = 'linear-gradient(to bottom, ' + stops.join(', ') + ')';
-}
-
-function apply_state_transition() {
-    if (current_state === last_state) return;
-    switch (current_state) {
-        case 1: mode_to_intro();    break;
-        case 2: mode_to_running();  break;
-        case 3:
-            mode_to_results();
-            if (brief_results) {
-                setTimeout(function() {
-                    if (current_state == 3) {
-                        last_state = 3;
-                        current_state = 1;
-                        mode_to_intro();
-                        last_state = current_state;
-                    }
-                }, 3000);
-            }
-            break;
-    }
-    last_state = current_state;
-}
-
-function init() {
-    _pc = document.getElementById("place-column");
-    _tc = document.getElementById("time-column");
-    _dc = document.getElementById("delta-column");
-    _sb = document.getElementById("scoreboard");
-    expand_cols();
-    on_timer();
-    window.setInterval(on_timer, 1000);
-    setTimeout(build_scoreboard_bg, 100);
-    window.addEventListener('resize', function() { expand_cols(); build_scoreboard_bg(); });
-}
-
-
-function reset_times() {
-    document.querySelectorAll('[id^="lane_time"]').forEach(function(el) {
-        el.classList.remove('time-running', 'time-locked');
-    });
 }
 
 function set_header_mode(active) {
@@ -322,6 +163,7 @@ function reset_state() {
     lane_place_blank = {};
     lane_time_blank = {};
     lane_name_blank = {};
+    updateAllLanePulses();
 }
 
 function mode_to_intro() {
@@ -342,154 +184,107 @@ function mode_to_results() {
     expand_cols();
 }
 
-</script>
-</head>
-
-<body style="margin:0px" onload="init();">
-
-<div id="carousel-overlay" style="display:none; position:fixed; inset:0; z-index:1000; background:#000; opacity:0; transition:opacity 0.8s ease;">
-    <img id="carousel-img-a" src="" style="position:absolute; inset:4%; width:92%; height:92%; object-fit:contain; transition:opacity 1s ease; opacity:1;">
-    <img id="carousel-img-b" src="" style="position:absolute; inset:4%; width:92%; height:92%; object-fit:contain; transition:opacity 1s ease; opacity:0;">
-</div>
-
-<div class="timing-outer">
-
-    <!-- Header bar -->
-    <div class="timing-header-bar">
-        <div class="header_cell header_cell_grow" id="header_meet_title_wrap">
-            <span class="header_value" id="header_meet_title">{{ meet_title }}</span>
-        </div>
-        <div class="header_cell" id="header_event_cell" style="display:none;">
-            <span class="header_label">{{ labels.event }}</span>
-            <span class="header_value" id="current_event"></span>
-        </div>
-        <div class="header_cell" id="header_heat_cell" style="display:none;">
-            <span class="header_label">{{ labels.heat }}</span>
-            <span class="header_value" id="current_heat"></span>
-        </div>
-        <div class="header_cell header_cell_name" id="header_name_cell" style="display:none;">
-            <span class="header_value" id="event_name"></span>
-        </div>
-        <div class="header_cell">
-            <span id="meet_datetime" style="font-family:var(--font-digits),monospace;font-size:4.5vh;color:var(--color-header-value);"></span>
-        </div>
-    </div>
-
-    <!-- Scoreboard table -->
-    <div class="timing-content" id="scoreboard">
-        <div id="timing-bg" aria-hidden="true"></div>
-        <table id="timing-board" class="timing-table{% if not show_lane_header %} hide-lane-header{% endif %}{% if not show_name_header %} hide-name-header{% endif %}{% if not show_club_header %} hide-club-header{% endif %}{% if not show_time_header %} hide-time-header{% endif %}{% if not show_delta_header %} hide-delta-header{% endif %}{% if not show_position_header %} hide-position-header{% endif %}{% if not show_name %} hide-name{% endif %}{% if not show_club %} hide-club{% endif %}{% if not show_delta %} hide-delta{% endif %}{% if not show_position %} hide-position{% endif %}">
-            <thead>
-                <tr class="timing-header">
-                    <th class="lane-column" style="text-align:center;">{{ labels.lane }}</th>
-                    <th id="name-column" style="text-align:left;">{{ labels.name }}</th>
-                    <th class="club-column" style="text-align:left;">{{ labels.club }}</th>
-                    <th id="time-column" class="time-column timing-anim" style="text-align:center;">{{ labels.time }}</th>
-                    <th id="delta-column" class="delta-column timing-anim" style="text-align:center;">{{ labels.delta }}</th>
-                    <th id="place-column" class="place-column timing-anim" style="text-align:center;">{{ labels.place }}</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for i in range(1, num_lanes + 1) %}
-                <tr class="{{ 'timing-row-odd' if i % 2 == 1 else 'timing-row-even' }}">
-                    <td style="text-align:center;">{{ i }}</td>
-                    <td class="lane-name-cell"><span id="lane_name{{ i }}"></span><span id="lane_name_alt{{ i }}" class="name-sub"></span></td>
-                    <td id="lane_club{{ i }}" style="text-align:left;"></td>
-                    <td class="td_time" style="text-align:center;"><span id="lane_time{{ i }}"></span></td>
-                    <td class="td_delta" id="lane_delta{{ i }}" style="text-align:right;"></td>
-                    <td id="lane_place{{ i }}" style="text-align:center;"></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-</div>
-<div id="test-overlay" class="test-overlay" style="display:none;">⚠ TEST SESSION</div>
-
-<div class="background"></div>
-
-<script src="/static/js/ws.js"></script>
-<script>
-    var s = {};
-
-    var socket = splouchSocket('/ws/scoreboard');
-    socket.on('connect', function() { reset_state(); });
-    socket.on('reload', function() { location.reload(); });
-    socket.on('display_overlay', function(d) { show_overlay(d.active); });
-    socket.on('columns_state', function(d) { if (d.hidden) collapse_cols(); else expand_cols(); });
-    socket.on('test_mode', function(d) {
-        document.getElementById('test-overlay').style.display = d.active ? '' : 'none';
-        if (d.active) { reset_state(); mode_to_intro(); }
-    });
-
-    socket.on('update_scoreboard', function(new_s) {
-        for (var k in new_s) { s[k] = new_s[k]; }
-
-        for (var k in s) {
-            if (VALID_FIELDS.has(k)) {
-                document.getElementById(k).innerHTML = s[k];
-            }
-            if (k.startsWith("lane_running")) {
-                var li = k.replace("lane_running", "");
-                var was_running = lane_running[li] || false;
-                lane_running[li] = s[k];
-                var tel = document.getElementById("lane_time" + li);
-                if (tel) {
-                    if (s[k]) {
-                        tel.classList.add('time-running');
-                        tel.classList.remove('time-locked');
-                    } else if (was_running) {
-                        tel.classList.remove('time-running');
-                        tel.classList.remove('time-locked');
-                        void tel.offsetWidth;
-                        tel.classList.add('time-locked');
+function apply_state_transition() {
+    if (current_state === last_state) return;
+    switch (current_state) {
+        case 1: mode_to_intro();    break;
+        case 2: mode_to_running();  break;
+        case 3:
+            mode_to_results();
+            /* A race that ended without explicit results: show them briefly, then
+               fall back to intro. The cloud drops this on purpose — see
+               notes/cloud_parity.md. */
+            if (brief_results) {
+                setTimeout(function() {
+                    if (current_state == 3) {
+                        last_state = 3;
+                        current_state = 1;
+                        mode_to_intro();
+                        last_state = current_state;
                     }
+                }, 3000);
+            }
+            break;
+    }
+    last_state = current_state;
+}
+
+var socket = splouchSocket('/ws/scoreboard');
+socket.on('connect', function() { reset_state(); });
+socket.on('reload', function() { location.reload(); });
+bindLanePulse(socket);
+socket.on('display_overlay', function(d) { show_overlay(d.active); });
+socket.on('columns_state', function(d) { if (d.hidden) collapse_cols(); else expand_cols(); });
+socket.on('test_mode', function(d) {
+    document.getElementById('test-overlay').style.display = d.active ? '' : 'none';
+    if (d.active) { reset_state(); mode_to_intro(); }
+});
+
+socket.on('update_scoreboard', function(new_s) {
+    for (var k in new_s) { s[k] = new_s[k]; }
+
+    for (var k in s) {
+        if (VALID_FIELDS.has(k)) {
+            document.getElementById(k).innerHTML = s[k];
+        }
+        if (k.startsWith("lane_running")) {
+            var li = k.replace("lane_running", "");
+            var was_running = lane_running[li] || false;
+            lane_running[li] = s[k];
+            var tel = document.getElementById("lane_time" + li);
+            if (tel) {
+                if (s[k]) {
+                    tel.classList.add('time-running');
+                    tel.classList.remove('time-locked');
+                } else if (was_running) {
+                    tel.classList.remove('time-running');
+                    tel.classList.remove('time-locked');
+                    void tel.offsetWidth;
+                    tel.classList.add('time-locked');
                 }
             }
-            if (k.startsWith("lane_time"))  lane_time_blank[k.replace("lane_time", "")]  = (s[k].trim() === "");
-            if (k.startsWith("lane_place")) lane_place_blank[k.replace("lane_place", "")] = (s[k].trim() === "");
-            if (k.startsWith("lane_name") && !k.startsWith("lane_name_alt"))
-                lane_name_blank[k.replace("lane_name", "")] = (s[k].trim() === "");
         }
+        if (k.startsWith("lane_time"))  lane_time_blank[k.replace("lane_time", "")]  = (s[k].trim() === "");
+        if (k.startsWith("lane_place")) lane_place_blank[k.replace("lane_place", "")] = (s[k].trim() === "");
+        if (k.startsWith("lane_name") && !k.startsWith("lane_name_alt"))
+            lane_name_blank[k.replace("lane_name", "")] = (s[k].trim() === "");
+    }
 
-        /* Running time updates intentionally skipped — no live clock on mobile */
+    /* Running time updates intentionally skipped — no live clock on mobile */
 
-        if ("current_event" in s && s["current_event"] != last_event) {
-            last_event = s["current_event"];
-            current_state = 1;
-        }
-        if ("current_heat" in s && s["current_heat"] != last_heat) {
-            last_heat = s["current_heat"];
-            current_state = 1;
-        }
+    if ("current_event" in s && s["current_event"] != last_event) {
+        last_event = s["current_event"];
+        current_state = 1;
+    }
+    if ("current_heat" in s && s["current_heat"] != last_heat) {
+        last_heat = s["current_heat"];
+        current_state = 1;
+    }
 
-        if (current_state != 1) {
-            var all_done = true;
-            for (var i = 1; i <= NUM_LANES; i++) {
-                if (((i in lane_running) && lane_running[i]) ||
-                    ((i in lane_place_blank) && lane_place_blank[i] &&
-                     (i in lane_time_blank)  && !lane_time_blank[i])) {
-                    all_done = false;
-                    break;
-                }
-            }
-            if (all_done) current_state = 3;
-        }
-
+    if (current_state != 1) {
+        var all_done = true;
         for (var i = 1; i <= NUM_LANES; i++) {
-            if (lane_running[i] || false) { current_state = 2; break; }
+            if (((i in lane_running) && lane_running[i]) ||
+                ((i in lane_place_blank) && lane_place_blank[i] &&
+                 (i in lane_time_blank)  && !lane_time_blank[i])) {
+                all_done = false;
+                break;
+            }
         }
+        if (all_done) current_state = 3;
+    }
 
-        if (current_state === 1 && last_state === 2) {
-            brief_results = true;
-            current_state = 3;
-        }
+    for (var i = 1; i <= NUM_LANES; i++) {
+        if (lane_running[i] || false) { current_state = 2; break; }
+    }
 
-        apply_state_transition();
-        s = {};
-    });
+    if (current_state === 1 && last_state === 2) {
+        brief_results = true;
+        current_state = 3;
+    }
 
-</script>
-</body>
-</html>
+    apply_state_transition();
+    updateAllLanePulses();
+    s = {};
+});
+{% endblock %}
