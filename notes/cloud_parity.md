@@ -42,9 +42,9 @@ Carousel images are files local to the Pi. Relaying them would require encoding 
 
 The Pi's `results.html` shrinks long swimmer names to fit, via `fitNameFontSize()` — it measures each `.name-primary` against its cell and scales the cell's font down by the overflow ratio. A results board is read carefully and holds still long enough to be worth the reflow.
 
-**The cloud clips instead, on both tabs.** `live.html` and `results.html` both extend `scoreboard_base.html`, which sets `white-space: nowrap; overflow: hidden; text-overflow: ellipsis` on the name cell in portrait and landscape alike. Nothing on the cloud measures text.
+**The cloud clips instead, on both tabs.** The cloud's `live-mobile.html` and `results.html` both extend `scoreboard_base.html`, which sets `white-space: nowrap; overflow: hidden; text-overflow: ellipsis` on the name cell in portrait and landscape alike. Nothing on the cloud measures text.
 
-For `live.html` that is a deliberate match to the Pi: a live board wants uniform row heights and one font size across lanes more than it wants the full name. For `results.html` it is a **gap, not a decision** — the cloud simply never grew the Pi's shrink-to-fit. Porting it is not a copy-paste: `fitNameFontSize()` keys off a `.name-primary` element that only exists in the Pi's markup, whereas the cloud's shared base emits a bare `<span id="lane_name<i>">` alongside the `.name-sub` alt line.
+For the cloud's `live-mobile.html` that is a deliberate match to the Pi: a live board wants uniform row heights and one font size across lanes more than it wants the full name. For its `results.html` it is a **gap, not a decision** — the cloud simply never grew the Pi's shrink-to-fit. Porting it is not a copy-paste: `fitNameFontSize()` keys off a `.name-primary` element that only exists in the Pi's markup, whereas the cloud's shared base emits a bare `<span id="lane_name<i>">` alongside the `.name-sub` alt line.
 
 This is the same limitation the native apps exist to remove — CSS can only truncate, while `adjustsFontSizeToFitWidth` and `autoSizeTextType` shrink. See `R-08` in [`../docs/mobile-features.md`](../docs/mobile-features.md), which requires shrink on the Results tab regardless of what the web does.
 

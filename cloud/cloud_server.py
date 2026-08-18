@@ -824,7 +824,7 @@ def route_live(request: Request):
     if not meet:
         return render(request, 'offline.html')
     s = meet.get('settings', {})
-    return render(request, 'live.html',
+    return render(request, 'live-mobile.html',
         meet_id=meet_id,
         meet_title=meet['name'],
         num_lanes=s.get('num_lanes', 8),

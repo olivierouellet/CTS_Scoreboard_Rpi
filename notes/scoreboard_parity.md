@@ -290,5 +290,5 @@ decisions.
 - **The two run the same git ref.** That is what guarantees they agree about the WebSocket
   contract; displays register their ref on connect and Settings → Network flags a mismatch.
 
-`cloud/templates/live.html` is a third, deliberately simpler display and is **not** in scope
-here — see [`cloud_parity.md`](cloud_parity.md).
+`cloud/templates/live-mobile.html` is a third, deliberately simpler display and is **not** in
+scope here — see [`cloud_parity.md`](cloud_parity.md).
