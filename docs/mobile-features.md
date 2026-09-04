@@ -41,7 +41,7 @@ reference implementation for every row below is `cloud/templates/`:
 | --- | --- |
 | meet picker | [`cloud/templates/picker.html`](../cloud/templates/picker.html) |
 | app shell / tabs | [`cloud/templates/mobile.html`](../cloud/templates/mobile.html) |
-| Scoreboard tab | [`cloud/templates/live-mobile.html`](../cloud/templates/live-mobile.html) + [`scoreboard_base.html`](../cloud/templates/scoreboard_base.html) |
+| Scoreboard tab | [`cloud/templates/live-mobile.html`](../cloud/templates/live-mobile.html) + [`shared/templates/scoreboard_base.html`](../shared/templates/scoreboard_base.html) |
 | Results tab | [`cloud/templates/results.html`](../cloud/templates/results.html) + `scoreboard_base.html` |
 | Schedule tab | [`cloud/templates/schedule.html`](../cloud/templates/schedule.html) |
 | socket client | [`shared/static/js/ws.js`](../shared/static/js/ws.js) |

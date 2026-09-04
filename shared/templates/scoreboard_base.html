@@ -171,6 +171,124 @@ function bindLanePulse(sock) {
 function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+
+/* ── update_scoreboard: frame merge and state machine ─────────────────────────
+   Both servers send the same partial frames (docs/api.md §5.1) and both boards
+   derive the same three states from them, so this runs once here rather than
+   once per surface. What differs is what a state *looks like*, and that is the
+   three mode_to_* functions each page defines for itself.
+
+   States: 1 intro (event/heat changed) · 2 running (a lane is live) · 3 results
+   (every lane has settled). */
+var s = {};                       /* accumulated frame, drained each update    */
+var lane_place_blank = {};
+var lane_time_blank  = {};
+var lane_name_blank  = {};
+var last_event = 0, last_heat = 0, last_state = 0, current_state = 0;
+/* True when state 3 was inferred from the heat rolling over rather than from
+   real results. The Pi shows those briefly then falls back to intro; the cloud
+   stays put, being deliberately stateless (notes/cloud_parity.md). */
+var results_implicit = false;
+
+/* Fields the handler may write straight to the DOM, by element id. */
+var VALID_FIELDS = new Set([
+    "current_event", "current_heat", "event_name",
+    {% for i in range(1, num_lanes + 1) %}"lane_place{{ i }}", {% endfor %}
+    {% for i in range(1, num_lanes + 1) %}"lane_time{{ i }}", {% endfor %}
+    {% for i in range(1, num_lanes + 1) %}"lane_name{{ i }}", {% endfor %}
+    {% for i in range(1, num_lanes + 1) %}"lane_club{{ i }}", {% endfor %}
+    {% for i in range(1, num_lanes + 1) %}"lane_delta{{ i }}", {% endfor %}
+    {% for i in range(1, num_lanes + 1) %}"lane_name_alt{{ i }}", {% endfor %}
+]);
+
+function reset_state() {
+    current_state = 0; last_state = 0; last_event = 0; last_heat = 0;
+    results_implicit = false;
+    lane_running = {}; lane_place_blank = {}; lane_time_blank = {}; lane_name_blank = {};
+    updateAllLanePulses();
+}
+
+function apply_state_transition() {
+    if (current_state === last_state) return;
+    if      (current_state === 1) { results_implicit = false; mode_to_intro();   }
+    else if (current_state === 2) { results_implicit = false; mode_to_running(); }
+    else if (current_state === 3) { mode_to_results(); }
+    last_state = current_state;
+}
+
+function applyScoreboardFrame(new_s) {
+    for (var k in new_s) { s[k] = new_s[k]; }
+
+    for (var k in s) {
+        if (VALID_FIELDS.has(k)) document.getElementById(k).innerHTML = s[k];
+
+        if (k.startsWith("lane_running")) {
+            var li  = k.replace("lane_running", "");
+            var was = lane_running[li] || false;
+            lane_running[li] = s[k];
+            var tel = document.getElementById("lane_time" + li);
+            if (tel) {
+                if (s[k]) {
+                    tel.classList.add('time-running');
+                    tel.classList.remove('time-locked');
+                } else if (was) {
+                    /* Drop both classes before the reflow: re-adding a class that
+                       is still set does not restart its animation, so a lane that
+                       finishes twice would show the lock effect only once. */
+                    tel.classList.remove('time-running');
+                    tel.classList.remove('time-locked');
+                    void tel.offsetWidth;
+                    tel.classList.add('time-locked');
+                }
+            }
+        }
+        if (k.startsWith("lane_time"))  lane_time_blank[k.replace("lane_time", "")]   = (s[k].trim() === "");
+        if (k.startsWith("lane_place")) lane_place_blank[k.replace("lane_place", "")] = (s[k].trim() === "");
+        if (k.startsWith("lane_name") && !k.startsWith("lane_name_alt"))
+            lane_name_blank[k.replace("lane_name", "")] = (s[k].trim() === "");
+    }
+
+    /* A new event or heat means intro, whatever the lanes still say. */
+    if ("current_event" in s && s["current_event"] != last_event) {
+        last_event = s["current_event"];
+        current_state = 1;
+    }
+    if ("current_heat" in s && s["current_heat"] != last_heat) {
+        last_heat = s["current_heat"];
+        current_state = 1;
+    }
+
+    /* Otherwise: results once no lane is running and none is still awaiting a
+       place while holding a time. */
+    if (current_state != 1) {
+        var all_done = true;
+        for (var i = 1; i <= NUM_LANES; i++) {
+            if (lane_running[i] ||
+                (lane_place_blank[i] && (i in lane_time_blank) && !lane_time_blank[i])) {
+                all_done = false;
+                break;
+            }
+        }
+        if (all_done) current_state = 3;
+    }
+
+    /* Any live lane outranks the above. */
+    for (var i = 1; i <= NUM_LANES; i++) {
+        if (lane_running[i] || false) { current_state = 2; break; }
+    }
+
+    /* Running → intro means the heat advanced before results were published.
+       Show results anyway; the flag tells mode_to_results it was inferred. */
+    if (current_state === 1 && last_state === 2) {
+        results_implicit = true;
+        current_state = 3;
+    }
+
+    apply_state_transition();
+    updateAllLanePulses();
+    s = {};
+}
+
 function init() {
     on_timer();
     window.setInterval(on_timer, 1000);

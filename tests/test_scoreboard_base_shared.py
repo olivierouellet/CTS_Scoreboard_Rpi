@@ -84,6 +84,44 @@ def test_pulse_helpers_are_defined_once(pi, cloud):
         assert html.count('var meet_live') == 1
 
 
+@pytest.mark.parametrize('symbol', [
+    'function applyScoreboardFrame(',
+    'function apply_state_transition(',
+    'function reset_state(',
+    'var VALID_FIELDS',
+])
+def test_frame_handling_is_defined_once(pi, cloud, symbol):
+    """The merge loop and the state machine are the highest-risk shared code — the
+    two surfaces had drifted here before (the cloud could not retrigger the
+    time-locked animation). One definition each, in the base, on both pages."""
+    for html in (pi, cloud):
+        assert html.count(symbol) == 1
+
+
+def test_both_pages_use_the_shared_frame_handler(pi, cloud):
+    for html in (pi, cloud):
+        assert "socket.on('update_scoreboard', applyScoreboardFrame)" in html
+
+
+def test_lock_animation_retriggers(pi, cloud):
+    """Re-adding a class that is still set does not restart its animation, so both
+    classes come off before the reflow. Without this a lane that finishes twice
+    shows the lock effect only once — the exact bug the hoist removed."""
+    for html in (pi, cloud):
+        i = html.index("} else if (was) {")
+        block = html[i:html.index("add('time-locked')", i)]
+        assert "remove('time-locked')" in block, 'stale class is never cleared'
+        assert block.index("remove('time-locked')") < block.index('void tel.offsetWidth')
+
+
+def test_each_page_defines_all_three_modes(pi, cloud):
+    """The base dispatches to these by name; a missing one is a runtime error that
+    only shows up when the board reaches that state mid-meet."""
+    for html in (pi, cloud):
+        for mode in ('mode_to_intro', 'mode_to_running', 'mode_to_results'):
+            assert f'function {mode}()' in html
+
+
 # ── Deliberate divergence ──────────────────────────────────────────────────────
 
 def _last_transition_rule(html):
@@ -120,13 +158,22 @@ def test_idle_title_present_but_hidden_by_default(pi, cloud):
 
 
 @pytest.mark.parametrize('feature', [
-    'carousel-overlay', 'test-overlay', 'collapse_cols',
-    'build_scoreboard_bg', 'brief_results',
+    'carousel-overlay', 'test-overlay', 'collapse_cols', 'build_scoreboard_bg',
 ])
 def test_pi_only_features_stay_off_the_cloud(pi, cloud, feature):
     """Operator-driven, LAN-only, and deliberately not relayed — notes/cloud_parity.md."""
     assert feature in pi
     assert feature not in cloud
+
+
+def test_only_the_pi_acts_on_implied_results(pi, cloud):
+    """The base sets `results_implicit` on both — deriving it is shared — but only
+    the Pi reverts to intro after 3s. The cloud stays flat on purpose: a phone
+    reconnecting mid-sequence must land on a correct screen, not halfway through a
+    timed revert (notes/cloud_parity.md)."""
+    assert 'var results_implicit' in pi and 'var results_implicit' in cloud
+    assert 'if (results_implicit) {' in pi
+    assert 'if (results_implicit) {' not in cloud
 
 
 def test_only_the_cloud_joins_a_room(pi, cloud):

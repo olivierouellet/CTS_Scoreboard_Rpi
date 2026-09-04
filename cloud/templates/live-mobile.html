@@ -1,23 +1,16 @@
+{# Phone view of the live board, over the public relay.
+
+   Extends the shared scoreboard_base.html — the same base the Pi's live-mobile.html
+   uses. The base carries the markup, the frame merge and the state machine; this
+   block is only what the *cloud* does differently: join a per-meet room, and render
+   the three states flatly. No carousel, no operator column animation, no brief
+   results — see notes/cloud_parity.md for why each is deliberate. #}
 {% extends "scoreboard_base.html" %}
 
 {% block socket %}
-var s = {};
-var lane_place_blank = {};
-var lane_time_blank  = {};
-var lane_name_blank  = {};
-var last_event = 0, last_heat = 0, last_state = 0, current_state = 0;
-/* `meet_live`, `lane_running` and the pulse helpers come from the base. */
-
-var VALID_FIELDS = new Set([
-    "current_event","current_heat","event_name",
-    {% for i in range(1, num_lanes + 1) %}"lane_place{{ i }}",{% endfor %}
-    {% for i in range(1, num_lanes + 1) %}"lane_time{{ i }}",{% endfor %}
-    {% for i in range(1, num_lanes + 1) %}"lane_name{{ i }}",{% endfor %}
-    {% for i in range(1, num_lanes + 1) %}"lane_club{{ i }}",{% endfor %}
-    {% for i in range(1, num_lanes + 1) %}"lane_delta{{ i }}",{% endfor %}
-    {% for i in range(1, num_lanes + 1) %}"lane_name_alt{{ i }}",{% endfor %}
-]);
-
+/* The three states, as this board renders them. Intro clears the previous heat's
+   figures; running and results need no chrome change, because the columns here are
+   always visible and the header never switches modes. */
 function mode_to_intro() {
     reset_times();
     for (var i = 1; i <= NUM_LANES; i++) {
@@ -27,21 +20,9 @@ function mode_to_intro() {
     }
 }
 function mode_to_running() { }
+/* Deliberately flat: `results_implicit` is ignored here. A phone that reconnects
+   mid-sequence must land on a correct screen, not partway through a timed revert. */
 function mode_to_results() { }
-
-function reset_state() {
-    current_state=0; last_state=0; last_event=0; last_heat=0;
-    meet_live=false;
-    lane_running={}; lane_place_blank={}; lane_time_blank={}; lane_name_blank={};
-    updateAllLanePulses();
-}
-function apply_state() {
-    if (current_state === last_state) return;
-    if (current_state===1) mode_to_intro();
-    else if (current_state===2) mode_to_running();
-    else if (current_state===3) mode_to_results();
-    last_state = current_state;
-}
 
 var socket = splouchSocket('/ws/scoreboard');
 socket.on('connect', function() {
@@ -50,36 +31,5 @@ socket.on('connect', function() {
 });
 socket.on('reload', function() { location.reload(); });
 bindLanePulse(socket);
-socket.on('update_scoreboard', function(new_s) {
-    for (var k in new_s) { s[k] = new_s[k]; }
-    for (var k in s) {
-        if (VALID_FIELDS.has(k)) document.getElementById(k).innerHTML = s[k];
-        if (k.startsWith("lane_running")) {
-            var li = k.replace("lane_running","");
-            var was = lane_running[li]||false; lane_running[li]=s[k];
-            var tel = document.getElementById("lane_time"+li);
-            if (tel) {
-                if (s[k]) { tel.classList.add('time-running'); tel.classList.remove('time-locked'); }
-                else if (was) { tel.classList.remove('time-running'); void tel.offsetWidth; tel.classList.add('time-locked'); }
-            }
-        }
-        if (k.startsWith("lane_time"))  lane_time_blank[k.replace("lane_time","")]  = (s[k].trim()==="");
-        if (k.startsWith("lane_place")) lane_place_blank[k.replace("lane_place","")] = (s[k].trim()==="");
-        if (k.startsWith("lane_name") && !k.startsWith("lane_name_alt")) lane_name_blank[k.replace("lane_name","")] = (s[k].trim()==="");
-    }
-    if ("current_event" in s && s["current_event"]!=last_event) { last_event=s["current_event"]; current_state=1; }
-    if ("current_heat"  in s && s["current_heat"] !=last_heat)  { last_heat =s["current_heat"];  current_state=1; }
-    if (current_state!=1) {
-        var all_done=true;
-        for (var i=1;i<=NUM_LANES;i++) {
-            if ((lane_running[i])||((i in lane_place_blank)&&lane_place_blank[i]&&(i in lane_time_blank)&&!lane_time_blank[i])){all_done=false;break;}
-        }
-        if(all_done) current_state=3;
-    }
-    for (var i=1;i<=NUM_LANES;i++) { if(lane_running[i]||false){current_state=2;break;} }
-    if(current_state===1&&last_state===2){current_state=3;}
-    apply_state();
-    updateAllLanePulses();
-    s={};
-});
+socket.on('update_scoreboard', applyScoreboardFrame);
 {% endblock %}

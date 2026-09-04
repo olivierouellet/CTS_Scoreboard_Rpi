@@ -43,13 +43,8 @@ var _tc = null;  /* time-column  */
 var _dc = null;  /* delta-column */
 var _sb = null;  /* #scoreboard div      */
 
-var s = {};
-var lane_place_blank = {};
-var lane_time_blank  = {};
-var lane_name_blank  = {};
-var last_event = 0, last_heat = 0, last_state = 0, current_state = 0;
-var brief_results = false;
-/* `meet_live`, `lane_running` and the pulse helpers come from the base. */
+/* The frame merge, the state machine and the pulse all live in the base; this
+   block supplies only what the *local* server has on top of them. */
 
 /* ── Carousel overlay ─────────────────────────────────────────────────────── */
 var CAROUSEL_IMAGES   = {{ carousel_images | tojson }};
@@ -97,17 +92,6 @@ function show_overlay(active) {
     }
 }
 
-/* Fields the socket handler may write directly to the DOM */
-var VALID_FIELDS = new Set([
-    "current_event", "current_heat", "event_name",
-    {% for i in range(1, num_lanes + 1) %}"lane_place{{ i }}", {% endfor %}
-    {% for i in range(1, num_lanes + 1) %}"lane_time{{ i }}", {% endfor %}
-    {% for i in range(1, num_lanes + 1) %}"lane_name{{ i }}", {% endfor %}
-    {% for i in range(1, num_lanes + 1) %}"lane_club{{ i }}", {% endfor %}
-    {% for i in range(1, num_lanes + 1) %}"lane_delta{{ i }}", {% endfor %}
-    {% for i in range(1, num_lanes + 1) %}"lane_name_alt{{ i }}", {% endfor %}
-]);
-
 /* The table is transparent; row stripes are painted as one gradient behind it so
    the striping continues past the last row instead of stopping mid-screen. */
 function build_scoreboard_bg() {
@@ -154,27 +138,15 @@ function collapse_cols() {
     _pc.classList.add("timing-anim"); _tc.classList.add("timing-anim"); _dc.classList.add("timing-anim");
 }
 
-function reset_state() {
-    current_state = 0;
-    last_state = 0;
-    last_event = 0;
-    last_heat = 0;
-    lane_running = {};
-    lane_place_blank = {};
-    lane_time_blank = {};
-    lane_name_blank = {};
-    updateAllLanePulses();
-}
-
+/* The three states, as this board renders them. The base decides *when* each
+   applies; these decide what it looks like. */
 function mode_to_intro() {
-    brief_results = false;
     set_header_mode(true);
     reset_times();
     expand_cols();
 }
 
 function mode_to_running() {
-    brief_results = false;
     set_header_mode(true);
     expand_cols();
 }
@@ -182,31 +154,24 @@ function mode_to_running() {
 function mode_to_results() {
     set_header_mode(true);
     expand_cols();
-}
-
-function apply_state_transition() {
-    if (current_state === last_state) return;
-    switch (current_state) {
-        case 1: mode_to_intro();    break;
-        case 2: mode_to_running();  break;
-        case 3:
-            mode_to_results();
-            /* A race that ended without explicit results: show them briefly, then
-               fall back to intro. The cloud drops this on purpose — see
-               notes/cloud_parity.md. */
-            if (brief_results) {
-                setTimeout(function() {
-                    if (current_state == 3) {
-                        last_state = 3;
-                        current_state = 1;
-                        mode_to_intro();
-                        last_state = current_state;
-                    }
-                }, 3000);
+    /* Results the heat rollover implied rather than published: show them for a
+       beat, then fall back to intro. The cloud drops this on purpose, staying
+       stateless so a reconnecting phone is never mid-sequence — cloud_parity.md. */
+    if (results_implicit) {
+        setTimeout(function() {
+            if (current_state == 3) {
+                last_state = 3;
+                current_state = 1;
+                /* Clear it by hand: this path drives the state back to intro
+                   without going through apply_state_transition, which is what
+                   normally resets the flag. Leaving it set would make the *next*
+                   genuine results state revert after 3s too. */
+                results_implicit = false;
+                mode_to_intro();
+                last_state = current_state;
             }
-            break;
+        }, 3000);
     }
-    last_state = current_state;
 }
 
 var socket = splouchSocket('/ws/scoreboard');
@@ -220,71 +185,5 @@ socket.on('test_mode', function(d) {
     if (d.active) { reset_state(); mode_to_intro(); }
 });
 
-socket.on('update_scoreboard', function(new_s) {
-    for (var k in new_s) { s[k] = new_s[k]; }
-
-    for (var k in s) {
-        if (VALID_FIELDS.has(k)) {
-            document.getElementById(k).innerHTML = s[k];
-        }
-        if (k.startsWith("lane_running")) {
-            var li = k.replace("lane_running", "");
-            var was_running = lane_running[li] || false;
-            lane_running[li] = s[k];
-            var tel = document.getElementById("lane_time" + li);
-            if (tel) {
-                if (s[k]) {
-                    tel.classList.add('time-running');
-                    tel.classList.remove('time-locked');
-                } else if (was_running) {
-                    tel.classList.remove('time-running');
-                    tel.classList.remove('time-locked');
-                    void tel.offsetWidth;
-                    tel.classList.add('time-locked');
-                }
-            }
-        }
-        if (k.startsWith("lane_time"))  lane_time_blank[k.replace("lane_time", "")]  = (s[k].trim() === "");
-        if (k.startsWith("lane_place")) lane_place_blank[k.replace("lane_place", "")] = (s[k].trim() === "");
-        if (k.startsWith("lane_name") && !k.startsWith("lane_name_alt"))
-            lane_name_blank[k.replace("lane_name", "")] = (s[k].trim() === "");
-    }
-
-    /* Running time updates intentionally skipped — no live clock on mobile */
-
-    if ("current_event" in s && s["current_event"] != last_event) {
-        last_event = s["current_event"];
-        current_state = 1;
-    }
-    if ("current_heat" in s && s["current_heat"] != last_heat) {
-        last_heat = s["current_heat"];
-        current_state = 1;
-    }
-
-    if (current_state != 1) {
-        var all_done = true;
-        for (var i = 1; i <= NUM_LANES; i++) {
-            if (((i in lane_running) && lane_running[i]) ||
-                ((i in lane_place_blank) && lane_place_blank[i] &&
-                 (i in lane_time_blank)  && !lane_time_blank[i])) {
-                all_done = false;
-                break;
-            }
-        }
-        if (all_done) current_state = 3;
-    }
-
-    for (var i = 1; i <= NUM_LANES; i++) {
-        if (lane_running[i] || false) { current_state = 2; break; }
-    }
-
-    if (current_state === 1 && last_state === 2) {
-        brief_results = true;
-        current_state = 3;
-    }
-
-    apply_state_transition();
-    updateAllLanePulses();
-    s = {};
-});
+socket.on('update_scoreboard', applyScoreboardFrame);
 {% endblock %}
