@@ -10,14 +10,6 @@
 {% extends "scoreboard_base.html" %}
 
 {% block extra_style %}
-/* Shrink rather than clip. The base leaves `.name-primary` unstyled; here it needs
-   to be a measurable block so fitNameFontSize can compare scroll to client width. */
-.name-primary {
-    display: block;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
 [id^="lane_place"] { font-family: var(--font-digits), monospace; }
 
 /* Covers the table until the first snapshot, and again if the console goes away.
@@ -46,19 +38,6 @@
 var SHOW_PODIUM = {{ show_podium | default(true, true) | tojson }};
 
 function showWaiting() { document.getElementById('waiting').classList.remove('hidden'); }
-
-/* Names are sized per row, not per table: one long name should not shrink the
-   rest. Runs after paint, since it measures laid-out widths. */
-function fitNameFontSize() {
-    document.querySelectorAll('.lane-name-cell').forEach(function(cell) {
-        cell.style.fontSize = '';
-        var primary = cell.querySelector('.name-primary');
-        if (!primary || primary.scrollWidth <= primary.clientWidth) return;
-        var ratio  = primary.clientWidth / primary.scrollWidth;
-        var basePx = parseFloat(window.getComputedStyle(cell).fontSize);
-        cell.style.fontSize = (basePx * ratio * 0.97).toFixed(2) + 'px';
-    });
-}
 
 function renderResults(d) {
     on_timer();
@@ -114,8 +93,6 @@ function renderResults(d) {
     document.getElementById('waiting').classList.add('hidden');
     requestAnimationFrame(fitNameFontSize);
 }
-
-window.addEventListener('resize', fitNameFontSize);
 
 var sock = splouchSocket('/ws/results');
 sock.on('connect', function() {

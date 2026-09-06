@@ -200,6 +200,22 @@ function apply_state_transition() {
     last_state = current_state;
 }
 
+/* Scale a name down until it fits its cell rather than cutting it, per row. This
+   is what the Qt board has always done via FitLabel (scoreboard/board.py); this
+   page used to be the one display that clipped instead — see
+   notes/scoreboard_parity.md. Reads laid-out widths, so callers run it after paint
+   and only when a name changed. */
+function fitNameFontSize() {
+    document.querySelectorAll('.lane-name-cell').forEach(function(cell) {
+        cell.style.fontSize = '';
+        var primary = cell.querySelector('.name-primary');
+        if (!primary || primary.scrollWidth <= primary.clientWidth) return;
+        var ratio  = primary.clientWidth / primary.scrollWidth;
+        var basePx = parseFloat(window.getComputedStyle(cell).fontSize);
+        cell.style.fontSize = (basePx * ratio * 0.97).toFixed(2) + 'px';
+    });
+}
+
 function init() {
     _pc = document.getElementById("place-column");
     _tc = document.getElementById("time-column");
@@ -208,7 +224,10 @@ function init() {
     on_timer();
     window.setInterval(on_timer, 1000);
     setTimeout(build_scoreboard_bg, 100);
-    window.addEventListener('resize', build_scoreboard_bg);
+    window.addEventListener('resize', function() {
+        build_scoreboard_bg();
+        requestAnimationFrame(fitNameFontSize);
+    });
 }
 
 function highlight_podium() {
@@ -371,7 +390,7 @@ function mode_to_results() {
                 {% for i in range(1, num_lanes + 1) %}
                 <tr class="{{ 'timing-row-odd' if i % 2 == 1 else 'timing-row-even' }}">
                     <td style="text-align:center;">{{ i }}</td>
-                    <td class="lane-name-cell"><span id="lane_name{{ i }}"></span><span id="lane_name_alt{{ i }}" class="name-sub"></span></td>
+                    <td class="lane-name-cell"><span id="lane_name{{ i }}" class="name-primary"></span><span id="lane_name_alt{{ i }}" class="name-sub"></span></td>
                     <td id="lane_club{{ i }}" style="text-align:left;"></td>
                     <td class="td_time" style="text-align:center;"><span id="lane_time{{ i }}"></span></td>
                     <td class="td_delta" id="lane_delta{{ i }}" style="text-align:right;"></td>
@@ -417,6 +436,7 @@ function mode_to_results() {
     socket.on('update_scoreboard', function(new_s) {
         for (var k in new_s) { s[k] = new_s[k]; }
 
+        var names_changed = false;
         for (var k in s) {
             if (VALID_FIELDS.has(k)) {
                 document.getElementById(k).innerHTML = s[k];
@@ -440,9 +460,14 @@ function mode_to_results() {
             }
             if (k.startsWith("lane_time"))  lane_time_blank[k.replace("lane_time", "")]  = (s[k].trim() === "");
             if (k.startsWith("lane_place")) lane_place_blank[k.replace("lane_place", "")] = (s[k].trim() === "");
+            if (k.startsWith("lane_name")) names_changed = true;
             if (k.startsWith("lane_name") && !k.startsWith("lane_name_alt"))
                 lane_name_blank[k.replace("lane_name", "")] = (s[k].trim() === "");
         }
+        /* Only when a name actually arrived — a heat change, not every tick. This
+           page also carries the running clock, so it sees far more frames than the
+           phone board does; re-fitting on each one would cost a layout per lane. */
+        if (names_changed) requestAnimationFrame(fitNameFontSize);
 
         if ("running_time" in s) {
             var any_running = false;

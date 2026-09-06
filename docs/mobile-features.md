@@ -34,22 +34,25 @@ repos, so **never renumber**. A retired feature keeps its ID and gains a
 
 ### 0.2 What the apps are clients of
 
-Phones connect to the **cloud relay**, not the Pi ([`api.md`](api.md) §3). So the
-reference implementation for every row below is `cloud/templates/`:
+Phones connect to the **cloud relay**, not the Pi ([`api.md`](api.md) §3), but both
+servers now render the *same* templates — the four phone pages live in
+`shared/templates/` and differ only in whether `MEET_ID` is set:
 
 | Surface | Reference template |
 | --- | --- |
-| meet picker | [`cloud/templates/picker.html`](../cloud/templates/picker.html) |
-| app shell / tabs | [`cloud/templates/mobile.html`](../cloud/templates/mobile.html) |
+| meet picker | [`cloud/templates/picker.html`](../cloud/templates/picker.html) — cloud-only, the Pi has one meet |
+| app shell / tabs | [`shared/templates/mobile.html`](../shared/templates/mobile.html) |
 | Scoreboard tab | [`shared/templates/live-mobile.html`](../shared/templates/live-mobile.html) + [`shared/templates/scoreboard_base.html`](../shared/templates/scoreboard_base.html) |
-| Results tab | [`cloud/templates/results.html`](../cloud/templates/results.html) + `scoreboard_base.html` |
-| Schedule tab | [`cloud/templates/schedule.html`](../cloud/templates/schedule.html) |
+| Results tab | [`shared/templates/results.html`](../shared/templates/results.html) + `scoreboard_base.html` |
+| Schedule tab | [`shared/templates/schedule.html`](../shared/templates/schedule.html) |
 | socket client | [`shared/static/js/ws.js`](../shared/static/js/ws.js) |
 
-`server/templates/` is the **Pi** mobile view — a different, simpler page for
-someone on the pool LAN. Do not spec against it.
-[`notes/cloud_parity.md`](../notes/cloud_parity.md) records why the cloud
-deliberately shows less than the Pi.
+There is no separate Pi mobile view any more, so there is no risk of speccing
+against the wrong one. What still differs is **kiosk versus phone**, not Pi versus
+cloud: the kiosk board (`server/templates/live.html`, mirrored by the Qt display)
+keeps the carousel, the test banner and the operator column collapse that the phone
+pages deliberately drop. [`notes/cloud_parity.md`](../notes/cloud_parity.md) records
+that split.
 
 Everything a phone needs is reachable as JSON — no screen is HTML-only, and nothing
 here requires scraping a page ([`api.md`](api.md) §4). Each browser page renders from
@@ -120,7 +123,7 @@ and the place the user returns to via `A-02`.
 | `A-06` | Content clears notch, Dynamic Island, and home indicator | web: `env(safe-area-inset-*)` | must (free natively) |
 | `A-07` | Portrait stacks label under icon; landscape drops labels to save height | CSS media queries | should |
 | `A-08` | App/window title is the meet's `app_window_title`, falling back to its name | `settings.app_window_title` | should |
-| `A-09` | Add-to-Home-Screen hint | — | web-only |
+| `A-09` | Add-to-Home-Screen hint | **retired** — removed from the shell; the picker steers people to the native apps instead | n/a |
 | `A-10` | Meet goes offline mid-session → return to the picker | `GET /mobile` 303s to `/` when the meet is gone | must |
 
 > **`A-03` — do not port the edge strips.** The web restricts swipe to two 28px
@@ -181,24 +184,28 @@ Live lane state during a heat. The busiest screen and the one most worth getting
 | --- | --- | --- | --- |
 | `L-15` | Portrait: two-line compact row — lane number spanning left, name on line 1 with club right-aligned, time and delta and place on line 2; place prefixed `#` | — | must |
 | `L-16` | Landscape: full table with a header row, row font scaled to lane count | — | should |
-| `L-17` | Long names are clipped rather than shrunk on this tab | — | must — see note |
+| `L-17` | Long names shrink to fit their cell, ellipsis only as a floor | — | must — see note |
 
-> **`L-17` — clip here, shrink on Results (`R-08`).** A live board wants uniform
-> row heights and one font size across lanes more than it wants the full name;
-> Results is static long enough to be read carefully.
+> **`L-17` — shrink, on this tab and on Results (`R-08`).** An earlier version of
+> this file said the opposite: clip here, shrink there, on the grounds that a live
+> board wants uniform row heights. That was wrong twice over. Row heights are
+> floored by `min-height` in portrait and shared out by the table in landscape, so
+> shrinking a name changes type size and nothing else — and the Qt board, which is
+> what spectators actually watch, has shrunk names from the start
+> ([`notes/scoreboard_parity.md`](../notes/scoreboard_parity.md)). The web boards
+> have been brought into line.
 >
-> **Note that the cloud web clips on *both* tabs today** — only the Pi's results
-> page shrinks ([`notes/cloud_parity.md`](../notes/cloud_parity.md)). So `R-08` is
-> the one row in this file that asks an app to beat its reference implementation
-> rather than match it, and it is deliberate.
+> **Do not put the re-fit on the per-frame path.** Measuring forces a synchronous
+> layout per lane. Names arrive on a heat change, so the web gates the call on a
+> frame carrying a `lane_name` key, plus resize and tab-reveal. An app that re-fits
+> every label on every update frame will drop frames mid-race.
 >
-> **This is the single problem the native rewrite exists to solve.** Per
-> [`notes/native_app_strategy.md`](../notes/native_app_strategy.md), CSS can only
-> truncate, while `UILabel.adjustsFontSizeToFitWidth` and Android's
-> `autoSizeTextType` shrink to fit. **Shrink-to-fit within the row's own height is
-> a legitimate improvement over the web on both tabs** — it is one of the reasons
-> to build the apps at all. Only the fallback differs: clip at the floor here,
-> wrap or shrink further on Results.
+> **Native still does this better.** Per
+> [`notes/native_app_strategy.md`](../notes/native_app_strategy.md), the web
+> computes one ratio from `scrollWidth`/`clientWidth` and applies it, whereas
+> `UILabel.adjustsFontSizeToFitWidth` and Android's `autoSizeTextType` fit properly
+> and cheaply, with a real minimum size. Matching the web here is the floor, not
+> the target.
 
 ### 3.4 Not on this tab
 
@@ -223,7 +230,7 @@ Live lane state during a heat. The busiest screen and the one most worth getting
 | `R-05` | **Lane sort**: row index = `channel`; a lane with no final time leaves its row blank | `sort == "lane"`, and when `sort` is absent | must |
 | `R-06` | **Place sort**: rows fill top-down as a ranking | `sort == "place"` | must |
 | `R-07` | Missing time or place renders as `—`, not blank | — | should |
-| `R-08` | Long names shrink to fit rather than clipping | — | should — **exceeds the web**, see `L-17` |
+| `R-08` | Long names shrink to fit rather than clipping | — | should — see `L-17` |
 | `R-09` | Final times carry the "locked" styling | `r.time` non-empty | should |
 | `R-10` | Returning to the tab re-joins the meet, reconnecting first if needed | web: `on_tab_shown` | must |
 

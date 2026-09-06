@@ -481,12 +481,40 @@ def test_live_board_has_no_podium_tinting(pi, cloud):
         assert 'podium-gold' not in html.replace('--color-podium-gold', '')
 
 
-def test_name_primary_is_a_hook_not_a_style(pi, res_pi):
-    """The class ships on every page so the base stays uniform, but only Results
-    styles it — giving it `display:block` on the live board would change rows."""
-    assert 'class="name-primary"' in pi and 'class="name-primary"' in res_pi
-    assert '.name-primary {' in res_pi
-    assert '.name-primary {' not in pi
+def test_every_board_shrinks_names_to_fit(pi, cloud, res_pi, res_cloud):
+    """Clipping was never a decision — `/live` in the browser was simply the one
+    display that had not grown it, while the Qt board shrank via FitLabel all
+    along. Row heights are floored by min-height, so this changes type size only."""
+    for html in (pi, cloud, res_pi, res_cloud):
+        assert 'class="name-primary"' in html
+        assert 'function fitNameFontSize()' in html
+
+
+def test_name_primary_is_styled_once_in_the_stylesheet(pi, res_pi):
+    """Shared by four displays including the standalone kiosk page, so it lives in
+    timing_display.css rather than being re-declared per template."""
+    css = open(os.path.join(REPO, 'shared/static/css/timing_display.css')).read()
+    assert '.name-primary {' in css
+    for html in (pi, res_pi):
+        assert '.name-primary {' not in html
+
+
+def test_refit_is_not_on_the_per_frame_path(pi, cloud):
+    """fitNameFontSize forces synchronous layout per lane. Names arrive on a heat
+    change, so the call is gated — running it on every update_scoreboard would put
+    a layout pass in the middle of a race."""
+    for html in (pi, cloud):
+        assert 'if (names_changed) requestAnimationFrame(fitNameFontSize)' in html
+
+
+def test_kiosk_page_shrinks_names_too():
+    """server/templates/live.html is standalone — it does not extend the base, so
+    it carries its own copy and can drift. notes/scoreboard_parity.md tracks it
+    against the Qt board, which has always used FitLabel here."""
+    src = open(os.path.join(REPO, 'server/templates/live.html')).read()
+    assert 'class="name-primary"' in src
+    assert 'function fitNameFontSize()' in src
+    assert 'if (names_changed) requestAnimationFrame(fitNameFontSize)' in src
 
 
 def test_results_falls_back_to_waiting_when_nothing_feeds_it(res_pi, res_cloud):

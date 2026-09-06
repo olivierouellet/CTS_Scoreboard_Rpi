@@ -283,6 +283,18 @@ table.timing-table tbody td:first-child,
 }
 .name-sub:empty { display: none; }
 
+/* The swimmer's own name, sized to fit by fitNameFontSize(). A measurable block so
+   that pass can compare scroll width against client width; the ellipsis is the
+   floor, for a name too long to shrink into the cell at all. Every display that
+   renders a name uses this — the phone board, Results, and the kiosk — matching
+   the Qt board's FitLabel. */
+.name-primary {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* ── Display toggles ─────────────────────────────────────────────────────── */
 
 .timing-table.hide-lane-header .lane-column { visibility: hidden; }

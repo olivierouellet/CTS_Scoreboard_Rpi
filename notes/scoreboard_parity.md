@@ -31,10 +31,24 @@ so most "match" rows below mean *the same result by unrelated means*.
 | layout model | flex column; the table is `table-layout: fixed` | `QVBoxLayout` + `QHBoxLayout` with stretch weights |
 | sizing unit | `vw` / `vh`, off the viewport | fractions of the **parent widget** — row height, bar height |
 | where sizes are computed | the CSS engine, continuously | each widget's own `resizeEvent` |
-| text overflow | `overflow:hidden` + `white-space:pre` — a hard clip | `FitLabel` binary-searches the font size, elides at the 10px floor |
+| text overflow | `fitNameFontSize()` scales the cell down by the overflow ratio, ellipsis as the floor | `FitLabel` binary-searches the font size, elides at the 10px floor |
 | row backgrounds | a `linear-gradient` synthesized into `#timing-bg` from each row's computed colour | `autoFillBackground` per `LaneRow` |
 | animation | CSS `transition` / `@keyframes` | `QVariantAnimation` / `QPropertyAnimation`, interpolating by hand |
 | colour changes | `transition: background-color` gives them free | Qt stylesheets do not animate — every fade is interpolated and re-applied |
+
+**Shrink-to-fit was ported Qt → browser.** `/live` used to clip a long swimmer name
+outright (`overflow: hidden`), while the Qt board had `FitLabel` from the start — drift,
+not a decision, and the browser was the side that was wrong. `fitNameFontSize()` now
+scales the cell by the overflow ratio, keeping the ellipsis as a floor for a name too
+long to shrink into the cell at all. It runs only when a frame carries a `lane_name`
+key, so it stays off the per-tick path during a race.
+
+The two arrive at it differently: Qt binary-searches for the largest size that fits,
+the browser computes one ratio from `scrollWidth` / `clientWidth` and applies it. Close
+enough at a glance, and a search would cost a synchronous layout per step.
+
+Note this is the *swimmer* name in a lane row. The **event name** in the header is a
+separate case and still differs on purpose — see the header table below.
 
 **Easing is an approximation, deliberately.** CSS `ease` is
 `cubic-bezier(0.25, 0.1, 0.25, 1)`, which is front-loaded; `QEasingCurve.InOutCubic` and

@@ -51,15 +51,15 @@ Carousel images are files local to the Pi. Relaying them would require encoding 
 
 ---
 
-## Name overflow: ellipsis vs font shrink
+## Name overflow: every display now shrinks
 
-The Pi's `results.html` shrinks long swimmer names to fit, via `fitNameFontSize()` — it measures each `.name-primary` against its cell and scales the cell's font down by the overflow ratio. A results board is read carefully and holds still long enough to be worth the reflow.
+`fitNameFontSize()` measures each `.name-primary` against its cell and scales the cell's font down by the overflow ratio, keeping the ellipsis as a floor for a name too long to shrink in at all. It lives in `shared/templates/scoreboard_base.html` and runs on the phone board, the Results tab and the kiosk `live.html` alike. The Qt board does the same thing with `FitLabel` — see [`scoreboard_parity.md`](scoreboard_parity.md).
 
-**The phone views clip instead, on both tabs.** `shared/templates/live-mobile.html` and the cloud's `results.html` both extend `shared/templates/scoreboard_base.html`, which sets `white-space: nowrap; overflow: hidden; text-overflow: ellipsis` on the name cell in portrait and landscape alike. Nothing on the cloud measures text.
+**This is not a cloud-versus-Pi difference and never really was.** It used to be Pi-results-only, and the entry here read as though clipping on a live board were a decision: uniform row heights and one font size across lanes. It was not. Portrait rows are floored by `min-height`, and landscape rows are table rows sharing the table's height, so shrinking a name changes type size and nothing else. The Qt display — the one spectators actually watch — had shrink-to-fit from the start.
 
-For `live-mobile.html` that is a deliberate match to the kiosk: a live board wants uniform row heights and one font size across lanes more than it wants the full name. For the cloud's `results.html` it is a **gap, not a decision** — the cloud simply never grew the Pi's shrink-to-fit. Porting it is not a copy-paste: `fitNameFontSize()` keys off a `.name-primary` element that only exists in the Pi's markup, whereas the cloud's shared base emits a bare `<span id="lane_name<i>">` alongside the `.name-sub` alt line.
+The cost is a synchronous layout pass per lane, so it is gated: it runs when a frame carries a `lane_name` key (a heat change), on resize, and when a hidden tab is revealed. Never per tick.
 
-This is the same limitation the native apps exist to remove — CSS can only truncate, while `adjustsFontSizeToFitWidth` and `autoSizeTextType` shrink. See `R-08` in [`../docs/mobile-features.md`](../docs/mobile-features.md), which requires shrink on the Results tab regardless of what the web does.
+What remains a real limitation is the *event name* in the header, which CSS can only wrap or clamp — see the header table in `scoreboard_parity.md`. That, and finer control at small sizes, is what `adjustsFontSizeToFitWidth` and `autoSizeTextType` still buy the native apps (`R-08` in [`../docs/mobile-features.md`](../docs/mobile-features.md)).
 
 ---
 
