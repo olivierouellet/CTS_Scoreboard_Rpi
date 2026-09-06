@@ -521,7 +521,7 @@ def _settings_view(request, form):
         splash_url_list=splash_url_list,
         splash_url=state.settings.get('splash_url', ''),
         carousel_interval=int(state.settings.get('carousel_interval', 10)),
-        locale=state.settings.get('locale', 'fr'),
+        locale=state.settings.get('locale', 'en'),
         locale_list=state.list_locales(),
         custom_locale_list=custom_locale_list,
         custom_locale_codes=custom_locale_codes,

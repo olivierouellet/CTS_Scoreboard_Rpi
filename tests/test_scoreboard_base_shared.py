@@ -346,3 +346,26 @@ def test_every_shared_template_declares_a_language():
         if '<html' not in src:
             continue                       # a fragment, not a document
         assert '<html lang="{{ lang' in src, f'{os.path.basename(path)} hard-codes or omits lang'
+
+
+@pytest.mark.parametrize('template', [
+    'live.html', 'scoreboard.html', 'results.html',
+    'next_heats.html', 'full_schedule.html',
+])
+def test_pi_display_pages_declare_the_scoreboard_language(template):
+    """Every page that renders `labels` shows text in the Settings → Display →
+    Scoreboard language. Declaring lang="en" while painting French headers is the
+    mismatch these guard against; the admin pages are excluded on purpose, since
+    they follow the per-device `ui_lang` cookie instead."""
+    src = open(os.path.join(REPO, 'server/templates', template)).read()
+    assert '<html lang="{{ lang' in src
+
+
+def test_locale_fallbacks_agree_with_the_settings_default():
+    """`load_locale()` used to default to 'fr' while DEFAULT_SETTINGS said 'en', so
+    a config with no locale would paint French labels under lang="en"."""
+    state_src = open(os.path.join(REPO, 'server/state.py')).read()
+    assert "'locale': 'en'," in state_src, 'the settings default moved or changed'
+    for path in ('server/state.py', 'server/web.py', 'server/routes/settings.py'):
+        src = open(os.path.join(REPO, path)).read()
+        assert "get('locale', 'fr')" not in src, f'{path} still falls back to fr'

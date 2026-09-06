@@ -465,7 +465,7 @@ def _locale_path(code):
     return custom if os.path.exists(custom) else os.path.join(LOCALES_DIR, code + '.toml')
 
 def load_locale(style=None):
-    code  = settings.get('locale', 'fr')
+    code  = settings.get('locale', 'en')
     style = style or settings.get('label_style', 'long')
     try:
         with open(_locale_path(code), 'rb') as f:
@@ -475,7 +475,7 @@ def load_locale(style=None):
         return dict(_FALLBACK_LABELS)
 
 def load_preview_strings():
-    code = settings.get('locale', 'fr')
+    code = settings.get('locale', 'en')
     try:
         with open(_locale_path(code), 'rb') as f:
             return tomllib.load(f).get('preview', {})
