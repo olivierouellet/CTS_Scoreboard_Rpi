@@ -49,16 +49,12 @@ def route_live(request: Request):
 
 @router.get('/live-mobile')
 def route_live_mobile(request: Request):
-    lanes = int(state.settings.get('num_lanes', 8))
-    carousel_images = sorted(
-        f for f in os.listdir(state.IMAGES_DIR)
-        if os.path.isfile(os.path.join(state.IMAGES_DIR, f))
-    )
+    """The phone board, from shared/templates — the same page the cloud serves.
+
+    No carousel images and no meet title: this view carries neither, so nothing
+    here reads `state.IMAGES_DIR`. The kiosk (`/live`) still does."""
     return render(request, 'live-mobile.html',
-                  meet_title=state.settings['meet_title'],
-                  num_lanes=lanes,
-                  carousel_images=carousel_images,
-                  carousel_interval=int(state.settings.get('carousel_interval', 10)),
+                  num_lanes=int(state.settings.get('num_lanes', 8)),
                   theme_fonts={**state.DEFAULT_THEME_FONTS,
                                **state.settings.get('theme_fonts', {})})
 

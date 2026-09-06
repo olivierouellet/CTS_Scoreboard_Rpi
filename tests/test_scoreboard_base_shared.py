@@ -1,14 +1,16 @@
-"""`shared/templates/scoreboard_base.html` — one base, two servers.
+"""`shared/templates/` — one phone board, served by both servers.
 
-The Pi's `live-mobile.html` and the cloud's now extend the same file, so a change
-that suits one can silently break the other. Both are rendered here from their real
-context and checked for the things that differ *on purpose*.
+`live-mobile.html` is a single file now: the Pi and the cloud render the same
+template, differing only in whether `MEET_ID` is set. `results.html` (cloud) also
+extends the same base, so a base change reaches three pages at once.
 
-What makes this worth a test: the two pages fail in opposite directions. The cloud
-must never animate its columns (it has no operator to collapse them) and must never
-show the idle meet title (the phone already picked the meet). The Pi must do both.
-Each behaviour rides on CSS source order, which no amount of reading catches once
-the file is 200 lines long.
+What the tests are for. The page reached its current shape by deleting things —
+the carousel, the test banner, the operator column collapse, the timed revert on
+implied results, the idle meet title, the synthesized row gradient — because this
+view is for operators verifying a pool setup and for spectators falling back from
+the native apps. Neither wants chrome, and both want the screen to match the last
+frame received. Re-adding any of it, or letting the two servers drift apart again,
+is what these guard against.
 """
 import os
 import re
@@ -24,7 +26,8 @@ sys.path.insert(0, os.path.join(REPO, 'server'))
 import state   # noqa: E402
 
 _LABELS = {'event': 'Event', 'heat': 'Heat', 'lane': 'Lane', 'name': 'Name',
-           'club': 'Club', 'time': 'Time', 'delta': 'Δ', 'place': '#'}
+           'club': 'Club', 'time': 'Time', 'delta': 'Δ', 'place': '#',
+           'waiting_results': 'Waiting for results…'}
 _FLAGS = {f'show_{k}': True for k in
           ('lane_header', 'name_header', 'club_header', 'time_header',
            'delta_header', 'position_header', 'name', 'club', 'delta', 'position')}
@@ -43,17 +46,40 @@ def _render(own_dir, template, **extra):
 
 @pytest.fixture(scope='module')
 def pi():
-    return _render('server/templates', 'live-mobile.html',
-                   meet_title='Coupe du Printemps',
-                   carousel_images=['a.jpg'], carousel_interval=10)
+    """As the Pi serves it: one meet, so no room to join."""
+    return _render('server/templates', 'live-mobile.html')
 
 
 @pytest.fixture(scope='module')
 def cloud():
+    """As the cloud serves it: many meets, joined by id."""
     return _render('cloud/templates', 'live-mobile.html', meet_id='abc123')
 
 
-# ── Shared skeleton ────────────────────────────────────────────────────────────
+@pytest.fixture(scope='module')
+def cloud_results():
+    """The other page on the same base — base changes must not break it."""
+    return _render('cloud/templates', 'results.html', meet_id='abc123')
+
+
+# ── One template, two servers ──────────────────────────────────────────────────
+
+def test_there_is_exactly_one_live_mobile_template():
+    """It lives in shared/. A copy reappearing under server/ or cloud/ would win
+    over the shared one — the loaders are own-first — and drift silently."""
+    assert os.path.isfile(os.path.join(REPO, 'shared/templates/live-mobile.html'))
+    for d in ('server/templates', 'cloud/templates'):
+        assert not os.path.exists(os.path.join(REPO, d, 'live-mobile.html')), \
+            f'{d}/live-mobile.html shadows the shared template'
+
+
+def test_the_only_difference_is_the_room_join(pi, cloud):
+    """Same file, so the rendered pages may differ only where MEET_ID does."""
+    assert "emit('join_meet'" in pi and "emit('join_meet'" in cloud   # the call is in both
+    assert 'var MEET_ID   = ""' in pi                                 # …guarded off here
+    assert 'var MEET_ID   = "abc123"' in cloud
+    assert 'if (MEET_ID) socket.emit' in pi
+
 
 @pytest.mark.parametrize('probe', [
     'id="lane_num1"',        # the pulse target
@@ -62,51 +88,30 @@ def cloud():
     'id="meet_datetime"',
     'id="lane_name1"', 'id="lane_name_alt1"', 'id="lane_club1"',
     'id="lane_time1"', 'id="lane_delta1"', 'id="lane_place1"',
-    'id="timing-bg"',
 ])
-def test_both_pages_share_the_skeleton(pi, cloud, probe):
-    assert probe in pi
-    assert probe in cloud
+def test_all_three_pages_share_the_skeleton(pi, cloud, cloud_results, probe):
+    for html in (pi, cloud, cloud_results):
+        assert probe in html
 
 
-def test_both_pages_bind_the_lane_pulse(pi, cloud):
-    """Neither view has a running clock, so the pulse is the only progress signal."""
-    for html in (pi, cloud):
-        assert 'bindLanePulse(socket)' in html
-        assert 'lane-pulsing' in html
-
-
-def test_pulse_helpers_are_defined_once(pi, cloud):
-    """They live in the base. A page redefining them would shadow the shared copy
-    and quietly drift from the other surface."""
-    for html in (pi, cloud):
-        assert html.count('function updateAllLanePulses()') == 1
-        assert html.count('var meet_live') == 1
-
-
-@pytest.mark.parametrize('symbol', [
-    'function applyScoreboardFrame(',
-    'function apply_state_transition(',
-    'function reset_state(',
-    'var VALID_FIELDS',
-])
-def test_frame_handling_is_defined_once(pi, cloud, symbol):
+def test_shared_symbols_are_defined_once(pi, cloud, cloud_results):
     """The merge loop and the state machine are the highest-risk shared code — the
     two surfaces had drifted here before (the cloud could not retrigger the
-    time-locked animation). One definition each, in the base, on both pages."""
-    for html in (pi, cloud):
-        assert html.count(symbol) == 1
-
-
-def test_both_pages_use_the_shared_frame_handler(pi, cloud):
-    for html in (pi, cloud):
-        assert "socket.on('update_scoreboard', applyScoreboardFrame)" in html
+    time-locked animation). One definition each, on every page."""
+    for html in (pi, cloud, cloud_results):
+        for symbol in ('function applyScoreboardFrame(',
+                       'function apply_state_transition(',
+                       'function reset_state(',
+                       'function updateAllLanePulses(',
+                       'var VALID_FIELDS',
+                       'var meet_live'):
+            assert html.count(symbol) == 1, f'{symbol} defined {html.count(symbol)}x'
 
 
 def test_lock_animation_retriggers(pi, cloud):
     """Re-adding a class that is still set does not restart its animation, so both
     classes come off before the reflow. Without this a lane that finishes twice
-    shows the lock effect only once — the exact bug the hoist removed."""
+    shows the lock effect only once."""
     for html in (pi, cloud):
         i = html.index("} else if (was) {")
         block = html[i:html.index("add('time-locked')", i)]
@@ -114,71 +119,48 @@ def test_lock_animation_retriggers(pi, cloud):
         assert block.index("remove('time-locked')") < block.index('void tel.offsetWidth')
 
 
-def test_each_page_defines_all_three_modes(pi, cloud):
-    """The base dispatches to these by name; a missing one is a runtime error that
-    only shows up when the board reaches that state mid-meet."""
+def test_intro_clears_the_previous_heat(pi, cloud):
+    """The server refreshes names/clubs on an event change but not times, deltas or
+    places. Without this the last heat's numbers sit under the new swimmers."""
     for html in (pi, cloud):
-        for mode in ('mode_to_intro', 'mode_to_running', 'mode_to_results'):
-            assert f'function {mode}()' in html
+        intro = html[html.index('function mode_to_intro()'):html.index('function mode_to_running()')]
+        for field in ('lane_time', 'lane_delta', 'lane_place'):
+            assert f"'{field}'" in intro or f"'{field}'+" in intro or f"'{field}' +" in intro
 
 
-# ── Deliberate divergence ──────────────────────────────────────────────────────
+# ── Deliberately absent ────────────────────────────────────────────────────────
 
-def _last_transition_rule(html):
-    """The winning `transition` for the optional columns, by CSS source order."""
-    style = re.search(r'<style>(.*?)</style>', html, re.S).group(1)
-    hits = re.findall(r'\.timing-anim\s*{\s*transition:\s*([^;]+)|'
-                      r'\.delta-column\s*{\s*transition:\s*([^;]+)', style)
-    assert hits, 'no column transition rule found at all'
-    winner = hits[-1]
-    return (winner[0] or winner[1]).strip()
-
-
-def test_cloud_columns_never_animate(cloud):
-    """No operator can collapse them there, and an orientation flip must not slide
-    them. The base's `transition: none` has to survive."""
-    assert _last_transition_rule(cloud) == 'none'
-
-
-def test_pi_columns_animate(pi):
-    """`columns_state` collapses instantly and expands over 0.5s. The Pi re-declares
-    `.timing-anim` in extra_style; if that block ever renders *before* the base's
-    `transition: none`, the expand goes instant and the regression is invisible."""
-    assert _last_transition_rule(pi).startswith('width 0.5s')
-    assert 'class="place-column timing-anim"' in pi
-
-
-def test_idle_title_present_but_hidden_by_default(pi, cloud):
-    """Hidden in the markup on both; only the Pi reveals it, via set_header_mode."""
-    marker = 'id="header_meet_title_wrap" style="display:none;"'
-    assert marker in pi
-    assert marker in cloud
-    assert 'set_header_mode(false)' in pi                # Pi flips it on at load
-    assert 'function set_header_mode' not in cloud       # cloud has no such mode
-
-
-@pytest.mark.parametrize('feature', [
-    'carousel-overlay', 'test-overlay', 'collapse_cols', 'build_scoreboard_bg',
+@pytest.mark.parametrize('removed, why', [
+    ('carousel-overlay',    'operator image overlay — Pi-local, never relayed'),
+    ('test-overlay',        'test-session banner'),
+    ('collapse_cols',       'operator column collapse'),
+    ('expand_cols',         'duplicated the CSS column widths'),
+    ('build_scoreboard_bg', 'synthesized row-stripe gradient'),
+    ('set_header_mode',     'idle meet title'),
+    ('results_implicit',    'timed revert after implied results'),
 ])
-def test_pi_only_features_stay_off_the_cloud(pi, cloud, feature):
-    """Operator-driven, LAN-only, and deliberately not relayed — notes/cloud_parity.md."""
-    assert feature in pi
-    assert feature not in cloud
+def test_removed_chrome_stays_removed(pi, cloud, removed, why):
+    """Each of these was cut on purpose: this board shows the last frame received
+    and nothing else. Re-adding one means re-opening that decision, not patching a
+    regression."""
+    for html in (pi, cloud):
+        assert removed not in html, f'{removed} is back ({why})'
 
 
-def test_only_the_pi_acts_on_implied_results(pi, cloud):
-    """The base sets `results_implicit` on both — deriving it is shared — but only
-    the Pi reverts to intro after 3s. The cloud stays flat on purpose: a phone
-    reconnecting mid-sequence must land on a correct screen, not halfway through a
-    timed revert (notes/cloud_parity.md)."""
-    assert 'var results_implicit' in pi and 'var results_implicit' in cloud
-    assert 'if (results_implicit) {' in pi
-    assert 'if (results_implicit) {' not in cloud
+def test_columns_never_animate(pi, cloud, cloud_results):
+    """Nothing on a phone collapses them and an orientation flip must not slide
+    them. `timing_display.css` is shared with the kiosk, which does animate."""
+    for html in (pi, cloud, cloud_results):
+        style = re.search(r'<style>(.*?)</style>', html, re.S).group(1)
+        rules = re.findall(r'\.delta-column\s*{\s*transition:\s*([^;]+)', style)
+        assert rules and rules[-1].strip() == 'none'
+        assert 'timing-anim' not in html
 
 
-def test_only_the_cloud_joins_a_room(pi, cloud):
-    """The Pi serves one meet and pushes on connect (docs/api.md §2); emitting
-    join_meet there would talk to a handler that does not exist."""
-    assert "emit('join_meet'" in cloud
-    assert "emit('join_meet'" not in pi
-    assert 'var MEET_ID   = ""' in pi
+def test_results_page_reacts_to_meet_live_its_own_way(cloud_results):
+    """It shares `meet_live` with the live board but not the response: no lane runs
+    on a results screen, so it shows the waiting message instead of pulsing."""
+    assert 'function bindLanePulse' in cloud_results   # defined by the base…
+    assert 'bindLanePulse(' not in cloud_results.split('function bindLanePulse')[1]
+    assert "sock.on('meet_live'" in cloud_results       # …but wired by hand here
+    assert 'showWaiting()' in cloud_results

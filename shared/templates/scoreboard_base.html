@@ -49,11 +49,10 @@
     [id^="lane_place"]:not(:empty)::before { content: '#'; opacity: 0.5; }
 }
 /* ── Columns ──
-   Parked at `transition: none` by default: the cloud never moves these, and an
-   orientation flip should not slide them. This sits after timing_display.css, so
-   it also neutralises `.timing-anim` on the headers below. A page whose operator
-   *can* collapse them (the Pi) re-declares `.timing-anim` in `extra_style`, which
-   renders later still and wins on source order. */
+   Always visible, and never animated: nothing on a phone collapses them, and an
+   orientation flip should not slide them. Widths come from the media queries
+   below — no JS touches these. `timing_display.css` is shared with the kiosk,
+   which does animate them, hence the explicit override here. */
 .place-column,
 .time-column,
 .delta-column { transition: none; }
@@ -109,9 +108,6 @@ var NUM_LANES = {{ num_lanes }};
 // Only the cloud joins a room; the Pi serves one meet and pushes on connect
 // (docs/api.md §2), so it renders this as "".
 var MEET_ID   = {{ meet_id | default('', true) | tojson }};
-// Column headers, already localised server-side. Needed as data — not just markup —
-// because the Pi's collapse/expand animation rewrites the time header's text.
-var labels    = {{ labels | tojson }};
 
 // Random per-device id for anonymous attendance counting (opt-in, admin side).
 // Stored once in localStorage and shared across the meet's pages on this origin;
@@ -185,10 +181,6 @@ var lane_place_blank = {};
 var lane_time_blank  = {};
 var lane_name_blank  = {};
 var last_event = 0, last_heat = 0, last_state = 0, current_state = 0;
-/* True when state 3 was inferred from the heat rolling over rather than from
-   real results. The Pi shows those briefly then falls back to intro; the cloud
-   stays put, being deliberately stateless (notes/cloud_parity.md). */
-var results_implicit = false;
 
 /* Fields the handler may write straight to the DOM, by element id. */
 var VALID_FIELDS = new Set([
@@ -203,16 +195,15 @@ var VALID_FIELDS = new Set([
 
 function reset_state() {
     current_state = 0; last_state = 0; last_event = 0; last_heat = 0;
-    results_implicit = false;
     lane_running = {}; lane_place_blank = {}; lane_time_blank = {}; lane_name_blank = {};
     updateAllLanePulses();
 }
 
 function apply_state_transition() {
     if (current_state === last_state) return;
-    if      (current_state === 1) { results_implicit = false; mode_to_intro();   }
-    else if (current_state === 2) { results_implicit = false; mode_to_running(); }
-    else if (current_state === 3) { mode_to_results(); }
+    if      (current_state === 1) mode_to_intro();
+    else if (current_state === 2) mode_to_running();
+    else if (current_state === 3) mode_to_results();
     last_state = current_state;
 }
 
@@ -277,12 +268,12 @@ function applyScoreboardFrame(new_s) {
         if (lane_running[i] || false) { current_state = 2; break; }
     }
 
-    /* Running → intro means the heat advanced before results were published.
-       Show results anyway; the flag tells mode_to_results it was inferred. */
-    if (current_state === 1 && last_state === 2) {
-        results_implicit = true;
-        current_state = 3;
-    }
+    /* Running → intro means the heat advanced before the console published
+       results. Show them anyway rather than blanking what the swimmers just
+       posted; the next frame moves on. Both boards now do this the same way —
+       neither holds the state on a timer, so what is on screen always matches
+       the last frame received. */
+    if (current_state === 1 && last_state === 2) current_state = 3;
 
     apply_state_transition();
     updateAllLanePulses();
@@ -299,12 +290,6 @@ function init() {
 <body style="margin:0" onload="init();">
 <div class="timing-outer">
     <div class="timing-header-bar">
-        {# Idle title, hidden by default. The Pi swaps it against the three cells
-           below via set_header_mode(); the cloud never shows it, since a phone
-           already knows which meet it opened. #}
-        <div class="header_cell header_cell_grow" id="header_meet_title_wrap" style="display:none;">
-            <span class="header_value" id="header_meet_title">{{ meet_title | default('', true) }}</span>
-        </div>
         <div class="header_cell" id="header_event_cell">
             <span class="header_label">{{ labels.event or 'Event' }}</span>
             <span class="header_value" id="current_event"></span>
@@ -322,16 +307,15 @@ function init() {
     </div>
 
     <div class="timing-content" id="scoreboard">
-        <div id="timing-bg" aria-hidden="true"></div>
         <table id="timing-board" class="timing-table{% if not show_lane_header %} hide-lane-header{% endif %}{% if not show_name_header %} hide-name-header{% endif %}{% if not show_club_header %} hide-club-header{% endif %}{% if not show_time_header %} hide-time-header{% endif %}{% if not show_delta_header %} hide-delta-header{% endif %}{% if not show_position_header %} hide-position-header{% endif %}{% if not show_name %} hide-name{% endif %}{% if not show_club %} hide-club{% endif %}{% if not show_delta %} hide-delta{% endif %}{% if not show_position %} hide-position{% endif %}">
             <thead>
                 <tr class="timing-header">
                     <th class="lane-column" style="text-align:center;">{{ labels.lane or 'Lane' }}</th>
                     <th id="name-column" style="text-align:left;">{{ labels.name or 'Name' }}</th>
                     <th class="club-column" style="text-align:center;">{{ labels.club or 'Club' }}</th>
-                    <th id="time-column" class="time-column timing-anim" style="text-align:center;">{{ labels.time or 'Time' }}</th>
-                    <th id="delta-column" class="delta-column timing-anim" style="text-align:center;">{{ labels.delta or 'Δ' }}</th>
-                    <th id="place-column" class="place-column timing-anim" style="text-align:center;">{{ labels.place or '#' }}</th>
+                    <th id="time-column" class="time-column" style="text-align:center;">{{ labels.time or 'Time' }}</th>
+                    <th id="delta-column" class="delta-column" style="text-align:center;">{{ labels.delta or 'Δ' }}</th>
+                    <th id="place-column" class="place-column" style="text-align:center;">{{ labels.place or '#' }}</th>
                 </tr>
             </thead>
             <tbody>

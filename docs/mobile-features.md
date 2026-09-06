@@ -41,7 +41,7 @@ reference implementation for every row below is `cloud/templates/`:
 | --- | --- |
 | meet picker | [`cloud/templates/picker.html`](../cloud/templates/picker.html) |
 | app shell / tabs | [`cloud/templates/mobile.html`](../cloud/templates/mobile.html) |
-| Scoreboard tab | [`cloud/templates/live-mobile.html`](../cloud/templates/live-mobile.html) + [`shared/templates/scoreboard_base.html`](../shared/templates/scoreboard_base.html) |
+| Scoreboard tab | [`shared/templates/live-mobile.html`](../shared/templates/live-mobile.html) + [`shared/templates/scoreboard_base.html`](../shared/templates/scoreboard_base.html) |
 | Results tab | [`cloud/templates/results.html`](../cloud/templates/results.html) + `scoreboard_base.html` |
 | Schedule tab | [`cloud/templates/schedule.html`](../cloud/templates/schedule.html) |
 | socket client | [`shared/static/js/ws.js`](../shared/static/js/ws.js) |
@@ -207,7 +207,7 @@ Live lane state during a heat. The busiest screen and the one most worth getting
 | `L-18` | Carousel / fullscreen image overlay | n/a — images are local to the Pi and are never relayed |
 | `L-19` | Podium highlight animation | n/a — Pi-local, `race_finished` is not forwarded |
 | `L-20` | Animated column show/hide, operator-driven | n/a — cloud columns are always visible |
-| `L-21` | `brief_results` (3s results flash on an unconfirmed finish) | n/a — the cloud stays stateless, see `cloud_parity.md` |
+| `L-21` | Any timed hold on a state — e.g. a 3s results flash on an unconfirmed finish | n/a — the board shows the last frame received and never runs its own clock, so a client joining mid-sequence cannot land out of step with the console |
 | `L-22` | Live running clock per lane | n/a — `running_time` is stripped; see `L-12` |
 
 ---

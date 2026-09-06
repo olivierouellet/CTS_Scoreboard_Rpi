@@ -836,7 +836,6 @@ def route_live(request: Request):
     s = meet.get('settings', {})
     return render(request, 'live-mobile.html',
         meet_id=meet_id,
-        meet_title=meet['name'],
         num_lanes=s.get('num_lanes', 8),
         show_lane_header=s.get('show_lane_header', True),
         show_name_header=s.get('show_name_header', True),

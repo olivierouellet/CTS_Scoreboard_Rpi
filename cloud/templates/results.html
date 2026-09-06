@@ -21,7 +21,9 @@
 {% endblock %}
 
 {% block socket %}
-var meet_live = false;   // a relay/console is currently feeding this meet
+/* `meet_live` comes from the base. This page reacts to it differently from the
+   live board: no lanes are running on a results screen, so instead of pulsing it
+   falls back to the waiting message when nothing is feeding the meet. */
 function showWaiting() { document.getElementById('waiting').classList.remove('hidden'); }
 
 var sock = splouchSocket('/ws/results');

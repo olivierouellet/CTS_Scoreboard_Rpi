@@ -1,0 +1,44 @@
+{# The live board on a phone — one page, served by both servers.
+
+   The Pi renders it for operators checking the pool setup before a meet and
+   watching times land as fast as the console reports them. The cloud renders the
+   same page as a fallback for spectators when the native apps are unavailable.
+
+   Neither audience wants chrome: there is no carousel, no test banner, no column
+   animation and no timed hold on a state. What is on screen is the last frame
+   received, which is what makes it useful to an operator and safe for a phone
+   that reconnects mid-meet.
+
+   Everything structural — markup, styling, the frame merge and the state machine
+   — lives in scoreboard_base.html. #}
+{% extends "scoreboard_base.html" %}
+
+{% block socket %}
+/* Intro clears the previous heat's figures. The server refreshes names, clubs and
+   alts on an event change but not times, deltas or places, so without this the
+   last heat's numbers sit under the new heat's swimmers until the console
+   overwrites them one by one. */
+function mode_to_intro() {
+    reset_times();
+    for (var i = 1; i <= NUM_LANES; i++) {
+        document.getElementById('lane_time' + i).innerHTML  = '';
+        document.getElementById('lane_delta'+ i).innerHTML  = '';
+        document.getElementById('lane_place'+ i).innerHTML  = '';
+    }
+}
+/* Running and results need no chrome change: the columns are always visible and
+   the header never switches modes. The lane pulse carries the running state. */
+function mode_to_running() { }
+function mode_to_results() { }
+
+var socket = splouchSocket('/ws/scoreboard');
+socket.on('connect', function() {
+    reset_state();
+    /* The cloud serves many meets and routes by room; the Pi serves one and
+       pushes on connect, so it renders MEET_ID as "" (docs/api.md §2 vs §3). */
+    if (MEET_ID) socket.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() });
+});
+socket.on('reload', function() { location.reload(); });
+bindLanePulse(socket);
+socket.on('update_scoreboard', applyScoreboardFrame);
+{% endblock %}
