@@ -69,6 +69,10 @@ def _globals():
     return dict(
         splash_url=state.settings.get('splash_url', ''),
         labels=state.load_locale(),
+        # BCP-47 tag for <html lang>, from the same setting `labels` is read in.
+        # Display pages only — the admin UI has its own per-device language
+        # (`ui_lang`), so those templates deliberately keep lang="en".
+        lang=state.settings.get('locale', 'en'),
         show_lane_header=state.settings.get('show_lane_header', True),
         show_name_header=state.settings.get('show_name_header', True),
         show_club_header=state.settings.get('show_club_header', True),

@@ -768,7 +768,11 @@ _PICKER_STRING_KEYS = ('page_title', 'no_meets', 'unnamed_meet',
 def route_index(request: Request):
     meets = _public_meet_list()
     brand = _picker_branding()
-    return render(request, 'picker.html', meets=meets, t=_strings(_picker_lang(request), 'cloud'),
+    # The list spans meets that may each run in a different language, so this page
+    # follows the visitor, not a meet. Per-meet language starts at /mobile.
+    lang = _picker_lang(request)
+    return render(request, 'picker.html', meets=meets, t=_strings(lang, 'cloud'),
+        lang=lang,
         picker_title=brand['title'],
         picker_window_title=brand['window_title'],
         picker_logo=brand['has_logo'],
@@ -820,7 +824,8 @@ def route_mobile(request: Request):
     return render(request, 'mobile.html',
                   meet_id=meet_id,
                   app_title=(meet.get('app_window_title') or meet['name'] or 'Splouch'),
-                  t=_strings(_meet_lang(meet), 'mobile'))
+                  t=_strings(_meet_lang(meet), 'mobile'),
+                  lang=_meet_lang(meet))
 
 
 @app.get('/mobile/live', tags=['Public'])
@@ -850,6 +855,7 @@ def route_live(request: Request):
         theme_colors={**_DEFAULT_COLORS, **s.get('theme_colors', {})},
         theme_fonts={**_DEFAULT_FONTS,  **s.get('theme_fonts',  {})},
         labels=s.get('labels', {}),
+        lang=_meet_lang(meet),
     )
 
 
@@ -875,8 +881,11 @@ def route_results(request: Request):
         show_delta=s.get('show_delta', True),
         show_position=s.get('show_position', True),
         theme_colors={**_DEFAULT_COLORS, **s.get('theme_colors', {})},
-        theme_fonts=s.get('theme_fonts', _DEFAULT_FONTS),
+        # Merged, not a wholesale fallback: a relay sending only one font would
+        # otherwise leave the other two CSS variables empty. Same as route_live.
+        theme_fonts={**_DEFAULT_FONTS,  **s.get('theme_fonts',  {})},
         labels=s.get('labels', {}),
+        lang=_meet_lang(meet),
     )
 
 
@@ -931,6 +940,7 @@ def route_schedule(request: Request):
         labels=s.get('labels', {}),
         theme_colors={**_DEFAULT_COLORS, **s.get('theme_colors', {})},
         theme_fonts={**_DEFAULT_FONTS,  **s.get('theme_fonts', {})},
+        lang=_meet_lang(meet),
     )
 
 

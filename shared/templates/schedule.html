@@ -5,7 +5,7 @@
    `meet_id` is the only difference — the cloud routes by room, the Pi serves one
    meet and renders it as "". #}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang | default('en', true) }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">

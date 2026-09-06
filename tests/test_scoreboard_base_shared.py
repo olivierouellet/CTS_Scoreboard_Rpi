@@ -315,3 +315,34 @@ def test_schedule_palette_comes_from_the_server(sched_pi, sched_cloud):
         assert f"'{key}'" in src,                 f'{key} missing from the cloud palette'
     for html in (sched_pi, sched_cloud):
         assert "theme_colors.get('schedule" not in html
+
+
+# ── Page language ──────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize('template, extra', [
+    ('mobile.html',      {'app_title': 'Coupe', 't': _TABS}),
+    ('live-mobile.html', {}),
+    ('schedule.html',    {'heats_json': _HEATS, 'has_meet': True,
+                          'meet_name': 'Coupe', 't': _SCHED_T}),
+])
+@pytest.mark.parametrize('code', ['fr', 'es', 'en'])
+def test_html_lang_follows_the_meet_locale(template, extra, code):
+    """Screen readers and hyphenation key off <html lang>. The content is in the
+    meet's language, not the device's, so the routes pass it explicitly."""
+    html = _render('server/templates', template, lang=code, **extra)
+    assert f'<html lang="{code}">' in html
+
+
+def test_html_lang_falls_back_when_unset():
+    """A caller that forgets it should get a valid document, not lang=""."""
+    assert '<html lang="en">' in _render('server/templates', 'live-mobile.html')
+
+
+def test_every_shared_template_declares_a_language():
+    """A missing lang leaves assistive tech guessing from the browser locale."""
+    import glob
+    for path in glob.glob(os.path.join(REPO, 'shared/templates/*.html')):
+        src = open(path).read()
+        if '<html' not in src:
+            continue                       # a fragment, not a document
+        assert '<html lang="{{ lang' in src, f'{os.path.basename(path)} hard-codes or omits lang'
