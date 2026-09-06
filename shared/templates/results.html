@@ -12,40 +12,31 @@
 {% block extra_style %}
 [id^="lane_place"] { font-family: var(--font-digits), monospace; }
 
-/* Covers the table until the first snapshot, and again if the console goes away.
-   Matched to the table-header background so the header's bottom border blends the
-   way it does under the live board, rather than contrasting with the page. */
-/* Landscape: the table fills its container, so there is no spare room and the
-   message has to cover it. Needs `z-index` above the table's own `z-index: 1` —
-   left at auto it paints *behind*, leaking its background out below the last lane
-   and hiding the message itself. */
+/* The waiting message sits in the flow and takes whatever room the rows leave —
+   it never covers the board. It does not have to: when the feed goes away the rows
+   are wiped (clearResults), so there is nothing stale underneath to hide. */
 #waiting {
-    position: fixed;
-    inset: 65px 0 0 0;
-    z-index: 2;
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--color-th-text);
     font-size: 1.4em;
-    background: var(--color-th-bg);
 }
 #waiting.hidden { display: none; }
 
-/* Portrait: rows take their natural height, leaving the lower part of the screen
-   empty, so the message goes in that gap and the empty grid stays visible. Not an
-   overlay here at all — it is in the flow, over nothing, so it drops the panel
-   background and lets the page colour through. The board is wiped when the feed
-   drops (clearResults), so there is never anything underneath worth covering. */
+/* Portrait: rows take their natural height, so the lower part of the screen is
+   free and the message goes there, under a visible empty grid. */
 @media (orientation: portrait) {
     .timing-content { flex: 0 0 auto; }
     .timing-table   { height: auto; }   /* relax the 100% in timing_display.css */
-    #waiting {
-        position: static;
-        flex: 1;
-        inset: auto;
-        background: none;
-    }
+}
+
+/* Landscape: the rows share out the full height, so there is no room left. Rather
+   than cover them, say nothing — an empty grid reads the same way here as it does
+   on the live board, which shows no message either. */
+@media (orientation: landscape) {
+    #waiting { display: none; }
 }
 {% endblock %}
 

@@ -546,30 +546,45 @@ def _rule(css, selector, after=0):
     return css[start:css.index('}', start)]
 
 
-def test_waiting_message_outranks_the_table_in_landscape(res_pi, res_cloud):
-    """Landscape has no spare room — the table fills its container — so the message
-    has to cover it. The table is `position: relative; z-index: 1`, so left at
-    z-index auto this paints *behind*: empty rows striped on top, its background
-    leaking out below the last lane, and the message itself invisible."""
+def _page_css(html):
+    """Only this page's own block. The base declares its own portrait/landscape
+    media queries earlier in the same <style>, so searching the whole thing finds
+    those instead of the overrides under test."""
+    css = _css(html)
+    return css[css.index('#waiting {'):]
+
+
+def test_waiting_message_never_covers_the_board(res_pi, res_cloud):
+    """It used to be a fixed panel over the table, which needed a z-index above the
+    table's own and leaked its background out below the last lane. Now the rows are
+    cleared when the feed drops, so there is nothing to hide and nothing to stack."""
     for html in (res_pi, res_cloud):
-        z = re.search(r'z-index:\s*(\d+)', _rule(_css(html), '#waiting {'))
-        assert z, '#waiting has no z-index and will sit under the table'
-        assert int(z.group(1)) > 1, 'must outrank .timing-table (z-index: 1)'
+        rule = _rule(_css(html), '#waiting {')
+        assert 'position: fixed' not in rule
+        assert 'z-index' not in rule
+        assert 'background' not in rule
+        assert 'flex: 1' in rule           # takes leftover room, not the whole area
 
 
 def test_waiting_message_fills_the_gap_in_portrait(res_pi, res_cloud):
-    """Portrait rows take their natural height, so the message goes in the space
-    below the last lane instead of over the board — in the flow, no panel
-    background, page colour showing through."""
+    """Portrait rows take their natural height, so the space below the last lane is
+    free and the message goes there, under a visible empty grid."""
     for html in (res_pi, res_cloud):
-        css = _css(html)
-        portrait = css[css.index('@media (orientation: portrait)', css.index('#waiting {')):]
-        rule = _rule(portrait, '#waiting {')
-        assert 'position: static' in rule
-        assert 'flex: 1' in rule
-        assert 'background: none' in rule
+        portrait = _page_css(html)
+        portrait = portrait[portrait.index('@media (orientation: portrait)'):]
+        assert 'flex: 0 0 auto' in _rule(portrait, '.timing-content')
         assert 'height: auto' in _rule(portrait, '.timing-table'), \
             'the table must give up its 100% height or there is no gap'
+
+
+def test_no_message_in_landscape(res_pi, res_cloud):
+    """The rows share out the full height there, so there is no room for it. An
+    empty grid reads the same way the live board's does, and that shows no message
+    either — better than covering the board to say so."""
+    for html in (res_pi, res_cloud):
+        landscape = _page_css(html)
+        landscape = landscape[landscape.index('@media (orientation: landscape)'):]
+        assert 'display: none' in _rule(landscape, '#waiting {')
 
 
 def test_stale_results_are_cleared_not_covered(res_pi, res_cloud):
