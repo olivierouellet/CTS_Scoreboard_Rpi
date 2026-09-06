@@ -194,10 +194,14 @@ def _build_meet_data():
 
 def send_event_info():
     ev, ht = state._decoder.last_event_sent
+    # (0, 0) is the decoder's "nothing yet" sentinel, not event 0 of heat 0. Send it
+    # as blank: a client writes these straight into the header, so str(0) painted a
+    # literal "0" under EVENT and HEAT before the console had reported anything.
+    started = (ev, ht) != (0, 0)
     u = {
-        'current_event': str(ev),
-        'current_heat':  str(ht),
-        'event_name':    get_event_name_display(ev),
+        'current_event': str(ev) if started else '',
+        'current_heat':  str(ht) if started else '',
+        'event_name':    get_event_name_display(ev) if started else '',
     }
     for i in range(1, 11):
         name, club = get_lane_parts(ev, ht, i)

@@ -534,3 +534,17 @@ def test_waiting_message_is_translated_on_both(res_pi, res_cloud):
     src = open(os.path.join(REPO, 'cloud', 'cloud_server.py')).read()
     assert src.count("t=_strings(_meet_lang(meet), 'mobile')") == 3, \
         'every per-meet cloud page must pass the [mobile] strings'
+
+
+def test_waiting_overlay_covers_the_table(res_pi, res_cloud):
+    """The table is `position: relative; z-index: 1`, so an overlay left at z-index
+    auto paints *behind* it: empty rows striped on top, this background leaking out
+    below the last lane, and the message itself invisible."""
+    for html in (res_pi, res_cloud):
+        style = re.search(r'<style>(.*?)</style>', html, re.S).group(1)
+        style = re.sub(r'/\*.*?\*/', '', style, flags=re.S)   # comments mention z-index too
+        start = style.index('#waiting {')
+        block = style[start:style.index('}', start)]
+        z = re.search(r'z-index:\s*(\d+)', block)
+        assert z, '#waiting has no z-index and will sit under the table'
+        assert int(z.group(1)) > 1, 'must outrank .timing-table (z-index: 1)'

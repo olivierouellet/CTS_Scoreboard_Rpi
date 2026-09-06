@@ -106,3 +106,37 @@ def test_stale_window_matches_the_qt_display():
     client = os.path.join(REPO, 'scoreboard', 'client.py')
     stale = next(line for line in open(client) if line.startswith('_STALE'))
     assert int(stale.split('=')[1].strip()) == state.MEET_LIVE_STALE
+
+
+# ── Header on a board that has not seen the console yet ────────────────────────
+
+def _header(last_event_sent, monkeypatch):
+    """The current_event / current_heat a fresh client receives on connect."""
+    import bus as bus_mod, relay, meet_data
+
+    class _Decoder:
+        def __init__(self, last):
+            self.last_event_sent = last
+
+    out = []
+    monkeypatch.setattr(state, '_decoder', _Decoder(last_event_sent), raising=False)
+    monkeypatch.setattr(bus_mod, 'emit', lambda ch, ev, d=None: out.append(d))
+    monkeypatch.setattr(relay, 'relay_emit', lambda ev, d=None: None)
+    meet_data.send_event_info()
+    return out[0]
+
+
+def test_no_event_yet_leaves_the_header_blank(monkeypatch):
+    """(0, 0) is the decoder's "nothing yet" sentinel, not event 0 of heat 0.
+    Clients write these straight into the header, so sending str(0) painted a
+    literal "0" under EVENT and HEAT before the console had reported anything."""
+    u = _header((0, 0), monkeypatch)
+    assert u['current_event'] == ''
+    assert u['current_heat'] == ''
+    assert u['event_name'] == ''
+
+
+def test_a_real_event_still_comes_through(monkeypatch):
+    u = _header((3, 1), monkeypatch)
+    assert u['current_event'] == '3'
+    assert u['current_heat'] == '1'

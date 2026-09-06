@@ -18,6 +18,11 @@
 #waiting {
     position: fixed;
     inset: 65px 0 0 0;
+    /* Above the table, which is `position: relative; z-index: 1`. Without this the
+       overlay is positioned with z-index auto and so paints *behind* it: the empty
+       rows show their stripes on top, this background leaks out below the last
+       lane, and the message itself is hidden. */
+    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: center;
