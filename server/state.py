@@ -526,22 +526,25 @@ def settings_strings(code=None):
     return base if code == 'en' else {**base, **_settings_section(code)}
 
 def ui_locale(request):
-    """Resolve the Settings-panel UI language, independently of the scoreboard
-    ``locale`` setting: the ``ui_lang`` cookie (the user's explicit override, set
-    by the sidebar Panel-language selector) → else the browser's Accept-Language
-    → else ``en``."""
+    """Resolve the Settings-panel UI language.
+
+    The ``ui_lang`` cookie — the user's explicit per-device override, set by the
+    sidebar Panel-language selector — wins. Otherwise the panel follows the
+    scoreboard ``locale`` setting, so everyone opening Settings on this server sees
+    it in the meet's language by default, and a new install lands on ``en`` because
+    that is what ``settings['locale']`` defaults to.
+
+    Deliberately *not* Accept-Language: the panel is one operator's console for one
+    meet, and a browser happening to prefer another language is a worse default than
+    the language the meet is actually run in. Someone who wants otherwise sets the
+    override, which is what it is for.
+    """
     installed = {c for c, _ in list_locales()} | {c for c, _ in list_custom_locales()}
     cookie = request.cookies.get('ui_lang')
     if cookie in installed:
         return cookie
-    # Default to the browser's preferred language (first Accept-Language entry
-    # that matches an installed locale).
-    accept = request.headers.get('Accept-Language', '')
-    for part in accept.replace('-', '_').split(','):
-        code = part.split(';')[0].strip().split('_')[0].lower()
-        if code in installed:
-            return code
-    return 'en'
+    code = settings.get('locale', 'en')
+    return code if code in installed else 'en'
 
 def _read_locale_name(path, fallback):
     try:

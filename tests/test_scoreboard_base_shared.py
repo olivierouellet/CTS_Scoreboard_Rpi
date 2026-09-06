@@ -369,3 +369,69 @@ def test_locale_fallbacks_agree_with_the_settings_default():
     for path in ('server/state.py', 'server/web.py', 'server/routes/settings.py'):
         src = open(os.path.join(REPO, path)).read()
         assert "get('locale', 'fr')" not in src, f'{path} still falls back to fr'
+
+
+# ── Admin-panel language ───────────────────────────────────────────────────────
+
+class _Req:
+    """Minimal stand-in for the parts of Request that ui_locale() reads."""
+    def __init__(self, cookie=None, accept=''):
+        self.cookies = {'ui_lang': cookie} if cookie else {}
+        self.headers = {'Accept-Language': accept}
+
+
+@pytest.fixture
+def scoreboard_locale(monkeypatch):
+    def _set(code):
+        monkeypatch.setitem(state.settings, 'locale', code)
+    return _set
+
+
+def test_panel_defaults_to_the_scoreboard_language(scoreboard_locale):
+    """Everyone opening Settings sees it in the language the meet is run in."""
+    scoreboard_locale('fr')
+    assert state.ui_locale(_Req()) == 'fr'
+
+
+def test_panel_ignores_the_browser_preference(scoreboard_locale):
+    """A laptop that happens to prefer Spanish is a worse default than the meet's
+    own language — the per-device override exists for that case."""
+    scoreboard_locale('fr')
+    assert state.ui_locale(_Req(accept='es-ES,es;q=0.9')) == 'fr'
+
+
+def test_per_device_override_still_wins(scoreboard_locale):
+    scoreboard_locale('fr')
+    assert state.ui_locale(_Req(cookie='es')) == 'es'
+
+
+def test_stale_override_falls_back_rather_than_breaking(scoreboard_locale):
+    """A cookie naming a locale that has since been removed must not stick."""
+    scoreboard_locale('fr')
+    assert state.ui_locale(_Req(cookie='zz')) == 'fr'
+
+
+def test_new_install_lands_on_english(scoreboard_locale):
+    scoreboard_locale('en')
+    assert state.ui_locale(_Req(accept='fr-CA')) == 'en'
+
+
+def test_settings_page_declares_the_panel_language_not_the_scoreboard_one():
+    """It is the one page whose text comes from ui_locale rather than `labels`."""
+    src = open(os.path.join(REPO, 'server/templates/settings.html')).read()
+    assert '<html lang="{{ ui_locale' in src
+
+
+@pytest.mark.parametrize('template', ['meet.html', 'console.html',
+                                      'operator.html', 'login.html'])
+def test_other_admin_pages_declare_the_scoreboard_language(template):
+    src = open(os.path.join(REPO, 'server/templates', template)).read()
+    assert '<html lang="{{ lang' in src
+
+
+def test_login_is_rendered_with_the_globals():
+    """A bare TemplateResponse would leave `lang` undefined, silently pinning the
+    login page to the fallback whatever the server is set to."""
+    src = open(os.path.join(REPO, 'server/app.py')).read()
+    assert "templates.TemplateResponse(request, 'login.html'" not in src
+    assert src.count("render(request, 'login.html'") == 2

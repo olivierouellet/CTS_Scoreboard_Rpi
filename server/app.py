@@ -17,7 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import bus
 import state
 from meet_data import _get_next_heats, send_event_info
-from web import NotAuthenticated, render, require_login, templates
+from web import NotAuthenticated, render, require_login
 from worker import _worker_adjust_splits, _worker_next_heat, main_thread_worker
 
 from routes.scoreboard import router as scoreboard_router
@@ -146,7 +146,9 @@ async def route_redoc():
 
 @app.get('/login', tags=['Auth'])
 async def route_login_form(request: Request):
-    return templates.TemplateResponse(request, 'login.html', {})
+    # render(), not a bare TemplateResponse: the page needs `lang` from _globals()
+    # to declare the scoreboard language like every other page on this server.
+    return render(request, 'login.html')
 
 
 @app.post('/login', tags=['Auth'])
@@ -156,8 +158,9 @@ async def route_login(request: Request,
             password == state.settings['password']):
         request.session['user'] = username
         return RedirectResponse(request.query_params.get('next') or '/', status_code=303)
-    return templates.TemplateResponse(request, 'login.html', {'login_failed': True},
-                                      status_code=401)
+    resp = render(request, 'login.html', login_failed=True)
+    resp.status_code = 401
+    return resp
 
 
 @app.get('/logout', tags=['Auth'])
