@@ -54,13 +54,6 @@ reset_filters    = "Restablecer"
 reset_confirm    = "¿Borrar todos los filtros?"
 no_meet          = "No hay archivo de competición cargado"
 back_to_meets    = "Competiciones"
-a2hs_tap         = "Toca"
-a2hs_then        = "luego"
-a2hs_ios_share   = "Compartir"
-a2hs_ios_more    = "Mostrar más"
-a2hs_action      = "Agregar a la pantalla de inicio"
-a2hs_suffix      = "para pantalla completa"
-a2hs_install     = "Instalar"
 
 # Pantalla de TV nativa (scoreboard/) — mensajes mostrados en lugar del tablero.
 [display]

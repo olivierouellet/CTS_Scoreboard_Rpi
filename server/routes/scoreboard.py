@@ -61,6 +61,10 @@ def route_live_mobile(request: Request):
 
 @router.get('/mobile')
 def route_mobile(request: Request):
+    """The phone shell, from shared/templates — the same page the cloud serves.
+
+    No `meet_id`: this server has one meet, so the template drops the back-to-meets
+    link and points the tabs at the local routes instead of the per-meet ones."""
     app_title = (state.settings.get('app_window_title') or
                  state.settings.get('meet_title') or 'Splouch')
     return render(request, 'mobile.html', t=state._mobile_strings(),

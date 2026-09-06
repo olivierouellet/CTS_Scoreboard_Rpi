@@ -48,13 +48,6 @@ reset_filters    = "Reset"
 reset_confirm    = "Clear all filters?"
 no_meet          = "No meet file loaded"
 back_to_meets    = "Meets"
-a2hs_tap         = "Tap"
-a2hs_then        = "then"
-a2hs_ios_share   = "Share"
-a2hs_ios_more    = "Show more"
-a2hs_action      = "Add to Home Screen"
-a2hs_suffix      = "for full screen"
-a2hs_install     = "Install"
 
 # Native TV display (scoreboard/) — status messages shown instead of the board.
 [display]

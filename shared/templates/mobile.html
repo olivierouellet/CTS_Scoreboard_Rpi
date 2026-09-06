@@ -1,3 +1,14 @@
+{# The phone shell — three tabs in iframes, served by both servers.
+
+   The Pi renders it for operators; the cloud renders it for spectators falling
+   back from the native apps. `meet_id` is the only difference: the cloud routes
+   by room and offers a way back to the meet list, the Pi serves one meet and
+   renders it as "".
+
+   The tabs are iframes because each is an independent page with its own socket.
+   They are same-origin, so this shell drives them directly — dispatching resize,
+   calling on_tab_shown, and binding the pull-to-refresh gesture inside the
+   document that actually scrolls. #}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,16 +17,23 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="{{ app_window_title or meet_name or 'Splouch' }}">
+    <meta name="apple-mobile-web-app-title" content="{{ app_title }}">
     <meta name="theme-color" content="#000000">
+    {% if meet_id %}
     <link rel="icon" type="image/svg+xml" href="/favicon.ico">
     <link rel="apple-touch-icon" sizes="180x180" href="/icon/{{ meet_id }}">
     <link rel="manifest" href="/manifest/{{ meet_id }}">
-    <title>{{ app_window_title or meet_name or 'Splouch' }}</title>
+    {% else %}
+    <link rel="apple-touch-icon" sizes="180x180" href="/home_icon">
+    <link rel="manifest" href="/manifest.json">
+    {% endif %}
+    <title>{{ app_title }}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
 
+        /* 65px matches the tab header inside each page (.timing-header-bar, and
+           schedule.html's #top-bar), so the three tabs line up when you swipe. */
         iframe {
             position: fixed;
             top: env(safe-area-inset-top); left: 0;
@@ -50,6 +68,9 @@
         nav a.nav-back:active { color: #ccc; }
         nav a.nav-back svg { display: block; }
 
+        /* Swipe strips. Narrow and at the edges so they intercept a horizontal
+           drag without stealing taps from the page underneath — the iframes fill
+           the rest of the viewport. */
         .edge {
             position: fixed; top: env(safe-area-inset-top); width: 28px;
             height: calc(100% - 65px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
@@ -57,24 +78,7 @@
         }
         .edge-left  { left: 0; }
         .edge-right { right: 0; }
-        /*
-         * Pull-to-refresh capture zone. Covers the top-left area of the screen.
-         *   height: calc(65px + env(safe-area-inset-top))
-         *              — the iframes start at env(safe-area-inset-top), so this makes
-         *                the overlay cover exactly the 65px tab-header zone inside each
-         *                iframe, no more.
-         *   right: 110px — leaves the top-right corner free so the Schedule filter
-         *                button (positioned at the right of #top-bar) is tappable.
-         *
-         * Consequences for schedule.html:
-         *   • #filter-btn must stay within the right 110px (it does — it's at the end of #top-bar).
-         *   • #filter-header row 1 height = 65px so that the search box, the ✓ close
-         *     button, and all buttons below land in row 2 — outside this overlay zone.
-         *
-         * If you change the tab-header height (65px) or right offset (110px), update
-         * both this rule and grid-template-rows in schedule.html's #filter-header.
-         */
-        #edgeT { position: fixed; top: 0; left: 0; right: 110px; height: calc(65px + env(safe-area-inset-top)); width: auto; z-index: 10; }
+
         #ptr-wrap {
             position: fixed; top: env(safe-area-inset-top); left: 0; right: 0;
             height: 0; overflow: visible; z-index: 11; pointer-events: none;
@@ -105,30 +109,37 @@
     </style>
 </head>
 <body>
+    {% if meet_id %}
     <iframe id="frame0" class="active" src="/mobile/live?meet={{ meet_id }}"></iframe>
     <iframe id="frame1"               src="/mobile/results?meet={{ meet_id }}"></iframe>
     <iframe id="frame2"               src="/mobile/schedule?meet={{ meet_id }}"></iframe>
+    {% else %}
+    <iframe id="frame0" class="active" src="/live-mobile"></iframe>
+    <iframe id="frame1"               src="/results"></iframe>
+    <iframe id="frame2"               src="/schedule"></iframe>
+    {% endif %}
 
     <div class="edge edge-left"  id="edgeL"></div>
     <div class="edge edge-right" id="edgeR"></div>
-    <div id="edgeT"></div>
     <div id="ptr-wrap"><div id="ptr-indicator">↻</div></div>
 
     <nav>
+        {% if meet_id %}
         <a href="/" class="nav-back" aria-label="{{ t.back_to_meets or 'Meets' }}">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
         </a>
+        {% endif %}
         <button class="active" id="tab0" onclick="show(0)">
             <img src="/static/icons/swimming.svg" style="width:22px;height:22px;filter:invert(1);vertical-align:middle;margin-right:5px;">
-            <span class="tab-label">{{ t.scoreboard }}</span>
+            <span class="tab-label">{{ t.scoreboard or 'Scoreboard' }}</span>
         </button>
         <button id="tab1" onclick="show(1)">
             <img src="/static/icons/award.svg" style="width:22px;height:22px;filter:invert(1);vertical-align:middle;margin-right:5px;">
-            <span class="tab-label">{{ t.results }}</span>
+            <span class="tab-label">{{ t.results or 'Results' }}</span>
         </button>
         <button id="tab2" onclick="show(2)">
             <img src="/static/icons/clipboard-list.svg" style="width:22px;height:22px;filter:invert(1);vertical-align:middle;margin-right:5px;">
-            <span class="tab-label">{{ t.schedule }}</span>
+            <span class="tab-label">{{ t.schedule or 'Schedule' }}</span>
         </button>
     </nav>
 
@@ -137,6 +148,7 @@
         const frames = [0,1,2].map(i => document.getElementById('frame' + i));
         const tabs   = [0,1,2].map(i => document.getElementById('tab'   + i));
         let current = 0;
+
         function show(idx) {
             if (idx === current) return;
             frames[current].classList.remove('active');
@@ -144,13 +156,17 @@
             current = idx;
             frames[current].classList.add('active');
             tabs[current].classList.add('active');
-            sessionStorage.setItem('tab', idx);
+            try { sessionStorage.setItem('tab', idx); } catch(e) {}
+            // Let the newly-visible page re-run layout that fired while it was hidden.
             try { frames[current].contentWindow.dispatchEvent(new Event('resize')); } catch(e) {}
             try { frames[current].contentWindow.on_timer(); } catch(e) {}
             try { frames[current].contentWindow.on_tab_shown(); } catch(e) {}
         }
+
+        // Restore the tab this session was last on, before anything paints.
         (function() {
-            const saved = parseInt(sessionStorage.getItem('tab'), 10);
+            let saved = NaN;
+            try { saved = parseInt(sessionStorage.getItem('tab'), 10); } catch(e) {}
             if (saved > 0 && saved <= 2) {
                 frames[0].classList.remove('active');
                 tabs[0].classList.remove('active');
@@ -159,6 +175,8 @@
                 tabs[saved].classList.add('active');
             }
         })();
+
+        // ── Swipe between tabs ────────────────────────────────────────────────
         let swipeStartX = null;
         function onTouchStart(e) { swipeStartX = e.touches[0].clientX; }
         function onTouchEnd(e) {
@@ -174,7 +192,12 @@
             el.addEventListener('touchend',   onTouchEnd,   { passive: true });
         });
 
-        // ── Pull to refresh ───────────────────────────────────────────────
+        // ── Pull to refresh ───────────────────────────────────────────────────
+        // Bound inside each iframe's own document rather than under an overlay in
+        // this one. The tabs are same-origin, so the gesture can start anywhere in
+        // the content that is already scrolled to the top — which is what a pull
+        // to refresh should do, and it leaves the pages free to lay out their
+        // headers however they like.
         const ptr      = document.getElementById('ptr-indicator');
         const PTR_DIST = 80;
         let ptrY = null;
@@ -184,17 +207,21 @@
                 ptr.style.transition = 'top 0.25s, opacity 0.25s';
                 setTimeout(() => { ptr.style.transition = ''; }, 250);
             }
-            ptr.style.top       = '-44px';
-            ptr.style.opacity   = '0';
-            ptr.style.transform = 'translateX(-50%) rotate(0deg)';
+            ptr.style.top        = '-44px';
+            ptr.style.opacity    = '0';
+            ptr.style.transform  = 'translateX(-50%) rotate(0deg)';
             ptr.style.background = 'rgba(255,255,255,0.12)';
         }
 
-        document.getElementById('edgeT').addEventListener('touchstart', e => {
-            ptrY = e.touches[0].clientY;
-        }, { passive: true });
+        function atTop(doc) {
+            const el = doc.scrollingElement || doc.documentElement;
+            return (el ? el.scrollTop : 0) <= 0;
+        }
 
-        document.addEventListener('touchmove', e => {
+        function ptrStart(doc) {
+            return e => { ptrY = atTop(doc) ? e.touches[0].clientY : null; };
+        }
+        function ptrMove(e) {
             if (ptrY === null) return;
             const dy = e.touches[0].clientY - ptrY;
             if (dy < 0) { ptrY = null; ptrReset(false); return; }
@@ -203,15 +230,31 @@
             ptr.style.opacity    = Math.min(progress * 1.5, 1);
             ptr.style.transform  = `translateX(-50%) rotate(${progress * 270}deg)`;
             ptr.style.background = progress >= 1 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
-        }, { passive: true });
-
-        document.addEventListener('touchend', e => {
+        }
+        function ptrEnd(e) {
             if (ptrY === null) return;
             const dy = e.changedTouches[0].clientY - ptrY;
             ptrY = null;
             if (dy >= PTR_DIST) { location.reload(); }
             else                { ptrReset(true); }
-        }, { passive: true });
+        }
+
+        // Listeners live on the iframe's document, so they die whenever that page
+        // navigates — which the Schedule tab does on every schedule_update. Re-bind
+        // on load, and once now for frames that are already up.
+        function bindPtr(frame) {
+            let doc;
+            try { doc = frame.contentDocument; } catch(e) { return; }
+            if (!doc || doc.__ptrBound) return;
+            doc.__ptrBound = true;
+            doc.addEventListener('touchstart', ptrStart(doc), { passive: true });
+            doc.addEventListener('touchmove',  ptrMove,       { passive: true });
+            doc.addEventListener('touchend',   ptrEnd,        { passive: true });
+        }
+        frames.forEach(f => {
+            f.addEventListener('load', () => bindPtr(f));
+            bindPtr(f);
+        });
     </script>
 </body>
 </html>

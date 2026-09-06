@@ -62,15 +62,36 @@ def cloud_results():
     return _render('cloud/templates', 'results.html', meet_id='abc123')
 
 
+_TABS = {'scoreboard': 'Scoreboard', 'results': 'Results', 'schedule': 'Schedule',
+         'back_to_meets': 'Meets'}
+
+
+@pytest.fixture(scope='module')
+def shell_pi():
+    return _render('server/templates', 'mobile.html', app_title='Coupe', t=_TABS)
+
+
+@pytest.fixture(scope='module')
+def shell_cloud():
+    return _render('cloud/templates', 'mobile.html',
+                   app_title='Coupe', t=_TABS, meet_id='abc123')
+
+
+def _body(html):
+    """Markup only — CSS mentions classes for elements that may not be rendered."""
+    return re.sub(r'<style>.*?</style>', '', html, flags=re.S)
+
+
 # ── One template, two servers ──────────────────────────────────────────────────
 
-def test_there_is_exactly_one_live_mobile_template():
-    """It lives in shared/. A copy reappearing under server/ or cloud/ would win
-    over the shared one — the loaders are own-first — and drift silently."""
-    assert os.path.isfile(os.path.join(REPO, 'shared/templates/live-mobile.html'))
+@pytest.mark.parametrize('name', ['live-mobile.html', 'mobile.html'])
+def test_pages_live_only_in_shared(name):
+    """A copy reappearing under server/ or cloud/ would win over the shared one —
+    the loaders are own-first — and drift silently."""
+    assert os.path.isfile(os.path.join(REPO, 'shared/templates', name))
     for d in ('server/templates', 'cloud/templates'):
-        assert not os.path.exists(os.path.join(REPO, d, 'live-mobile.html')), \
-            f'{d}/live-mobile.html shadows the shared template'
+        assert not os.path.exists(os.path.join(REPO, d, name)), \
+            f'{d}/{name} shadows the shared template'
 
 
 def test_the_only_difference_is_the_room_join(pi, cloud):
@@ -164,3 +185,64 @@ def test_results_page_reacts_to_meet_live_its_own_way(cloud_results):
     assert 'bindLanePulse(' not in cloud_results.split('function bindLanePulse')[1]
     assert "sock.on('meet_live'" in cloud_results       # …but wired by hand here
     assert 'showWaiting()' in cloud_results
+
+
+# ── The phone shell ────────────────────────────────────────────────────────────
+
+def test_shell_tabs_point_at_each_server_own_routes(shell_pi, shell_cloud):
+    """`meet_id` is the whole difference: the cloud routes by room, the Pi serves
+    one meet from local paths."""
+    for page, meet in (('live', 'live'), ('results', 'results'), ('schedule', 'schedule')):
+        assert f'src="/mobile/{page}?meet=abc123"' in shell_cloud
+    for path in ('/live-mobile', '/results', '/schedule'):
+        assert f'src="{path}"' in shell_pi
+    assert 'meet=' not in _body(shell_pi)
+
+
+def test_back_to_meets_only_where_there_are_meets(shell_pi, shell_cloud):
+    """One meet on the Pi, so a list to go back to would be a dead end."""
+    assert 'class="nav-back"' in _body(shell_cloud)
+    assert 'class="nav-back"' not in _body(shell_pi)
+
+
+def test_manifest_and_icon_follow_the_server(shell_pi, shell_cloud):
+    assert '/manifest/abc123' in shell_cloud and '/icon/abc123' in shell_cloud
+    assert '/manifest.json' in shell_pi and '/home_icon' in shell_pi
+    assert '/manifest/' not in shell_pi
+
+
+@pytest.mark.parametrize('feature', [
+    'sessionStorage',      # the tab you were on survives a reload
+    'on_tab_shown',        # the revealed page re-joins / re-lays out
+    'bindPtr',             # pull to refresh
+    'edgeL',               # swipe between tabs
+])
+def test_shell_features_are_on_both(shell_pi, shell_cloud, feature):
+    """These were cloud-only before the merge; the Pi gains all of them."""
+    for html in (shell_pi, shell_cloud):
+        assert feature in html
+
+
+def test_pull_to_refresh_binds_inside_the_iframe(shell_pi, shell_cloud):
+    """Not under an overlay in the shell. The old `#edgeT` div covered the top 65px
+    of each tab, which meant the gesture only worked on the header and forced
+    schedule.html to keep its controls clear of a hard-coded dead zone."""
+    for html in (shell_pi, shell_cloud):
+        assert 'edgeT' not in html
+        assert 'contentDocument' in html
+        assert 'atTop(' in html                    # only fires at scrollTop 0
+        assert "addEventListener('load'" in html   # re-bound when a tab reloads
+
+
+def test_a2hs_hint_is_gone_from_the_shell(shell_pi, shell_cloud):
+    """The picker steers people to the native apps; teaching them to install the
+    web page works against that, and operators do not need it at all."""
+    for html in (shell_pi, shell_cloud):
+        assert 'a2hs' not in html.lower()
+
+
+def test_shell_and_pages_agree_on_the_header_height(shell_pi, pi):
+    """The shell reserves 65px for the tab bar and the pages draw a 65px header;
+    if they disagree the tabs jump as you swipe."""
+    assert '65px' in shell_pi
+    assert 'max(65px' in pi or '65px' in pi
