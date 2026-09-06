@@ -880,6 +880,8 @@ def route_results(request: Request):
         show_club=s.get('show_club', True),
         show_delta=s.get('show_delta', True),
         show_position=s.get('show_position', True),
+        show_podium=s.get('show_podium', True),
+        t=_strings(_meet_lang(meet), 'mobile'),
         theme_colors={**_DEFAULT_COLORS, **s.get('theme_colors', {})},
         # Merged, not a wholesale fallback: a relay sending only one font would
         # otherwise leave the other two CSS variables empty. Same as route_live.

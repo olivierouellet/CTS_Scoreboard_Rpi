@@ -1,0 +1,141 @@
+{# The Results tab — the last confirmed heat, held on screen.
+
+   One page, served by both servers. Unlike the live board this view is read
+   carefully and holds still, so it earns two things the live board deliberately
+   does without: podium tints on the first three places, and shrink-to-fit on a
+   name too long for its cell (`R-08` in docs/mobile-features.md).
+
+   Structure, styling and the clock come from scoreboard_base.html — the same base
+   the Scoreboard tab uses, so swiping between the two does not shift the layout. #}
+{% extends "scoreboard_base.html" %}
+
+{% block extra_style %}
+/* Shrink rather than clip. The base leaves `.name-primary` unstyled; here it needs
+   to be a measurable block so fitNameFontSize can compare scroll to client width. */
+.name-primary {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+[id^="lane_place"] { font-family: var(--font-digits), monospace; }
+
+/* Covers the table until the first snapshot, and again if the console goes away.
+   Matched to the table-header background so the header's bottom border blends the
+   way it does under the live board, rather than contrasting with the page. */
+#waiting {
+    position: fixed;
+    inset: 65px 0 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-th-text);
+    font-size: 1.4em;
+    background: var(--color-th-bg);
+}
+#waiting.hidden { display: none; }
+{% endblock %}
+
+{% block body_extra %}
+{# `waiting_results` is a [mobile] string, not a [labels] one — the cloud used to
+   read it off `labels`, where it never existed, and so always showed English. #}
+<div id="waiting">{{ t.waiting_results or 'Waiting for results…' }}</div>
+{% endblock %}
+
+{% block socket %}
+var SHOW_PODIUM = {{ show_podium | default(true, true) | tojson }};
+
+function showWaiting() { document.getElementById('waiting').classList.remove('hidden'); }
+
+/* Names are sized per row, not per table: one long name should not shrink the
+   rest. Runs after paint, since it measures laid-out widths. */
+function fitNameFontSize() {
+    document.querySelectorAll('.lane-name-cell').forEach(function(cell) {
+        cell.style.fontSize = '';
+        var primary = cell.querySelector('.name-primary');
+        if (!primary || primary.scrollWidth <= primary.clientWidth) return;
+        var ratio  = primary.clientWidth / primary.scrollWidth;
+        var basePx = parseFloat(window.getComputedStyle(cell).fontSize);
+        cell.style.fontSize = (basePx * ratio * 0.97).toFixed(2) + 'px';
+    });
+}
+
+function renderResults(d) {
+    on_timer();
+    var lanes = (d && d.lanes) ? d.lanes : [];
+    if (!lanes.length) return;
+    document.getElementById('current_event').innerHTML = escHtml(d.event || '');
+    document.getElementById('current_heat').innerHTML  = escHtml(d.heat  || '');
+    document.getElementById('event_name').innerHTML    = escHtml(d.event_name || '');
+
+    /* Map each result to a display row. In lane mode (the default) a row equals its
+       lane number, so a lane with no final time leaves that row blank instead of
+       shifting the lanes below it up. In place mode the list is a ranking, so it
+       fills rows top-down. A relay predating the field omits `sort` → lane mode. */
+    var byRow = {}, laneMode = !d.sort || d.sort === 'lane';
+    lanes.forEach(function(r, idx) {
+        var row = laneMode ? parseInt(r.channel, 10) : idx + 1;
+        if (row >= 1 && row <= NUM_LANES) byRow[row] = r;
+    });
+
+    reset_times();
+    for (var i = 1; i <= NUM_LANES; i++) {
+        var r  = byRow[i];
+        var tr = document.getElementById('row' + i);
+        /* Toggle only the podium classes — the row keeps its base striping class,
+           which also carries its font size. */
+        if (tr) tr.classList.remove('podium-gold', 'podium-silver', 'podium-bronze');
+        if (r) {
+            if (tr && SHOW_PODIUM) {
+                var placeNum = parseInt((r.place || '').trim(), 10);
+                if      (placeNum === 1) tr.classList.add('podium-gold');
+                else if (placeNum === 2) tr.classList.add('podium-silver');
+                else if (placeNum === 3) tr.classList.add('podium-bronze');
+            }
+            document.getElementById('lane_num'     + i).textContent = r.channel || i;
+            document.getElementById('lane_name'    + i).innerHTML   = escHtml(r.name || '');
+            document.getElementById('lane_name_alt'+ i).innerHTML   = escHtml(r.alt  || '');
+            document.getElementById('lane_club'    + i).textContent = r.club  || '';
+            var tel = document.getElementById('lane_time' + i);
+            tel.textContent = r.time || '—';
+            if (r.time && r.time.trim()) tel.classList.add('time-locked');
+            document.getElementById('lane_delta'   + i).innerHTML   = r.delta || '';
+            document.getElementById('lane_place'   + i).textContent = (r.place || '').trim() || '—';
+        } else {
+            document.getElementById('lane_num'     + i).textContent = laneMode ? i : '—';
+            document.getElementById('lane_name'    + i).textContent = '';
+            document.getElementById('lane_name_alt'+ i).textContent = '';
+            document.getElementById('lane_club'    + i).textContent = '';
+            document.getElementById('lane_time'    + i).textContent = '—';
+            document.getElementById('lane_delta'   + i).innerHTML   = '';
+            document.getElementById('lane_place'   + i).textContent = '—';
+        }
+    }
+    document.getElementById('waiting').classList.add('hidden');
+    requestAnimationFrame(fitNameFontSize);
+}
+
+window.addEventListener('resize', fitNameFontSize);
+
+var sock = splouchSocket('/ws/results');
+sock.on('connect', function() {
+    if (MEET_ID) sock.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() });
+});
+sock.on('reload',     function() { location.reload(); });
+sock.on('disconnect', function() { showWaiting(); });
+/* Shares `meet_live` with the live board but not the response: no lane is running
+   on a results screen, so nothing pulses — the board reverts to waiting instead. */
+sock.on('meet_live',  function(d) { if (!(d && d.live)) showWaiting(); });
+sock.on('results_snapshot', function(d) { renderResults(d); });
+
+/* The shell reveals this tab without reloading it, so re-assert the room and
+   re-measure names that were laid out while the frame was hidden. */
+window.on_tab_shown = function() {
+    if (sock.connected) {
+        if (MEET_ID) sock.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() });
+    } else {
+        sock.connect();
+    }
+    requestAnimationFrame(fitNameFontSize);
+};
+{% endblock %}

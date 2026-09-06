@@ -19,6 +19,10 @@
     --color-time:          {{ theme_colors.time }};
     --color-delta-better:  {{ theme_colors.delta_better }};
     --color-delta-worse:   {{ theme_colors.delta_worse }};
+    /* Used by the Results tab's podium tints; harmless on the live board. */
+    --color-podium-gold:   {{ theme_colors.podium_gold }};
+    --color-podium-silver: {{ theme_colors.podium_silver }};
+    --color-podium-bronze: {{ theme_colors.podium_bronze }};
     --font-family:         '{{ theme_fonts.family }}';
     --font-digits:         '{{ theme_fonts.digits }}', monospace;
     --font-timing:         '{{ theme_fonts.timing }}', monospace;
@@ -322,7 +326,9 @@ function init() {
                 {% for i in range(1, num_lanes + 1) %}
                 <tr id="row{{ i }}" class="{{ 'timing-row-odd' if i % 2 == 1 else 'timing-row-even' }}">
                     <td id="lane_num{{ i }}" style="text-align:center;">{{ i }}</td>
-                    <td class="lane-name-cell"><span id="lane_name{{ i }}"></span><span id="lane_name_alt{{ i }}" class="name-sub"></span></td>
+                    {# `name-primary` is a hook, not a style: the Results tab measures
+                       it to shrink an over-long name, and leaves it unstyled here. #}
+                    <td class="lane-name-cell"><span id="lane_name{{ i }}" class="name-primary"></span><span id="lane_name_alt{{ i }}" class="name-sub"></span></td>
                     <td id="lane_club{{ i }}" style="text-align:center;"></td>
                     <td class="td_time" style="text-align:center;"><span id="lane_time{{ i }}"></span></td>
                     <td class="td_delta" id="lane_delta{{ i }}" style="text-align:center;"></td>

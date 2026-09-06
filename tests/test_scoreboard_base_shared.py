@@ -56,12 +56,6 @@ def cloud():
     return _render('cloud/templates', 'live-mobile.html', meet_id='abc123')
 
 
-@pytest.fixture(scope='module')
-def cloud_results():
-    """The other page on the same base — base changes must not break it."""
-    return _render('cloud/templates', 'results.html', meet_id='abc123')
-
-
 _TABS = {'scoreboard': 'Scoreboard', 'results': 'Results', 'schedule': 'Schedule',
          'back_to_meets': 'Meets'}
 
@@ -84,7 +78,8 @@ def _body(html):
 
 # ── One template, two servers ──────────────────────────────────────────────────
 
-@pytest.mark.parametrize('name', ['live-mobile.html', 'mobile.html'])
+@pytest.mark.parametrize('name', ['live-mobile.html', 'mobile.html',
+                                  'schedule.html', 'results.html'])
 def test_pages_live_only_in_shared(name):
     """A copy reappearing under server/ or cloud/ would win over the shared one —
     the loaders are own-first — and drift silently."""
@@ -110,16 +105,16 @@ def test_the_only_difference_is_the_room_join(pi, cloud):
     'id="lane_name1"', 'id="lane_name_alt1"', 'id="lane_club1"',
     'id="lane_time1"', 'id="lane_delta1"', 'id="lane_place1"',
 ])
-def test_all_three_pages_share_the_skeleton(pi, cloud, cloud_results, probe):
-    for html in (pi, cloud, cloud_results):
+def test_all_three_pages_share_the_skeleton(pi, cloud, res_cloud, probe):
+    for html in (pi, cloud, res_cloud):
         assert probe in html
 
 
-def test_shared_symbols_are_defined_once(pi, cloud, cloud_results):
+def test_shared_symbols_are_defined_once(pi, cloud, res_cloud):
     """The merge loop and the state machine are the highest-risk shared code — the
     two surfaces had drifted here before (the cloud could not retrigger the
     time-locked animation). One definition each, on every page."""
-    for html in (pi, cloud, cloud_results):
+    for html in (pi, cloud, res_cloud):
         for symbol in ('function applyScoreboardFrame(',
                        'function apply_state_transition(',
                        'function reset_state(',
@@ -168,23 +163,23 @@ def test_removed_chrome_stays_removed(pi, cloud, removed, why):
         assert removed not in html, f'{removed} is back ({why})'
 
 
-def test_columns_never_animate(pi, cloud, cloud_results):
+def test_columns_never_animate(pi, cloud, res_cloud):
     """Nothing on a phone collapses them and an orientation flip must not slide
     them. `timing_display.css` is shared with the kiosk, which does animate."""
-    for html in (pi, cloud, cloud_results):
+    for html in (pi, cloud, res_cloud):
         style = re.search(r'<style>(.*?)</style>', html, re.S).group(1)
         rules = re.findall(r'\.delta-column\s*{\s*transition:\s*([^;]+)', style)
         assert rules and rules[-1].strip() == 'none'
         assert 'timing-anim' not in html
 
 
-def test_results_page_reacts_to_meet_live_its_own_way(cloud_results):
+def test_results_page_reacts_to_meet_live_its_own_way(res_cloud):
     """It shares `meet_live` with the live board but not the response: no lane runs
     on a results screen, so it shows the waiting message instead of pulsing."""
-    assert 'function bindLanePulse' in cloud_results   # defined by the base…
-    assert 'bindLanePulse(' not in cloud_results.split('function bindLanePulse')[1]
-    assert "sock.on('meet_live'" in cloud_results       # …but wired by hand here
-    assert 'showWaiting()' in cloud_results
+    assert 'function bindLanePulse' in res_cloud   # defined by the base…
+    assert 'bindLanePulse(' not in res_cloud.split('function bindLanePulse')[1]
+    assert "sock.on('meet_live'" in res_cloud       # …but wired by hand here
+    assert 'showWaiting()' in res_cloud
 
 
 # ── The phone shell ────────────────────────────────────────────────────────────
@@ -349,8 +344,7 @@ def test_every_shared_template_declares_a_language():
 
 
 @pytest.mark.parametrize('template', [
-    'live.html', 'scoreboard.html', 'results.html',
-    'next_heats.html', 'full_schedule.html',
+    'live.html', 'scoreboard.html', 'next_heats.html', 'full_schedule.html',
 ])
 def test_pi_display_pages_declare_the_scoreboard_language(template):
     """Every page that renders `labels` shows text in the Settings → Display →
@@ -435,3 +429,80 @@ def test_login_is_rendered_with_the_globals():
     src = open(os.path.join(REPO, 'server/app.py')).read()
     assert "templates.TemplateResponse(request, 'login.html'" not in src
     assert src.count("render(request, 'login.html'") == 2
+
+
+# ── The results tab ────────────────────────────────────────────────────────────
+
+@pytest.fixture(scope='module')
+def res_pi():
+    return _render('server/templates', 'results.html', t={'waiting_results': 'Waiting…'},
+                   show_podium=True)
+
+
+@pytest.fixture(scope='module')
+def res_cloud():
+    return _render('cloud/templates', 'results.html', meet_id='abc123',
+                   t={'waiting_results': 'Waiting…'}, show_podium=True)
+
+
+def test_results_shares_the_scoreboard_skeleton(res_pi, res_cloud, pi):
+    """Same base as the live board, so swiping between the two tabs does not shift
+    the layout — the reason this page adopted the base's DOM rather than keeping
+    its own `res-*` / positional-cell markup."""
+    for html in (res_pi, res_cloud):
+        for probe in ('id="row1"', 'id="lane_num1"', 'id="lane_name1"',
+                      'id="lane_place1"', 'id="current_event"'):
+            assert probe in html and probe in pi
+
+
+def test_results_keeps_podium_and_shrink_to_fit(res_pi, res_cloud):
+    """The two things a results board earns that the live board does without: it is
+    read carefully and it holds still. Both were Pi-only before the merge."""
+    for html in (res_pi, res_cloud):
+        assert 'podium-gold' in html and 'podium-silver' in html and 'podium-bronze' in html
+        assert '--color-podium-gold' in html
+        assert 'fitNameFontSize' in html
+
+
+def test_podium_respects_the_setting(res_pi, res_cloud):
+    """`show_podium` is an operator setting and is relayed (docs/api.md §5.4), so
+    both servers must forward it rather than assuming."""
+    for html in (res_pi, res_cloud):
+        assert 'var SHOW_PODIUM = true' in html
+        assert 'if (tr && SHOW_PODIUM)' in html
+    src = open(os.path.join(REPO, 'cloud', 'cloud_server.py')).read()
+    assert "show_podium=s.get('show_podium', True)," in src
+
+
+def test_live_board_has_no_podium_tinting(pi, cloud):
+    """Places move while a heat is settling; tinting them mid-race would flicker.
+    The variables are declared on both (they cost nothing), the logic is not."""
+    for html in (pi, cloud):
+        assert 'podium-gold' not in html.replace('--color-podium-gold', '')
+
+
+def test_name_primary_is_a_hook_not_a_style(pi, res_pi):
+    """The class ships on every page so the base stays uniform, but only Results
+    styles it — giving it `display:block` on the live board would change rows."""
+    assert 'class="name-primary"' in pi and 'class="name-primary"' in res_pi
+    assert '.name-primary {' in res_pi
+    assert '.name-primary {' not in pi
+
+
+def test_results_falls_back_to_waiting_when_nothing_feeds_it(res_pi, res_cloud):
+    """Previously Pi-only pages had no such state: a dead console left the last
+    heat on screen indefinitely, with nothing saying it was stale."""
+    for html in (res_pi, res_cloud):
+        assert "sock.on('meet_live'" in html
+        assert "sock.on('disconnect'" in html
+        assert 'showWaiting()' in html
+
+
+def test_waiting_message_is_translated_on_both(res_pi, res_cloud):
+    """It is a [mobile] string. The cloud read it off `labels`, where it does not
+    exist, so its waiting screen was English whatever language the meet ran in."""
+    for html in (res_pi, res_cloud):
+        assert 'Waiting…' in html            # the fixture's [mobile] string won
+    src = open(os.path.join(REPO, 'cloud', 'cloud_server.py')).read()
+    assert src.count("t=_strings(_meet_lang(meet), 'mobile')") == 3, \
+        'every per-meet cloud page must pass the [mobile] strings'
