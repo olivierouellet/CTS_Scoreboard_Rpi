@@ -107,9 +107,18 @@ than restarting into a broken checkout, and must refuse outright if its own
 checkout has local changes.
 
 ### `/ws/results`
-On connect the server sends the last `results_snapshot` (if any) and `next_heats`.
-**Server → client:** `results_snapshot` (§5.2), `next_heats` (§5.3), `reload`.
-Client sends nothing.
+On connect the server sends `meet_live` (§2.1), then the last `results_snapshot`
+(if any) and `next_heats`.
+**Server → client:** `results_snapshot` (§5.2), `next_heats` (§5.3), `meet_live`,
+`reload`. Client sends nothing.
+
+### `/ws/schedule`
+**Server → client:** `schedule_update` `{}` — a meet file was loaded, so any start
+list a client is holding belongs to the previous meet. Carries no payload: it means
+*re-fetch*, not *here is the new data*. Client sends nothing.
+
+Same name and shape as the cloud channel (§3), so the phone Schedule page behaves
+identically against either server.
 
 ### `/ws/settings` (admin UI only)
 **Server → client:** `serial_log {state, msg}`, `test_status {}`, `test_mode {active}`,

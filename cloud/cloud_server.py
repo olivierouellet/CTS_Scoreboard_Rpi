@@ -1725,6 +1725,11 @@ _DEFAULT_COLORS = {
     'row_odd': '#141414', 'row_even': '#202020', 'row_text': '#e0e0e0',
     'time': '#FFD700', 'delta_better': '#4CAF50', 'delta_worse': '#808080',
     'podium_gold': '#545454', 'podium_silver': '#424242', 'podium_bronze': '#343434',
+    # Schedule tab. Must match server/state.py's DEFAULT_THEME_COLORS: the page is
+    # shared, so a key missing here would render an empty CSS variable on the cloud
+    # for any relay that sends a partial palette.
+    'schedule_event': '#3b9eff', 'schedule_time': '#FFD700',
+    'schedule_name': '#e0e0e0', 'schedule_club': '#666666',
 }
 _DEFAULT_FONTS = {
     'family': 'Overpass Mono', 'digits': 'DSEG7Classic', 'timing': 'Overpass Mono',

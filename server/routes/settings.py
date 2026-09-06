@@ -63,6 +63,9 @@ def _load_meet_file(path):
     _render_home_icon(state.apply_meet_profile(state._active_meet_uid))
     state.save_settings()
     send_event_info()
+    # Local Schedule tabs are showing the previous meet's heats until told.
+    # The relay call below does the same for the cloud's.
+    bus.emit('/schedule', 'schedule_update')
     relay.update_metadata()   # re-register under the new meet_uid before the schedule
     relay.send_schedule()
     return None

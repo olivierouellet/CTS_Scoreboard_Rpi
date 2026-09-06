@@ -1,5 +1,11 @@
+{# The Schedule tab — the meet's full start list, filterable.
+
+   One page, served by both servers: the Pi renders it for operators checking the
+   running order, the cloud for spectators falling back from the native apps.
+   `meet_id` is the only difference — the cloud routes by room, the Pi serves one
+   meet and renders it as "". #}
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -39,15 +45,17 @@
             background: var(--color-bg);
             color: var(--color-row-text);
             font-family: var(--font-family);
-            padding-top: 52px;
+            padding-top: 65px;
             overflow-x: hidden;
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
         }
 
         /* ── Top bar ── */
         #top-bar {
             position: fixed;
             top: 0; left: 0; right: 0;
-            height: 52px;
+            height: 65px;
             background: var(--color-header-bg);
             border-bottom: 1px solid var(--color-header-border);
             display: flex;
@@ -125,6 +133,7 @@
         #search-input::placeholder { color: var(--color-schedule-club); }
         #search-input:focus { outline: 1px solid var(--color-schedule-event); border-color: var(--color-schedule-event); }
         #close-filter-btn {
+            flex-shrink: 0;
             background: none;
             border: none;
             color: #4caf50;
@@ -132,7 +141,6 @@
             cursor: pointer;
             padding: 2px 6px;
             line-height: 1;
-            flex-shrink: 0;
         }
         #close-filter-btn:active { opacity: 0.6; }
 
@@ -267,17 +275,12 @@
             font-size: 0.82em;
             flex-shrink: 0;
         }
-        .suggestion-item.already-added .sug-name {
-            opacity: 0.45;
-        }
-        .sug-check {
-            color: var(--color-schedule-event);
-            font-size: 1em;
-            flex-shrink: 0;
-        }
+        .suggestion-item.already-added .sug-name { opacity: 0.45; }
+        .sug-check { color: var(--color-schedule-event); font-size: 1em; flex-shrink: 0; }
 
         /* ── Single-column schedule ── */
         #schedule { display: block; }
+
 
         .heat-card {
             background: var(--color-bg);
@@ -308,13 +311,12 @@
         .heat-name {
             font-size: 0.95em;
             color: var(--color-header-value);
+            flex: 1;
+            min-width: 0;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            flex: 1;
-            min-width: 0;
         }
-
         .swimmer-row {
             display: flex;
             align-items: center;
@@ -324,7 +326,6 @@
             font-size: 0.9em;
         }
         .swimmer-row:last-child { border-bottom: none; }
-
         .lane-num {
             width: 1.6em;
             text-align: center;
@@ -358,10 +359,11 @@
         /* ── Current heat highlight ── */
         .heat-card.heat-current .heat-header { background: var(--color-header-border); }
         .heat-card.heat-current { outline: 2px solid var(--color-time); outline-offset: -2px; }
+        .heat-card { scroll-margin-top: 70px; }
 
         /* ── Empty states ── */
         #waiting {
-            height: calc(100vh - 52px);
+            height: calc(100vh - 65px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -393,7 +395,7 @@
 </div>
 
 {% if not has_meet %}
-<div id="waiting">{{ t.no_meet or 'Aucune compétition chargée' }}</div>
+<div id="waiting">{{ labels.no_schedule or t.no_meet or 'Aucune compétition chargée' }}</div>
 {% else %}
 
 <!-- Filter overlay -->
@@ -422,24 +424,38 @@
 <div id="no-matches" class="hidden">Aucun nageur trouvé pour ces filtres</div>
 
 <script>
-const HEATS  = {{ heats_json | safe }};
-const LABELS = {{ labels | tojson }};
+// Empty on the Pi: one meet, no rooms, and nothing to count (docs/api.md §2).
+const MEET_ID = '{{ meet_id | default('', true) }}';
+const HEATS   = {{ heats_json | safe }};
+const LABELS  = {{ labels | tojson }};
 
-var activeFilters  = [];
-var _searchTimer   = null;
-var currentEvent   = null;
-var currentHeat    = null;
-var needsScroll    = true;
-var upcomingOnly   = false;
-var showAllHeats   = false;
+// Random per-device id for anonymous attendance counting (opt-in, admin side).
+function splouchVid() {
+    try {
+        var k = 'splouch_vid', v = localStorage.getItem(k);
+        if (!v) {
+            v = (window.crypto && crypto.randomUUID)
+                ? crypto.randomUUID()
+                : 'v' + Date.now() + Math.random().toString(36).slice(2);
+            localStorage.setItem(k, v);
+        }
+        return v;
+    } catch (e) { return ''; }
+}
 
-// ── Escaping ──
+var activeFilters = [];
+var _searchTimer  = null;
+var currentEvent  = null;
+var currentHeat   = null;
+var needsScroll   = true;
+var upcomingOnly  = false;
+var showAllHeats  = false;
+
 function esc(s) {
     return String(s == null ? '' : s)
         .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Filter logic ──
 function laneMatches(lane) {
     if (activeFilters.length === 0) return true;
     for (var i = 0; i < activeFilters.length; i++) {
@@ -461,14 +477,11 @@ function filterExists(type, name) {
     return activeFilters.some(function(f) { return f.type === type && f.name === name; });
 }
 
-// ── Render schedule ──
 function renderSchedule() {
     var hasFilters = activeFilters.length > 0;
     var html = '';
     var matchCount = 0;
     var heatIndex = 0;
-
-    // Find the index of the current heat in HEATS for upcoming filter
     var currentHeatIdx = -1;
     if (upcomingOnly && currentEvent !== null && currentHeat !== null) {
         for (var k = 0; k < HEATS.length; k++) {
@@ -478,20 +491,17 @@ function renderSchedule() {
             }
         }
     }
-
     for (var i = 0; i < HEATS.length; i++) {
         var h = HEATS[i];
         if (upcomingOnly && currentHeatIdx >= 0 && i < currentHeatIdx) continue;
         var visibleLanes = hasFilters ? h.lanes.filter(laneMatches) : h.lanes;
         if (hasFilters && !showAllHeats && visibleLanes.length === 0) continue;
         matchCount++;
-
         var evStr = String(h.event);
         var htStr = String(h.heat);
         var isCurrent = evStr === currentEvent && htStr === currentHeat;
         var heatClass = (heatIndex % 2 === 0) ? 'heat-even' : 'heat-odd';
         heatIndex++;
-
         html += '<div class="heat-card ' + heatClass + (isCurrent ? ' heat-current' : '') +
                 '" data-event="' + esc(evStr) + '" data-heat="' + esc(htStr) + '">';
         html += '<div class="heat-header">';
@@ -501,7 +511,6 @@ function renderSchedule() {
                 esc(LABELS.heat)  + ' ' + esc(htStr) + '</span>';
         if (h.event_name) html += '<span class="heat-name">' + esc(h.event_name) + '</span>';
         html += '</div><div class="swimmer-list">';
-
         for (var j = 0; j < visibleLanes.length; j++) {
             var lane = visibleLanes[j];
             var displayName;
@@ -518,16 +527,13 @@ function renderSchedule() {
             if (lane.seed_time) html += '<span class="seed-time">'     + esc(lane.seed_time) + '</span>';
             html += '</div>';
         }
-
         html += '</div></div>';
     }
-
     document.getElementById('schedule').innerHTML = html;
     document.getElementById('no-matches').classList.toggle('hidden', matchCount > 0 || !hasFilters);
     highlight();
 }
 
-// ── Render chips inside overlay ──
 function renderChips() {
     var html = '';
     for (var i = 0; i < activeFilters.length; i++) {
@@ -537,14 +543,12 @@ function renderChips() {
                 esc(f.name) + ' <span class="chip-remove">×</span></button>';
     }
     document.getElementById('chips-section').innerHTML = html;
-
     var count = activeFilters.length;
     var countEl = document.getElementById('filter-count');
     countEl.textContent = count;
     countEl.classList.toggle('hidden', count === 0);
 }
 
-// Chip click delegation
 document.getElementById('chips-section').addEventListener('click', function(e) {
     var chip = e.target.closest('.filter-chip');
     if (!chip) return;
@@ -555,21 +559,18 @@ document.getElementById('chips-section').addEventListener('click', function(e) {
     renderSchedule();
 });
 
-// ── Add filter ──
 function addFilter(type, name) {
     if (!filterExists(type, name)) {
         activeFilters.push({ type: type, name: name });
         renderChips();
         renderSchedule();
     }
-    // Clear input, keep overlay open so user can add more
     var inp = document.getElementById('search-input');
     inp.value = '';
     renderSuggestions([]);
     inp.focus();
 }
 
-// ── Upcoming / show-all toggles ──
 function toggleUpcoming() {
     upcomingOnly = !upcomingOnly;
     document.getElementById('btn-upcoming').classList.toggle('active', upcomingOnly);
@@ -591,7 +592,6 @@ function resetFilters() {
     renderSchedule();
 }
 
-// ── Overlay open/close ──
 function openFilter() {
     document.getElementById('filter-overlay').classList.remove('hidden');
     renderChips();
@@ -600,30 +600,27 @@ function openFilter() {
     renderSuggestions([]);
     setTimeout(function() { inp.focus(); }, 80);
 }
-
 function closeFilter() {
     document.getElementById('filter-overlay').classList.add('hidden');
 }
 
-// ── Autocomplete ──
 function onSearchInput() {
     clearTimeout(_searchTimer);
     _searchTimer = setTimeout(fetchSuggestions, 220);
 }
-
 function fetchSuggestions() {
     var q = document.getElementById('search-input').value.trim();
     if (!q) { renderSuggestions([]); return; }
-    fetch('/search_suggestions?q=' + encodeURIComponent(q))
+    var url = '/search_suggestions?q=' + encodeURIComponent(q);
+    if (MEET_ID) url += '&meet_id=' + encodeURIComponent(MEET_ID);
+    fetch(url)
         .then(function(r) { return r.json(); })
         .then(renderSuggestions)
         .catch(function() {});
 }
-
 function renderSuggestions(items) {
     var noEl  = document.getElementById('no-suggestions');
     var sugEl = document.getElementById('suggestions');
-
     if (!items || items.length === 0) {
         sugEl.innerHTML = '';
         var q = document.getElementById('search-input').value.trim();
@@ -631,7 +628,6 @@ function renderSuggestions(items) {
         return;
     }
     noEl.classList.add('hidden');
-
     var html = '';
     for (var i = 0; i < items.length; i++) {
         var it = items[i];
@@ -648,16 +644,13 @@ function renderSuggestions(items) {
     sugEl.innerHTML = html;
 }
 
-// Suggestion click delegation
 document.getElementById('suggestions').addEventListener('click', function(e) {
     var item = e.target.closest('.suggestion-item');
     if (!item) return;
     addFilter(item.dataset.type, item.dataset.name);
-    // Refresh suggestions to update checkmarks
     fetchSuggestions();
 });
 
-// ── Socket.io: current heat highlight ──
 function highlight() {
     var found = null;
     document.querySelectorAll('.heat-card').forEach(function(card) {
@@ -666,7 +659,7 @@ function highlight() {
         if (match) found = card;
     });
     if (found && needsScroll) {
-        found.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        found.scrollIntoView({ behavior: 'smooth', block: 'start' });
         needsScroll = false;
     }
 }
@@ -675,7 +668,6 @@ document.addEventListener('visibilitychange', function() {
     if (!document.hidden) needsScroll = true;
 });
 
-// ── Init ──
 renderSchedule();
 </script>
 
@@ -683,18 +675,30 @@ renderSchedule();
 <script>
 var sockResults    = splouchSocket('/ws/results');
 var sockScoreboard = splouchSocket('/ws/scoreboard');
+var sockSchedule   = splouchSocket('/ws/schedule');
+
+// The cloud routes by room and must (re)join on every connect; the Pi pushes to
+// whoever is attached, so there is nothing to send.
+[sockResults, sockScoreboard, sockSchedule].forEach(function(sock) {
+    sock.on('connect', function() {
+        if (MEET_ID) sock.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() });
+    });
+});
 
 sockResults.on('results_snapshot', function(d) {
     currentEvent = String(d.event).trim();
     currentHeat  = String(d.heat).trim();
     highlight();
 });
-
 sockScoreboard.on('update_scoreboard', function(d) {
     var changed = false;
     if ('current_event' in d) { currentEvent = String(d.current_event).trim(); changed = true; }
     if ('current_heat'  in d) { currentHeat  = String(d.current_heat).trim();  changed = true; }
     if (changed) highlight();
+});
+// A new meet file was loaded — this page's HEATS are the previous meet's.
+sockSchedule.on('schedule_update', function() {
+    location.reload();
 });
 </script>
 

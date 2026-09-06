@@ -27,7 +27,7 @@ import state   # noqa: E402
 
 _LABELS = {'event': 'Event', 'heat': 'Heat', 'lane': 'Lane', 'name': 'Name',
            'club': 'Club', 'time': 'Time', 'delta': 'Δ', 'place': '#',
-           'waiting_results': 'Waiting for results…'}
+           'waiting_results': 'Waiting for results…', 'no_schedule': 'No schedule'}
 _FLAGS = {f'show_{k}': True for k in
           ('lane_header', 'name_header', 'club_header', 'time_header',
            'delta_header', 'position_header', 'name', 'club', 'delta', 'position')}
@@ -246,3 +246,72 @@ def test_shell_and_pages_agree_on_the_header_height(shell_pi, pi):
     if they disagree the tabs jump as you swipe."""
     assert '65px' in shell_pi
     assert 'max(65px' in pi or '65px' in pi
+
+
+# ── The schedule tab ───────────────────────────────────────────────────────────
+
+_SCHED_T = {'schedule': 'Horaire', 'search_placeholder': 'Add…',
+            'upcoming_only': 'Upcoming', 'show_all_heats': 'All heats',
+            'reset_filters': 'Reset', 'reset_confirm': 'Clear?', 'no_meet': 'No meet'}
+_HEATS = ('[{"event":3,"heat":1,"event_name":"50 Libre","time":"10:42",'
+          '"lanes":[{"lane":4,"name":"T, A","club":"CNL","seed_time":"0:27.10","swimmers":[]}]}]')
+
+
+def _sched(own_dir, **extra):
+    return _render(own_dir, 'schedule.html', heats_json=_HEATS, has_meet=True,
+                   meet_name='Coupe', t=_SCHED_T, **extra)
+
+
+@pytest.fixture(scope='module')
+def sched_pi():
+    return _sched('server/templates')
+
+
+@pytest.fixture(scope='module')
+def sched_cloud():
+    return _sched('cloud/templates', meet_id='abc123')
+
+
+def test_schedule_lives_only_in_shared():
+    assert os.path.isfile(os.path.join(REPO, 'shared/templates/schedule.html'))
+    for d in ('server/templates', 'cloud/templates'):
+        assert not os.path.exists(os.path.join(REPO, d, 'schedule.html'))
+
+
+def test_schedule_joins_a_room_only_on_the_cloud(sched_pi, sched_cloud):
+    assert "const MEET_ID = ''" in sched_pi
+    assert "const MEET_ID = 'abc123'" in sched_cloud
+    for html in (sched_pi, sched_cloud):
+        assert 'if (MEET_ID) sock.emit' in html
+        assert "if (MEET_ID) url += '&meet_id='" in html
+
+
+def test_both_listen_for_schedule_update(sched_pi, sched_cloud):
+    """A loaded meet file invalidates the start list this page is holding. The Pi
+    had no path for this at all — its Schedule tab showed the previous meet until
+    someone refreshed by hand."""
+    for html in (sched_pi, sched_cloud):
+        assert "splouchSocket('/ws/schedule')" in html
+        assert "sockSchedule.on('schedule_update'" in html
+
+
+def test_filter_sheet_is_no_longer_boxed_out_of_its_own_header(sched_pi, sched_cloud):
+    """The 65px spacer row and the `#filter-title` that filled it existed only to
+    dodge the shell's pull-to-refresh overlay, which is gone: the gesture now binds
+    inside this document. The sheet gets its full height back."""
+    for html in (sched_pi, sched_cloud):
+        assert 'edgeT' not in html
+        assert 'filter-title' not in html
+        assert 'grid-template-rows' not in html
+
+
+def test_schedule_palette_comes_from_the_server(sched_pi, sched_cloud):
+    """The cloud template used to hard-code fallback hexes because its
+    `_DEFAULT_COLORS` lacked the schedule_* keys. They live in the palette now, so
+    a partial theme still themes the page and the values exist in one place."""
+    src = open(os.path.join(REPO, 'cloud', 'cloud_server.py')).read()
+    for key in ('schedule_event', 'schedule_time', 'schedule_name', 'schedule_club'):
+        assert key in state.DEFAULT_THEME_COLORS, f'{key} missing from the Pi palette'
+        assert f"'{key}'" in src,                 f'{key} missing from the cloud palette'
+    for html in (sched_pi, sched_cloud):
+        assert "theme_colors.get('schedule" not in html

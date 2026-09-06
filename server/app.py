@@ -254,6 +254,24 @@ async def ws_results(ws: WebSocket):
         bus.manager.disconnect(ws, '/results')
 
 
+@app.websocket('/ws/schedule')
+async def ws_schedule(ws: WebSocket):
+    """Start-list invalidation. Carries one event, `schedule_update`, sent when a
+    meet file is loaded so an open Schedule tab re-fetches instead of showing the
+    previous meet's heats. Mirrors the cloud channel of the same name so the phone
+    page is identical against either server (docs/api.md §2)."""
+    await bus.manager.connect(ws, '/schedule')
+    try:
+        while True:
+            msg = await ws.receive_json()   # receive-only apart from the heartbeat
+            if msg.get('event') == 'ping':
+                await bus.manager.send(ws, 'pong')
+    except WebSocketDisconnect:
+        pass
+    finally:
+        bus.manager.disconnect(ws, '/schedule')
+
+
 @app.websocket('/ws/settings')
 async def ws_settings(ws: WebSocket):
     await bus.manager.connect(ws, '/settings')
