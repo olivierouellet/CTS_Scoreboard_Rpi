@@ -15,13 +15,13 @@
 /* Covers the table until the first snapshot, and again if the console goes away.
    Matched to the table-header background so the header's bottom border blends the
    way it does under the live board, rather than contrasting with the page. */
+/* Landscape: the table fills its container, so there is no spare room and the
+   message has to cover it. Needs `z-index` above the table's own `z-index: 1` —
+   left at auto it paints *behind*, leaking its background out below the last lane
+   and hiding the message itself. */
 #waiting {
     position: fixed;
     inset: 65px 0 0 0;
-    /* Above the table, which is `position: relative; z-index: 1`. Without this the
-       overlay is positioned with z-index auto and so paints *behind* it: the empty
-       rows show their stripes on top, this background leaks out below the last
-       lane, and the message itself is hidden. */
     z-index: 2;
     display: flex;
     align-items: center;
@@ -31,6 +31,22 @@
     background: var(--color-th-bg);
 }
 #waiting.hidden { display: none; }
+
+/* Portrait: rows take their natural height, leaving the lower part of the screen
+   empty, so the message goes in that gap and the empty grid stays visible. Not an
+   overlay here at all — it is in the flow, over nothing, so it drops the panel
+   background and lets the page colour through. The board is wiped when the feed
+   drops (clearResults), so there is never anything underneath worth covering. */
+@media (orientation: portrait) {
+    .timing-content { flex: 0 0 auto; }
+    .timing-table   { height: auto; }   /* relax the 100% in timing_display.css */
+    #waiting {
+        position: static;
+        flex: 1;
+        inset: auto;
+        background: none;
+    }
+}
 {% endblock %}
 
 {% block body_extra %}
@@ -43,6 +59,31 @@
 var SHOW_PODIUM = {{ show_podium | default(true, true) | tojson }};
 
 function showWaiting() { document.getElementById('waiting').classList.remove('hidden'); }
+
+/* Empty one row. `lane` is what its number cell should read — its own lane in lane
+   mode, an em dash when the list is a ranking and this position was never filled. */
+function blankRow(i, lane) {
+    var tr = document.getElementById('row' + i);
+    if (tr) tr.classList.remove('podium-gold', 'podium-silver', 'podium-bronze');
+    document.getElementById('lane_num'     + i).textContent = lane;
+    document.getElementById('lane_name'    + i).textContent = '';
+    document.getElementById('lane_name_alt'+ i).textContent = '';
+    document.getElementById('lane_club'    + i).textContent = '';
+    document.getElementById('lane_time'    + i).textContent = '—';
+    document.getElementById('lane_delta'   + i).innerHTML   = '';
+    document.getElementById('lane_place'   + i).textContent = '—';
+}
+
+/* Wipe the board back to an empty grid. Called when the feed goes away, so nothing
+   on screen outlives the connection that produced it: a results screen holds still
+   by design, which is exactly what makes stale times here read as current ones. */
+function clearResults() {
+    document.getElementById('current_event').innerHTML = '';
+    document.getElementById('current_heat').innerHTML  = '';
+    document.getElementById('event_name').innerHTML    = '';
+    reset_times();
+    for (var i = 1; i <= NUM_LANES; i++) blankRow(i, i);
+}
 
 function renderResults(d) {
     on_timer();
@@ -66,10 +107,10 @@ function renderResults(d) {
     for (var i = 1; i <= NUM_LANES; i++) {
         var r  = byRow[i];
         var tr = document.getElementById('row' + i);
-        /* Toggle only the podium classes — the row keeps its base striping class,
-           which also carries its font size. */
-        if (tr) tr.classList.remove('podium-gold', 'podium-silver', 'podium-bronze');
         if (r) {
+            /* Toggle only the podium classes — the row keeps its base striping
+               class, which also carries its font size. */
+            if (tr) tr.classList.remove('podium-gold', 'podium-silver', 'podium-bronze');
             if (tr && SHOW_PODIUM) {
                 var placeNum = parseInt((r.place || '').trim(), 10);
                 if      (placeNum === 1) tr.classList.add('podium-gold');
@@ -86,13 +127,7 @@ function renderResults(d) {
             document.getElementById('lane_delta'   + i).innerHTML   = r.delta || '';
             document.getElementById('lane_place'   + i).textContent = (r.place || '').trim() || '—';
         } else {
-            document.getElementById('lane_num'     + i).textContent = laneMode ? i : '—';
-            document.getElementById('lane_name'    + i).textContent = '';
-            document.getElementById('lane_name_alt'+ i).textContent = '';
-            document.getElementById('lane_club'    + i).textContent = '';
-            document.getElementById('lane_time'    + i).textContent = '—';
-            document.getElementById('lane_delta'   + i).innerHTML   = '';
-            document.getElementById('lane_place'   + i).textContent = '—';
+            blankRow(i, laneMode ? i : '—');
         }
     }
     document.getElementById('waiting').classList.add('hidden');
@@ -104,10 +139,12 @@ sock.on('connect', function() {
     if (MEET_ID) sock.emit('join_meet', { meet_id: MEET_ID, vid: splouchVid() });
 });
 sock.on('reload',     function() { location.reload(); });
-sock.on('disconnect', function() { showWaiting(); });
-/* Shares `meet_live` with the live board but not the response: no lane is running
-   on a results screen, so nothing pulses — the board reverts to waiting instead. */
-sock.on('meet_live',  function(d) { if (!(d && d.live)) showWaiting(); });
+/* Nothing is feeding us any more, so clear before showing the message rather than
+   covering the old heat with it. Shares `meet_live` with the live board but not the
+   response: no lane runs on a results screen, so nothing pulses. */
+function goIdle() { clearResults(); showWaiting(); }
+sock.on('disconnect', goIdle);
+sock.on('meet_live',  function(d) { if (!(d && d.live)) goIdle(); });
 sock.on('results_snapshot', function(d) { renderResults(d); });
 
 /* The shell reveals this tab without reloading it, so re-assert the room and

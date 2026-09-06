@@ -536,15 +536,48 @@ def test_waiting_message_is_translated_on_both(res_pi, res_cloud):
         'every per-meet cloud page must pass the [mobile] strings'
 
 
-def test_waiting_overlay_covers_the_table(res_pi, res_cloud):
-    """The table is `position: relative; z-index: 1`, so an overlay left at z-index
-    auto paints *behind* it: empty rows striped on top, this background leaking out
-    below the last lane, and the message itself invisible."""
+def _css(html):
+    style = re.search(r'<style>(.*?)</style>', html, re.S).group(1)
+    return re.sub(r'/\*.*?\*/', '', style, flags=re.S)   # comments mention z-index too
+
+
+def _rule(css, selector, after=0):
+    start = css.index(selector, after)
+    return css[start:css.index('}', start)]
+
+
+def test_waiting_message_outranks_the_table_in_landscape(res_pi, res_cloud):
+    """Landscape has no spare room — the table fills its container — so the message
+    has to cover it. The table is `position: relative; z-index: 1`, so left at
+    z-index auto this paints *behind*: empty rows striped on top, its background
+    leaking out below the last lane, and the message itself invisible."""
     for html in (res_pi, res_cloud):
-        style = re.search(r'<style>(.*?)</style>', html, re.S).group(1)
-        style = re.sub(r'/\*.*?\*/', '', style, flags=re.S)   # comments mention z-index too
-        start = style.index('#waiting {')
-        block = style[start:style.index('}', start)]
-        z = re.search(r'z-index:\s*(\d+)', block)
+        z = re.search(r'z-index:\s*(\d+)', _rule(_css(html), '#waiting {'))
         assert z, '#waiting has no z-index and will sit under the table'
         assert int(z.group(1)) > 1, 'must outrank .timing-table (z-index: 1)'
+
+
+def test_waiting_message_fills_the_gap_in_portrait(res_pi, res_cloud):
+    """Portrait rows take their natural height, so the message goes in the space
+    below the last lane instead of over the board — in the flow, no panel
+    background, page colour showing through."""
+    for html in (res_pi, res_cloud):
+        css = _css(html)
+        portrait = css[css.index('@media (orientation: portrait)', css.index('#waiting {')):]
+        rule = _rule(portrait, '#waiting {')
+        assert 'position: static' in rule
+        assert 'flex: 1' in rule
+        assert 'background: none' in rule
+        assert 'height: auto' in _rule(portrait, '.timing-table'), \
+            'the table must give up its 100% height or there is no gap'
+
+
+def test_stale_results_are_cleared_not_covered(res_pi, res_cloud):
+    """A results board holds still by design, which is what makes an old heat read
+    as the current one. When the feed goes away the rows are wiped, so the message
+    never has anything to hide."""
+    for html in (res_pi, res_cloud):
+        assert 'function clearResults()' in html
+        assert 'function goIdle() { clearResults(); showWaiting(); }' in html
+        assert "sock.on('disconnect', goIdle)" in html
+        assert 'if (!(d && d.live)) goIdle()' in html
